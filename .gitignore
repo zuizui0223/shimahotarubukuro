@@ -1,0 +1,16 @@
+# Raw specimen scans and image data (kept out of the repo)
+*.jpg
+*.jpeg
+*.JPG
+*.JPEG
+data/
+shimahotarubukuro/
+
+# QC overlays embed the specimen scans — regenerate locally
+results/overlays/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
