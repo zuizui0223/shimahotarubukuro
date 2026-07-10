@@ -35,16 +35,21 @@ jobs:
       - name: Run regression tests
         id: regression
         continue-on-error: true
-        run: python -m unittest discover -s tests -v 2>&1 | tee results_v2/regression-tests.txt
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -v 2>&1 | tee results_v2/regression-tests.txt
 
       - name: Generate v2 measurements and overlays
         id: detection
         continue-on-error: true
-        run: >-
-          python measure_guides_v2.py
-          --data-root shimahotarubukuro
-          --out-dir results_v2
-          2>&1 | tee results_v2/detection-run.txt
+        shell: bash
+        run: |
+          set -o pipefail
+          python measure_guides_v2.py \
+            --data-root shimahotarubukuro \
+            --out-dir results_v2 \
+            2>&1 | tee results_v2/detection-run.txt
 
       - name: Record source commit
         if: always()
