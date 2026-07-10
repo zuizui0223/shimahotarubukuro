@@ -29,10 +29,12 @@ class ReviewedPipelineTests(unittest.TestCase):
         self.assertEqual(len(pieces), 1)
 
     def test_two_touching_corollas_remain_two_bodies(self) -> None:
-        mask = np.zeros((1200, 1400), dtype=np.uint8)
-        cv2.ellipse(mask, (480, 650), (175, 275), 0, 0, 360, 1, -1)
-        cv2.ellipse(mask, (780, 650), (175, 275), 0, 0, 360, 1, -1)
-        cv2.rectangle(mask, (640, 610), (660, 690), 1, -1)
+        # Based on Shikine circled individual ③: two distinct flower bodies joined
+        # by a narrow tissue bridge, rather than two arbitrary halves of one body.
+        mask = np.zeros((1200, 1500), dtype=np.uint8)
+        cv2.ellipse(mask, (420, 650), (165, 275), 0, 0, 360, 1, -1)
+        cv2.ellipse(mask, (850, 650), (185, 275), 0, 0, 360, 1, -1)
+        cv2.rectangle(mask, (580, 620), (670, 680), 1, -1)
 
         pieces, status = review.try_split_reviewed(mask)
 
