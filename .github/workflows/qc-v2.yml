@@ -31,7 +31,9 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
 
       - name: Prepare private artifact directory
-        run: mkdir -p results_v2
+        run: |
+          mkdir -p results_v2/raw
+          cp 'shimahotarubukuro/shikinejima/shikine1~4.jpg' 'results_v2/raw/shikine1~4.jpg'
 
       - name: Run regression tests
         id: regression
@@ -57,7 +59,7 @@ jobs:
         if: always()
         run: |
           printf '%s\n' "$GITHUB_SHA" > results_v2/SOURCE_COMMIT.txt
-          printf '%s\n' "Private QC artifact; do not publish specimen overlays." > results_v2/PRIVACY_NOTE.txt
+          printf '%s\n' "Private QC artifact; do not publish specimen overlays or raw scans." > results_v2/PRIVACY_NOTE.txt
 
       - name: Upload private QC artifact
         if: always()
