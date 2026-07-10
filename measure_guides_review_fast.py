@@ -11,6 +11,7 @@ import measure_guides_v2 as v2
 import measure_guides_review as review
 
 ORGAN_SEARCH_SCALE = 0.40
+MAX_HOUGH_LINES = 300
 
 
 def organs_fast(img: np.ndarray, corolla_mask: np.ndarray, top: int):
@@ -50,8 +51,14 @@ def organs_fast(img: np.ndarray, corolla_mask: np.ndarray, top: int):
     rows = []
     if lines is None:
         return rows
+
+    raw_lines = np.asarray(lines).reshape(-1, 4)
+    lengths_sq = (raw_lines[:, 2] - raw_lines[:, 0]) ** 2 + (raw_lines[:, 3] - raw_lines[:, 1]) ** 2
+    order = np.argsort(lengths_sq)[::-1][:MAX_HOUGH_LINES]
+    raw_lines = raw_lines[order]
+
     inverse = 1.0 / ORGAN_SEARCH_SCALE
-    for sx1, sy1, sx2, sy2 in np.asarray(lines).reshape(-1, 4):
+    for sx1, sy1, sx2, sy2 in raw_lines:
         x1, y1, x2, y2 = [int(round(value * inverse)) for value in (sx1, sy1, sx2, sy2)]
         length_px = math.hypot(x2 - x1, y2 - y1)
         length_mm = length_px * base.MM_PX
