@@ -52,9 +52,9 @@ class ReviewedSpotTests(unittest.TestCase):
         a = np.zeros(shape, dtype=np.float32)
         b = np.zeros(shape, dtype=np.float32)
 
-        cv2.circle(a, (80, 110), 5, 8.0, -1)   # strong magenta
-        cv2.circle(a, (145, 110), 5, 2.0, -1)  # faint magenta
-        cv2.circle(b, (145, 110), 5, 1.0, -1)
+        cv2.circle(a, (80, 110), 5, 8.0, -1)    # strong magenta
+        cv2.circle(a, (145, 110), 5, 1.35, -1)  # faint magenta
+        cv2.circle(b, (145, 110), 5, 0.85, -1)  # a*-b* = 0.50
 
         strong, weak, combined = spots.spot_candidate_masks(a, b, corolla)
 
