@@ -47,7 +47,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python measure_guides_review.py \
+          python measure_guides_review_fast.py \
             --data-root shimahotarubukuro \
             --out-dir results_v2 \
             2>&1 | tee results_v2/detection-run.txt
