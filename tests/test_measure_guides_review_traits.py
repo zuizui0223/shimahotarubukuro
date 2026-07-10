@@ -10,7 +10,7 @@ import measure_guides_review_traits as traits
 
 class ReviewedVisitorTraitTests(unittest.TestCase):
     def test_ruler_centimetre_ticks_define_scale(self) -> None:
-        image = np.full((900, 1800, 3), 255, dtype=np.uint8)
+        image = np.full((1200, 1800, 3), 255, dtype=np.uint8)
         baseline = 520
         cv2.line(image, (120, baseline), (1680, baseline), (0, 0, 0), 5)
         # This unit test isolates the long centimetre marks. The real Shikine scan
