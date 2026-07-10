@@ -31,14 +31,16 @@ MANUAL_ARTIFACT_POLYGONS = {
     ],
 }
 
-# The global 27 px closing joins circled individual ③'s two separate flowers and
-# also preserves a thin paper/tape artifact above the gap. Recompute only this
-# local region with a smaller closing kernel. The two flowers then remain distinct,
-# while the artifact remains a small component below the normal corolla area filter.
+# The global 27 px closing joins circled individual ③'s two separate flowers.
+# In the local ROI, 17 px keeps them separate. A subsequent 11 px opening is
+# applied only to the right-hand open flower, removing the connected transparent-
+# tape line while retaining >98% of the flower mask.
 LOCAL_FOREGROUND_RULES = {
     ("shikinejima", "shikine1~4"): {
         "rect": (0.04, 0.44, 0.60, 0.68),
         "close_size": 17,
+        "prune_target": (0.39, 0.55),
+        "open_size": 11,
     },
 }
 
@@ -74,11 +76,7 @@ def apply_current_exclusions(mask: np.ndarray) -> np.ndarray:
     return _fill_polygons(mask, MANUAL_ARTIFACT_POLYGONS.get(_CURRENT_SHEET, []))
 
 
-def _foreground_with_close(
-    img: np.ndarray,
-    top: int,
-    close_size: int,
-) -> np.ndarray:
+def _foreground_with_close(img: np.ndarray, top: int, close_size: int) -> np.ndarray:
     """Rebuild the v2 foreground with a specified closing kernel."""
     lc, a, b = base.channels(img)
     chroma = np.sqrt(a * a + b * b)
@@ -115,6 +113,63 @@ def _foreground_with_close(
     return filled
 
 
+def _prune_target_component(
+    mask: np.ndarray,
+    rect: tuple[float, float, float, float],
+    target: tuple[float, float],
+    open_size: int,
+) -> np.ndarray:
+    """Remove a thin attached branch from one reviewed local component.
+
+    The target is a normalised full-image coordinate. Only the nearest plausible
+    corolla component is opened; all other specimens remain byte-for-byte unchanged.
+    """
+    output = mask.copy()
+    height, width = output.shape
+    x0f, y0f, x1f, y1f = rect
+    x0 = max(0, min(width, int(round(x0f * width))))
+    x1 = max(0, min(width, int(round(x1f * width))))
+    y0 = max(0, min(height, int(round(y0f * height))))
+    y1 = max(0, min(height, int(round(y1f * height))))
+    crop = output[y0:y1, x0:x1].copy()
+
+    n, labels, stats, centroids = cv2.connectedComponentsWithStats(crop, 8)
+    candidates: list[tuple[float, int]] = []
+    tx, ty = target
+    for index in range(1, n):
+        area_mm2 = stats[index, cv2.CC_STAT_AREA] * base.MM2_PX
+        if area_mm2 < 80:
+            continue
+        cx = (x0 + centroids[index][0]) / width
+        cy = (y0 + centroids[index][1]) / height
+        candidates.append((math.hypot(cx - tx, cy - ty), index))
+    if not candidates:
+        return output
+
+    _, target_index = min(candidates)
+    original = (labels == target_index).astype(np.uint8)
+    opened = cv2.morphologyEx(
+        original,
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (open_size, open_size)),
+    )
+    n2, labels2, stats2, _ = cv2.connectedComponentsWithStats(opened, 8)
+    if n2 <= 1:
+        return output
+    largest = 1 + int(np.argmax(stats2[1:, cv2.CC_STAT_AREA]))
+    opened = (labels2 == largest).astype(np.uint8)
+
+    # Reject an unexpectedly destructive correction.
+    retained = opened.sum() / max(float(original.sum()), 1.0)
+    if retained < 0.95:
+        return output
+
+    crop[original > 0] = 0
+    crop[opened > 0] = 255
+    output[y0:y1, x0:x1] = crop
+    return output
+
+
 def foreground_reviewed(img: np.ndarray, top: int):
     filled, a, b = _ORIGINAL_FOREGROUND(img, top)
 
@@ -128,6 +183,12 @@ def foreground_reviewed(img: np.ndarray, top: int):
         y0 = max(top, min(height, int(round(y0f * height))))
         y1 = max(top, min(height, int(round(y1f * height))))
         filled[y0:y1, x0:x1] = local[y0:y1, x0:x1]
+        filled = _prune_target_component(
+            filled,
+            rule["rect"],
+            rule["prune_target"],
+            int(rule["open_size"]),
+        )
 
     filled = apply_current_exclusions(filled)
     filled[:top] = 0
