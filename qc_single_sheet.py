@@ -10,6 +10,7 @@ import measure_guides_v2 as v2
 import measure_guides_review as review
 import measure_guides_review_organs as reviewed_organs
 import measure_guides_review_spots as reviewed_spots
+import measure_guides_review_traits as visitor_traits
 
 
 def main() -> None:
@@ -44,40 +45,67 @@ def main() -> None:
         args.out_dir,
         auto_split=True,
     )
-    if len(spot_summaries) != len(rows):
+    trait_summaries, scale_info = visitor_traits.write_flower_trait_qc(
+        args.image,
+        folder_key,
+        args.out_dir,
+        spot_segmenter=reviewed_spots.reviewed_spot_segment,
+        auto_split=True,
+    )
+    if len(spot_summaries) != len(rows) or len(trait_summaries) != len(rows):
         raise SystemExit(
-            f"Spot/corolla mismatch: spots={len(spot_summaries)} corollas={len(rows)}"
+            "Output/corolla mismatch: "
+            f"spots={len(spot_summaries)} visitor_traits={len(trait_summaries)} "
+            f"corollas={len(rows)}"
         )
 
-    # Replace provisional spot metrics with metrics from the accepted reviewed mask.
+    spot_fields_to_merge = (
+        "n_spots",
+        "n_strong_spots",
+        "n_weak_recovered_spots",
+        "n_large_spot_clusters",
+        "guide_area_mm2",
+        "guide_cov_pct",
+        "guide_cov_strong_pct",
+        "guide_cov_weak_recovered_pct",
+        "spot_density_cm2",
+        "mean_spot_area_mm2",
+        "median_spot_area_mm2",
+        "max_spot_area_mm2",
+        "brown_overlap_pct_of_spots",
+        "guide_present",
+        "spot_qc_source",
+    )
+    trait_fields_to_merge = tuple(
+        key for key in next(iter(trait_summaries.values())).keys()
+        if key not in {"island", "sheet", "corolla_id"}
+    )
+
     for row in rows:
         corolla_id = int(row["corolla_id"])
-        summary = spot_summaries[corolla_id]
-        for field in (
-            "n_spots",
-            "n_large_spot_clusters",
-            "guide_area_mm2",
-            "guide_cov_pct",
-            "spot_density_cm2",
-            "mean_spot_area_mm2",
-            "median_spot_area_mm2",
-            "max_spot_area_mm2",
-            "brown_overlap_pct_of_spots",
-            "guide_present",
-            "spot_qc_source",
-        ):
-            row[field] = summary[field]
+        spot_summary = spot_summaries[corolla_id]
+        trait_summary = trait_summaries[corolla_id]
+        for field in spot_fields_to_merge:
+            row[field] = spot_summary[field]
+        for field in trait_fields_to_merge:
+            row[field] = trait_summary[field]
 
     v2.write_csv(args.out_dir / "traits.csv", rows)
     v2.write_csv(
         args.out_dir / "spot_summary.csv",
         [spot_summaries[index] for index in sorted(spot_summaries)],
     )
+    v2.write_csv(
+        args.out_dir / "visitor_traits.csv",
+        [trait_summaries[index] for index in sorted(trait_summaries)],
+    )
+    v2.write_csv(args.out_dir / "scale_calibration.csv", [scale_info])
+
     spot_fields = [
         "island", "sheet", "corolla_id", "spot_id", "cx", "cy",
-        "area_mm2", "equivalent_diameter_mm", "mean_a_minus_b",
-        "median_a_minus_b", "brown_overlap_pct", "large_cluster_check",
-        "exclude_FILL",
+        "area_mm2", "equivalent_diameter_mm", "detection_class",
+        "strong_pixel_fraction", "mean_a_minus_b", "median_a_minus_b",
+        "brown_overlap_pct", "large_cluster_check", "exclude_FILL",
     ]
     v2.write_csv(args.out_dir / "spots.csv", spot_rows, spot_fields)
 
@@ -91,18 +119,20 @@ def main() -> None:
     ]
     v2.write_csv(args.out_dir / "organs.csv", organs, organ_fields)
 
-    expected_overlay = (
-        args.out_dir / "spot_overlays" / f"{island}_{args.image.stem}_spots.png"
-    )
-    expected_mask = (
-        args.out_dir / "spot_masks" / f"{island}_{args.image.stem}_spot_mask.png"
-    )
-    if not (expected_overlay.exists() and expected_mask.exists()):
-        raise SystemExit("Reviewed spot QC images were not created")
+    expected = [
+        args.out_dir / "spot_overlays" / f"{island}_{args.image.stem}_spots.png",
+        args.out_dir / "spot_masks" / f"{island}_{args.image.stem}_spot_mask.png",
+        args.out_dir / "trait_overlays" / f"{island}_{args.image.stem}_visitor_traits.png",
+    ]
+    missing = [str(path) for path in expected if not path.exists()]
+    if missing:
+        raise SystemExit("Reviewed QC images were not created: " + ", ".join(missing))
 
+    weak_recovered = sum(int(summary["n_weak_recovered_spots"]) for summary in spot_summaries.values())
     print(
         f"corollas={len(rows)} organs={len(organs)} spots={len(spot_rows)} "
-        f"-> {args.out_dir}"
+        f"weak_recovered={weak_recovered} scale={scale_info['mm_per_px']}mm/px "
+        f"({scale_info['scale_source']}) -> {args.out_dir}"
     )
 
 

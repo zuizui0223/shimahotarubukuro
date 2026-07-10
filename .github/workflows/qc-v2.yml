@@ -5,6 +5,7 @@ on:
     branches:
       - fix/segmentation-organs-v2
       - fix/qc-v2-shikine-review
+      - fix/shikine-spots-floral-traits
   pull_request:
     branches:
       - main
