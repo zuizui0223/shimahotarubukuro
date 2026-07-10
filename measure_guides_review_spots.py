@@ -11,7 +11,9 @@ corrections have been installed. It writes:
 
 Small connected components below ``MIN_SPOT_AREA_MM2`` are treated as scan noise.
 Brown/degraded tissue is measured independently and is not silently relabelled as
-a nectar-guide spot.
+a nectar-guide spot. Very large connected spot clusters are retained for guide
+coverage, but flagged because individual-spot counts can be conservative when
+neighbouring spots touch.
 """
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ import measure_guides_v2 as v2
 import measure_guides_review as review
 
 MIN_SPOT_AREA_MM2 = 0.02
+LARGE_SPOT_CLUSTER_MM2 = 3.0
 
 
 def _accepted_spots(
@@ -65,6 +68,25 @@ def _write_png(path: Path, image: np.ndarray) -> None:
     if not ok:
         raise RuntimeError(f"Could not encode PNG: {path}")
     encoded.tofile(str(path))
+
+
+def _draw_legend(image: np.ndarray, top: int, *, binary: bool = False) -> None:
+    y0 = min(max(top + 12, 12), image.shape[0] - 58)
+    cv2.rectangle(image, (12, y0), (620, y0 + 44), (255, 255, 255), -1)
+    cv2.rectangle(image, (12, y0), (620, y0 + 44), (80, 80, 80), 1)
+    if binary:
+        text = "black=accepted guide spots  orange=brown/degraded tissue"
+    else:
+        text = "cyan=accepted guide spots  orange=brown/degraded tissue"
+    cv2.putText(
+        image,
+        text,
+        (22, y0 + 29),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.55,
+        (30, 30, 30),
+        2,
+    )
 
 
 def write_spot_qc(
@@ -115,10 +137,14 @@ def write_spot_qc(
         brown_overlap_px = int((accepted_bool & brown).sum())
         brown_overlap_pct = 100.0 * brown_overlap_px / max(accepted_area_px, 1)
         areas = np.array([row["area_mm2"] for row in spot_components], dtype=float)
+        n_large_clusters = int((areas >= LARGE_SPOT_CLUSTER_MM2).sum()) if areas.size else 0
 
         summary = {
+            "island": island,
+            "sheet": stem,
             "corolla_id": corolla_id,
             "n_spots": len(spot_components),
+            "n_large_spot_clusters": n_large_clusters,
             "guide_area_mm2": round(accepted_area_mm2, 3),
             "guide_cov_pct": round(coverage_pct, 3),
             "spot_density_cm2": round(density_cm2, 3),
@@ -136,6 +162,7 @@ def write_spot_qc(
             spot_mask = component_labels == label_index
             values = difference[spot_mask]
             brown_pixels = int((spot_mask & brown).sum())
+            area_mm2 = float(spot["area_mm2"])
             spot_rows.append(
                 {
                     "island": island,
@@ -144,13 +171,14 @@ def write_spot_qc(
                     "spot_id": spot_id,
                     "cx": round(spot["cx"], 2),
                     "cy": round(spot["cy"], 2),
-                    "area_mm2": round(spot["area_mm2"], 4),
+                    "area_mm2": round(area_mm2, 4),
                     "equivalent_diameter_mm": round(spot["equivalent_diameter_mm"], 4),
                     "mean_a_minus_b": round(float(values.mean()), 3) if values.size else "",
                     "median_a_minus_b": round(float(np.median(values)), 3) if values.size else "",
                     "brown_overlap_pct": round(
                         100.0 * brown_pixels / max(int(spot_mask.sum()), 1), 3
                     ),
+                    "large_cluster_check": "check" if area_mm2 >= LARGE_SPOT_CLUSTER_MM2 else "",
                     "exclude_FILL": "",
                 }
             )
@@ -199,6 +227,8 @@ def write_spot_qc(
 
     cv2.line(overlay, (0, top), (width - 1, top), (180, 0, 180), 2)
     cv2.line(mask_panel, (0, top), (width - 1, top), (180, 0, 180), 2)
+    _draw_legend(overlay, top, binary=False)
+    _draw_legend(mask_panel, top, binary=True)
     scale = min(1.0, 1900.0 / max(height, width))
     output_size = (int(round(width * scale)), int(round(height * scale)))
     overlay = cv2.resize(overlay, output_size)
