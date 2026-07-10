@@ -7,7 +7,7 @@ from pathlib import Path
 
 import measure_guides_v2 as v2
 import measure_guides_review as review
-import measure_guides_review_fast as fast
+import measure_guides_review_organs as reviewed_organs
 
 
 def main() -> None:
@@ -22,7 +22,7 @@ def main() -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     review.install_reviewed_overrides()
-    v2.organs = fast.organs_fast
+    v2.organs = reviewed_organs.organs_reviewed
     rows, organs = v2.process_sheet(
         str(args.image),
         args.folder.lower(),
@@ -35,9 +35,11 @@ def main() -> None:
 
     v2.write_csv(args.out_dir / "traits.csv", rows)
     organ_fields = [
-        "island", "sheet", "organ_id", "nearest_corolla", "cx", "cy",
+        "island", "sheet", "organ_id", "nearest_corolla",
+        "cx", "cy", "x1", "y1", "x2", "y2",
         "length_mm", "width_mm", "aspect", "angle_deg",
         "organ_type_auto", "organ_type_FILL", "exclude_FILL",
+        "detection_source", "flower_hint",
     ]
     v2.write_csv(args.out_dir / "organs.csv", organs, organ_fields)
     print(f"corollas={len(rows)} organs={len(organs)} -> {args.out_dir}")
