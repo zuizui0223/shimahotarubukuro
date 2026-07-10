@@ -21,7 +21,7 @@ def specimen_top(img):
                             minLineLength=int(w*.48), maxLineGap=int(w*.06))
     ys=[]
     if lines is not None:
-        for x1,y1,x2,y2 in lines[:,0]:
+        for x1,y1,x2,y2 in np.asarray(lines).reshape(-1,4):
             if abs(y2-y1) <= max(4,int(h*.004)) and int(h*.12) <= (y1+y2)//2 <= int(h*.46):
                 ys.append((y1+y2)//2)
     return min(h-1, (max(ys) if ys else int(h*.28)) + max(24,int(h*.018)))
@@ -55,6 +55,7 @@ def try_split(mask):
     m=metrics(mask); area=m['area_px']*base.MM2_PX; length=m['length_px']*base.MM_PX
     if length <= SPLIT_LEN_MM and area <= SPLIT_AREA_MM2: return [mask],'not_triggered'
     ys,xs=np.where(mask); pts=np.c_[xs,ys].astype(np.float32)
+    cv2.setRNGSeed(20260710)
     _,labs,centers=cv2.kmeans(pts,2,None,(cv2.TERM_CRITERIA_EPS+cv2.TERM_CRITERIA_MAX_ITER,60,.5),
                               10,cv2.KMEANS_PP_CENTERS)
     if np.linalg.norm(centers[0]-centers[1]) < max(80,.22*m['length_px']):
