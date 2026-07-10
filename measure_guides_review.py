@@ -28,16 +28,6 @@ def prune_thin_spurs(mask: np.ndarray) -> tuple[np.ndarray, bool]:
     if source.sum() == 0:
         return source, False
 
-    contours, _ = cv2.findContours(source, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return source, False
-    rect_width, rect_height = cv2.minAreaRect(max(contours, key=cv2.contourArea))[1]
-    long_side = max(rect_width, rect_height)
-    short_side = min(rect_width, rect_height)
-    if long_side <= 0 or short_side / long_side < 0.60:
-        # Narrow/folded flowers are intentionally left untouched.
-        return source, False
-
     distance = cv2.distanceTransform(source, cv2.DIST_L2, 5)
     core = (distance >= SPUR_CORE_RADIUS_PX).astype(np.uint8)
     if core.sum() == 0:
@@ -83,7 +73,6 @@ def _centroid(mask: np.ndarray) -> tuple[float, float]:
 
 
 def try_split_reviewed(mask: np.ndarray):
-    """Require biological over-length and two spatially distinct flower bodies."""
     measured = v2.metrics(mask)
     length_mm = measured["length_px"] * base.MM_PX
     if length_mm <= v2.SPLIT_LEN_MM:
@@ -93,17 +82,36 @@ def try_split_reviewed(mask: np.ndarray):
     if status != "auto_split" or len(pieces) != 2:
         return pieces, status
 
-    centre_a = _centroid(pieces[0])
-    centre_b = _centroid(pieces[1])
-    separation = math.dist(centre_a, centre_b)
+    separation = math.dist(_centroid(pieces[0]), _centroid(pieces[1]))
     equivalent_diameters = [
         2.0 * math.sqrt(float(piece.sum()) / math.pi)
         for piece in pieces
     ]
     separation_ratio = separation / max(float(np.mean(equivalent_diameters)), 1.0)
     if separation_ratio < MIN_SPLIT_CENTRE_SEPARATION:
-        return [mask], "split_rejected_low_separation"
+        # This is one broad body, not two flowers connected by a narrow bridge.
+        return [mask], "not_triggered"
     return pieces, status
+
+
+def _angle_difference(a: float, b: float) -> float:
+    diff = abs(a - b) % 180.0
+    return min(diff, 180.0 - diff)
+
+
+def _deduplicate_organs(rows: list[dict]) -> list[dict]:
+    kept: list[dict] = []
+    for row in sorted(rows, key=lambda item: item["length_mm"], reverse=True):
+        duplicate = False
+        for other in kept:
+            distance = math.hypot(row["cx"] - other["cx"], row["cy"] - other["cy"])
+            radius = max(row["length_mm"], other["length_mm"]) / base.MM_PX * 0.35
+            if distance <= radius and _angle_difference(row["angle_deg"], other["angle_deg"]) <= 25:
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(row)
+    return sorted(kept, key=lambda row: (row["cy"], row["cx"]))
 
 
 def organs_reviewed(img: np.ndarray, corolla_mask: np.ndarray, top: int):
@@ -122,6 +130,9 @@ def organs_reviewed(img: np.ndarray, corolla_mask: np.ndarray, top: int):
     )
     candidate[exclusion > 0] = 0
 
+    output: list[dict] = []
+
+    # 1) Connected elongated objects.
     merged = np.zeros_like(candidate)
     for kernel in (
         cv2.getStructuringElement(cv2.MORPH_RECT, (31, 5)),
@@ -133,12 +144,10 @@ def organs_reviewed(img: np.ndarray, corolla_mask: np.ndarray, top: int):
     merged = cv2.morphologyEx(merged, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
 
     n, labels, stats, _ = cv2.connectedComponentsWithStats(merged, 8)
-    output = []
     for index in range(1, n):
         area_mm2 = stats[index, cv2.CC_STAT_AREA] * base.MM2_PX
         if not 0.8 <= area_mm2 <= 150:
             continue
-
         component = (labels == index).astype(np.uint8)
         contours, _ = cv2.findContours(component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
@@ -149,35 +158,61 @@ def organs_reviewed(img: np.ndarray, corolla_mask: np.ndarray, top: int):
         width_px = min(rect_width, rect_height)
         if width_px < 1:
             continue
-
         length_mm = length_px * base.MM_PX
         width_mm = width_px * base.MM_PX
         aspect = length_px / width_px
         pixels = component > 0
         mean_chroma = float(chroma[pixels].mean()) if pixels.any() else 0.0
-
-        if not (
+        if (
             MIN_ORGAN_LENGTH_MM <= length_mm <= 45
             and 0.15 <= width_mm <= 5.0
             and aspect >= 2.5
             and mean_chroma >= 1.0
         ):
-            continue
+            output.append(dict(
+                cx=round(cx, 2), cy=round(cy, 2),
+                length_mm=round(length_mm, 2), width_mm=round(width_mm, 2),
+                aspect=round(aspect, 2), angle_deg=round(angle, 2),
+                organ_type_auto="unclassified_reproductive_organ",
+                organ_type_FILL="", exclude_FILL="",
+            ))
 
-        output.append(
-            dict(
-                cx=round(cx, 2),
-                cy=round(cy, 2),
-                length_mm=round(length_mm, 2),
-                width_mm=round(width_mm, 2),
-                aspect=round(aspect, 2),
+    # 2) Hough-line recovery for pale or interrupted organs.
+    line_mask = cv2.morphologyEx(candidate * 255, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    min_line_px = int(round(MIN_ORGAN_LENGTH_MM / base.MM_PX))
+    lines = cv2.HoughLinesP(
+        line_mask,
+        1,
+        np.pi / 180,
+        threshold=24,
+        minLineLength=min_line_px,
+        maxLineGap=int(round(3.0 / base.MM_PX)),
+    )
+    if lines is not None:
+        for x1, y1, x2, y2 in np.asarray(lines).reshape(-1, 4):
+            length_px = math.hypot(x2 - x1, y2 - y1)
+            length_mm = length_px * base.MM_PX
+            if not MIN_ORGAN_LENGTH_MM <= length_mm <= 45:
+                continue
+            tube = np.zeros_like(candidate)
+            cv2.line(tube, (x1, y1), (x2, y2), 255, 9)
+            pixels = (tube > 0) & (candidate > 0)
+            support = int(pixels.sum()) / max(length_px * 9.0, 1.0)
+            mean_chroma = float(chroma[pixels].mean()) if pixels.any() else 0.0
+            if support < 0.08 or mean_chroma < 1.0:
+                continue
+            angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
+            width_mm = max(0.15, min(5.0, support * 9.0 * base.MM_PX))
+            output.append(dict(
+                cx=round((x1 + x2) / 2.0, 2), cy=round((y1 + y2) / 2.0, 2),
+                length_mm=round(length_mm, 2), width_mm=round(width_mm, 2),
+                aspect=round(length_mm / max(width_mm, 0.01), 2),
                 angle_deg=round(angle, 2),
                 organ_type_auto="unclassified_reproductive_organ",
-                organ_type_FILL="",
-                exclude_FILL="",
-            )
-        )
-    return sorted(output, key=lambda row: (row["cy"], row["cx"]))
+                organ_type_FILL="", exclude_FILL="",
+            ))
+
+    return _deduplicate_organs(output)
 
 
 def install_reviewed_overrides() -> None:
