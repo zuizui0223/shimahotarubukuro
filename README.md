@@ -73,6 +73,46 @@ Data-root layout (island sub-folders, English names):
 oshima/  toshima/  niijima/  shikinejima/  kozushima/     # *.jpg scan sheets
 ```
 
+## Plant IDs and coordinates
+
+After manually filling `results/qc_plant_labels.csv`, propagate the checked plant
+IDs to the flower and style tables. `--in-place` makes one-time backups named
+`traits.pre_qc.csv` and `styles.pre_qc.csv` before replacing the originals.
+
+```bash
+python apply_qc_labels.py --results-dir results --in-place
+```
+
+Then attach GPS data from `location.xlsx`:
+
+```powershell
+python attach_locations.py `
+  --locations "C:\Users\zuizui\OneDrive - Kyoto University\デスクトップ\location.xlsx" `
+  --results-dir results
+```
+
+The workbook may use Japanese or English headers and decimal-degree or DMS
+coordinates. The preferred columns are:
+
+```
+island, sheet, plant_id, site_id, latitude, longitude,
+elevation_m, coord_datum, coord_accuracy_m, coordinate_notes
+```
+
+Only `latitude` and `longitude` are mandatory, but reliable plant-level matching
+normally requires `island + plant_id` or `island + sheet + plant_id`. A header-only
+example is provided at `data/location_template.csv`.
+
+Matching is conservative, in this order:
+
+1. `island + sheet + plant_id`
+2. `island + plant_id`
+3. `island + sheet`
+4. island alone, only when that island has one unique coordinate
+
+Ambiguous coordinates are never guessed. They remain unmatched and are listed in
+`results/with_coordinates/location_join_report.csv`.
+
 ## Outputs (`results/`)
 
 - `traits.csv` — one row per corolla (all traits above)
@@ -83,6 +123,15 @@ oshima/  toshima/  niijima/  shikinejima/  kozushima/     # *.jpg scan sheets
   orange). *Not committed by default* — they embed the specimen scans; regenerate
   locally.
 
+Coordinate-enriched outputs are written without altering the source workbook:
+
+- `with_coordinates/locations_normalized.csv` — cleaned location rows
+- `with_coordinates/traits_with_coordinates.csv`
+- `with_coordinates/qc_plant_labels_with_coordinates.csv`
+- `with_coordinates/styles_with_coordinates.csv`
+- `with_coordinates/per_location_summary.csv`
+- `with_coordinates/location_join_report.csv` — unmatched or ambiguous rows
+
 ## Caveats before analysis
 
 1. **Preservation confound** — browning fades pigment, so `guide_cov` is a lower
@@ -92,6 +141,8 @@ oshima/  toshima/  niijima/  shikinejima/  kozushima/     # *.jpg scan sheets
    splays lobes), but island means and ranks agree.
 4. Raw scans are kept out of the repo (`.gitignore`); document their location
    separately.
+5. Exact occurrence coordinates can be sensitive. Keep the repository private or
+   publish a coarsened coordinate table when releasing the data publicly.
 
 ## Notes
 
