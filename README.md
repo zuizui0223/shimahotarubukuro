@@ -50,13 +50,40 @@ methods in the companion repo's `field_flower_geometry` schema).
 QC** (link to plant; drop tape/filament artefacts). Stamen length and herkogamy
 are **not** recoverable from these detached, flattened specimens.
 
-## Sampling unit
+## Sampling hierarchy
 
-**Plant (株)** is the unit; 1–2 flowers (corollas) per plant. Corollas are measured
-individually; the handwritten circled numbers on each sheet are the ground-truth
-plant IDs. Fill `qc_plant_labels.csv` (`plant_id_FILL`, `exclude_FILL`) against
-the overlays before aggregating. For Pst, average flowers within a plant, then
-compute among-island vs among-plant-within-island variance.
+```
+island  >  site (地点)  >  individual / plant (個体)  >  flower (corolla)
+             |                    |                          |
+   plain number in filename;  handwritten CIRCLED number    1–2 per individual
+   coordinates in location.xlsx (per site)   on the sheet
+```
+
+- **Site** = the plain (non-circled) number; its lat/lon is in `location.xlsx`
+  (`island, no, lat, lon`, where `no` = site). One sheet may hold several sites
+  (e.g. `toshima3~6` = sites 3–6); a single-site island keeps one site for the
+  whole sheet (**Shikinejima = 1 site, 5 individuals**).
+- **Individual (株/個体)** = the CIRCLED number on the sheet, 1–2 flowers each.
+
+`measure_guides.py --locations location.xlsx` auto-attaches `site_no`/`site_lat`/
+`site_lon` for **single-site sheets** (79/209 corollas). Multi-site sheets can't
+be split by site automatically — the corolla→(site, individual) link needs the
+circled numbers, filled in `qc_plant_labels.csv` (`site_no_FILL`,
+`individual_FILL`, `flower_no_FILL`) against `overlays/`. For Pst: average flowers
+within individual, then among-island vs among-individual-within-island.
+
+### Preparation & QC flags
+
+- **`fold_check`** — corollas are scanned folded-in-half *or* fully opened.
+  Folding is longitudinal, so **corolla length and every ratio trait
+  (`guide_cov_pct`, `spot_density_cm2`, `guide_extent_rel`) are fold-robust**,
+  but absolute `corolla_area/width/guide_area` are ~halved when folded.
+  `fold_check=check` (width/length < 0.55) marks likely-folded corollas; confirm
+  in `fold_state_FILL`. Both folded and expanded specimens ARE measured.
+- **`merge_check`** — two touching corollas can be segmented as one blob
+  (over-long/over-wide, e.g. length > 55 mm — a single corolla is ≤ ~55 mm).
+  `merge_check=check` marks these for a manual split or exclusion
+  (`split_or_exclude_FILL`).
 
 ## Usage
 
@@ -64,8 +91,13 @@ compute among-island vs among-plant-within-island variance.
 pip install -r requirements.txt
 python measure_guides.py \
     --data-root "path/to/shimahotarubukuro" \
+    --locations "path/to/location.xlsx" \
     --out-dir results
 ```
+
+`--locations` reads the real site table (`island, no, lat, lon`; island names
+`shikine`/`kozu` are aliased to the folder names) and is optional — without it the
+`site_*` columns stay blank.
 
 Data-root layout (island sub-folders, English names):
 

@@ -184,25 +184,72 @@ def detect_styles(img, corolla_mask):
     return out
 
 
-def plant_range(fname):
-    """Provisional plant number(s) parsed from a filename like toshima1~2 / oshima10~13 / oshima1(2)."""
+def site_numbers(fname):
+    """Site number(s) from a filename. The trailing number(s) = SITE id(s) (地点);
+    a range (e.g. oshima10~13) means several sites on one sheet -> assign per corolla
+    from the handwritten circled plant numbers in QC. Returns (list[int], is_range, variant)."""
     stem = unicodedata.normalize('NFKC', os.path.splitext(fname)[0]).replace('～', '~').replace('－', '-')
-    variant = (re.search(r'\(([0-9]+)\)', stem) or [None, ''])
-    variant = variant.group(1) if hasattr(variant, 'group') else ''
+    m = re.search(r'\(([0-9]+)\)', stem); variant = m.group(1) if m else ''
     stem_np = re.sub(r'\([0-9]+\)', '', stem)
     nums = [int(x) for x in re.findall(r'\d+', stem_np)]
-    if not nums:
-        return '', variant
-    if len(nums) >= 2 and ('~' in stem_np or '-' in stem_np):
-        return f"{min(nums)}-{max(nums)}", variant
-    return str(nums[0]), variant
+    is_range = len(nums) >= 2 and ('~' in stem_np or '-' in stem_np)
+    if is_range:
+        nums = list(range(min(nums), max(nums) + 1))
+    return nums, is_range, variant
 
 
-def process_sheet(path, folder, out_dir):
+# location.xlsx uses short island names; map them to the data-folder names.
+LOC_ALIAS = {"shikine": "shikinejima", "kozu": "kozushima"}
+
+
+def load_locations(path):
+    """Read a site-coordinate table (columns: island, no, lat, lon) into {(folder, no): (lat, lon)}.
+    'no' is the site number; island names are normalised to the data-folder names."""
+    if not path or not os.path.exists(path):
+        return {}
+    try:
+        from openpyxl import load_workbook
+    except ImportError:
+        print("[warn] openpyxl not installed; coordinates skipped"); return {}
+    wb = load_workbook(path, data_only=True); ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    hdr = [str(c).strip().lower() if c is not None else '' for c in rows[0]]
+    ci = {name: hdr.index(name) for name in ('island', 'no', 'lat', 'lon') if name in hdr}
+    loc = {}; cur = None
+    for r in rows[1:]:
+        isl = r[ci['island']] if r[ci['island']] not in (None, '') else cur
+        cur = isl
+        no = r[ci['no']]
+        if isl is None or no is None:
+            continue
+        key = str(isl).strip().lower(); key = LOC_ALIAS.get(key, key)
+        try:
+            loc[(key, int(no))] = (r[ci['lat']], r[ci['lon']])
+        except (TypeError, ValueError):
+            continue
+    return loc
+
+
+def process_sheet(path, folder, out_dir, loc_map=None):
     island, order = ISLANDS.get(folder, (folder, ''))
     fname = os.path.basename(path)
     img = load_bgr(path); H, W = img.shape[:2]
-    prng, pvar = plant_range(fname)
+    loc_map = loc_map or {}
+    snums, is_range, pvar = site_numbers(fname)
+    # Islands with a single sampling site: the whole island is one site regardless of
+    # the filename range (e.g. Shikinejima = 1 site, 5 individuals). Detected from the
+    # coordinate table having exactly one site for that island.
+    isl_sites = sorted({n for (isl, n) in loc_map if isl == folder}) if loc_map else []
+    if len(isl_sites) == 1:
+        snums, is_range = [isl_sites[0]], False
+    # site + coords: unambiguous only when the sheet holds a single site
+    if len(snums) == 1:
+        site_no = snums[0]
+        lat, lon = loc_map.get((folder, site_no), ('', ''))
+        site_cands = ''
+    else:
+        site_no = ''; lat = lon = ''
+        site_cands = '|'.join(str(n) for n in snums)
     filled, a, b = foreground(img)
     brownmap = (a > 6) & ((a - b) < -15)
     styles = detect_styles(img, filled)
@@ -232,11 +279,18 @@ def process_sheet(path, folder, out_dir):
             extent = ''
         open_flag = g['n_lobes'] >= 4
         circ = g['throat_width'] if open_flag else g['throat_width'] * 2
+        len_mm = round(g['length'] * MM_PX, 2); wid_mm = round(g['width'] * MM_PX, 2)
+        wl = wid_mm / len_mm if len_mm else 0
+        # merged-blob flag: two touching corollas read as one (over-long or wider-than-tall)
+        merge_check = 'check' if (len_mm > 55 or wl > 0.95 or amm > 1500) else ''
         rows.append(dict(
             island=island, region_order=order, sheet=os.path.splitext(fname)[0],
-            plant_range=prng, plant_id='', corolla_id=k, cx=int(ct[i][0]), cy=int(ct[i][1]),
-            corolla_len_mm=round(g['length'] * MM_PX, 2),
-            corolla_width_mm=round(g['width'] * MM_PX, 2),
+            site_no=site_no, site_candidates=site_cands, site_lat=lat, site_lon=lon,
+            plant_id='', corolla_id=k, cx=int(ct[i][0]), cy=int(ct[i][1]),
+            corolla_len_mm=len_mm,
+            corolla_width_mm=wid_mm,
+            wl_ratio=round(wl, 3), fold_check=('check' if wl < 0.55 else ''),
+            merge_check=merge_check,
             corolla_area_mm2=round(amm, 1),
             guide_area_mm2=round(sp_area * MM2_PX, 2),
             guide_cov_pct=round(cov * 100, 2),
@@ -271,8 +325,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data-root", required=True, help="folder containing island sub-folders of scans")
     ap.add_argument("--out-dir", default="results", help="output folder (CSVs + overlays)")
+    ap.add_argument("--locations", default="", help="optional site-coordinate xlsx (cols: island,no,lat,lon)")
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
+    loc_map = load_locations(args.locations)
     allrows, allsticks = [], []
     for folder in sorted(os.listdir(args.data_root)):
         d = os.path.join(args.data_root, folder)
@@ -280,19 +336,26 @@ def main():
             continue
         for f in sorted(os.listdir(d)):
             if f.lower().endswith((".jpg", ".jpeg", ".png")):
-                r, s = process_sheet(os.path.join(d, f), folder.lower(), args.out_dir)
+                r, s = process_sheet(os.path.join(d, f), folder.lower(), args.out_dir, loc_map)
                 allrows += r; allsticks += s
     with open(os.path.join(args.out_dir, "traits.csv"), "w", newline="", encoding="utf-8-sig") as fh:
         w = csv.DictWriter(fh, fieldnames=list(allrows[0].keys())); w.writeheader(); [w.writerow(x) for x in allrows]
     with open(os.path.join(args.out_dir, "styles.csv"), "w", newline="", encoding="utf-8-sig") as fh:
         w = csv.DictWriter(fh, fieldnames=['island', 'sheet', 'nearest_corolla', 'cx', 'cy', 'length_mm', 'width_mm', 'aspect'],
                            extrasaction='ignore'); w.writeheader(); [w.writerow(x) for x in allsticks]
-    # QC template: one row per corolla for the user to fill plant_id / exclude
+    # QC template: one row per corolla. User fills site (for range sheets), individual
+    # (circled number), flower no, and fold state, against results/overlays/.
     with open(os.path.join(args.out_dir, "qc_plant_labels.csv"), "w", newline="", encoding="utf-8-sig") as fh:
-        w = csv.writer(fh); w.writerow(["island", "sheet", "corolla_id", "cx", "cy", "plant_range_from_filename",
-                                        "plant_id_FILL", "flower_no_FILL", "exclude_FILL", "notes"])
+        w = csv.writer(fh)
+        w.writerow(["island", "sheet", "corolla_id", "cx", "cy",
+                    "site_no_auto", "site_candidates", "site_no_FILL", "individual_FILL",
+                    "flower_no_FILL", "fold_state_FILL(open/folded)", "split_or_exclude_FILL",
+                    "site_lat", "site_lon", "fold_check", "merge_check", "notes"])
         for r in allrows:
-            w.writerow([r['island'], r['sheet'], r['corolla_id'], r['cx'], r['cy'], r['plant_range'], "", "", "", ""])
+            w.writerow([r['island'], r['sheet'], r['corolla_id'], r['cx'], r['cy'],
+                        r['site_no'], r['site_candidates'], "", "", "",
+                        ("folded" if r['fold_check'] else ""), ("SPLIT?" if r['merge_check'] else ""),
+                        r['site_lat'], r['site_lon'], r['fold_check'], r['merge_check'], ""])
     # per-island summary
     import statistics as stt
     isl = {}
