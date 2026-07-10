@@ -14,11 +14,13 @@ class ReviewedVisitorTraitTests(unittest.TestCase):
         baseline = 520
         cv2.line(image, (120, baseline), (1680, baseline), (0, 0, 0), 5)
         for x in range(200, 1601, 118):
-            cv2.line(image, (x, baseline - 88), (x, baseline), (0, 0, 0), 3)
+            # Full centimetre marks are much longer than millimetre marks, as on
+            # the physical ruler in the scans.
+            cv2.line(image, (x, baseline - 130), (x, baseline), (0, 0, 0), 3)
             for j in range(1, 10):
                 xx = x + int(round(j * 11.8))
                 if xx < 1680:
-                    cv2.line(image, (xx, baseline - 44), (xx, baseline), (0, 0, 0), 2)
+                    cv2.line(image, (xx, baseline - 38), (xx, baseline), (0, 0, 0), 2)
 
         scale = traits.calibrate_ruler(image, specimen_top=560)
 
