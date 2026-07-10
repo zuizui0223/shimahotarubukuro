@@ -1,0 +1,49 @@
+name: QC v2 overlays
+
+on:
+  push:
+    branches:
+      - fix/segmentation-organs-v2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Run regression tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Generate v2 measurements and overlays
+        run: >-
+          python measure_guides_v2.py
+          --data-root shimahotarubukuro
+          --out-dir results_v2
+
+      - name: Record source commit
+        run: |
+          printf '%s\n' "$GITHUB_SHA" > results_v2/SOURCE_COMMIT.txt
+          printf '%s\n' "Private QC artifact; do not publish specimen overlays." > results_v2/PRIVACY_NOTE.txt
+
+      - name: Upload private QC artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shimahotarubukuro-qc-v2
+          path: results_v2/
+          retention-days: 7
+          if-no-files-found: error
