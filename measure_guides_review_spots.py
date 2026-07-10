@@ -16,7 +16,6 @@ a nectar-guide spot.
 from __future__ import annotations
 
 import math
-import os
 from pathlib import Path
 
 import cv2
@@ -29,14 +28,16 @@ import measure_guides_review as review
 MIN_SPOT_AREA_MM2 = 0.02
 
 
-def _accepted_spots(raw_spots: np.ndarray) -> tuple[np.ndarray, list[dict[str, float]]]:
-    """Remove tiny connected components and return accepted component metrics."""
+def _accepted_spots(
+    raw_spots: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, list[dict[str, float]]]:
+    """Remove tiny components and retain their original component labels."""
     raw = raw_spots.astype(np.uint8)
-    n, labels, stats, centroids = cv2.connectedComponentsWithStats(raw, 8)
+    _, labels, stats, centroids = cv2.connectedComponentsWithStats(raw, 8)
     accepted = np.zeros_like(raw, dtype=np.uint8)
     components: list[dict[str, float]] = []
 
-    for index in range(1, n):
+    for index in range(1, stats.shape[0]):
         area_px = int(stats[index, cv2.CC_STAT_AREA])
         area_mm2 = area_px * base.MM2_PX
         if area_mm2 < MIN_SPOT_AREA_MM2:
@@ -55,7 +56,7 @@ def _accepted_spots(raw_spots: np.ndarray) -> tuple[np.ndarray, list[dict[str, f
         )
 
     components.sort(key=lambda row: (row["cy"], row["cx"]))
-    return accepted, components
+    return accepted, labels, components
 
 
 def _write_png(path: Path, image: np.ndarray) -> None:
@@ -93,7 +94,8 @@ def write_spot_qc(
     finally:
         review._CURRENT_SHEET = previous_sheet
 
-    brown = (a_channel > 6) & ((a_channel - b_channel) < -15)
+    difference = (a_channel - b_channel).astype(np.float32)
+    brown = (a_channel > 6) & (difference < -15)
     overlay = image.copy()
     mask_panel = np.full_like(image, 255)
     summaries: dict[int, dict[str, object]] = {}
@@ -102,7 +104,7 @@ def write_spot_qc(
     for corolla_id, component in enumerate(components, start=1):
         corolla = component["mask"].astype(bool)
         raw_spots = base.spot_segment(a_channel, b_channel, corolla)
-        accepted, spot_components = _accepted_spots(raw_spots)
+        accepted, component_labels, spot_components = _accepted_spots(raw_spots)
         accepted_bool = accepted.astype(bool) & corolla
         corolla_area_px = int(corolla.sum())
         accepted_area_px = int(accepted_bool.sum())
@@ -129,17 +131,9 @@ def write_spot_qc(
         }
         summaries[corolla_id] = summary
 
-        difference = (a_channel - b_channel).astype(np.float32)
         for spot_id, spot in enumerate(spot_components, start=1):
             label_index = int(spot["label_index"])
-            # Reconstruct this spot from its seed location within the accepted mask.
-            seed_x = min(max(int(round(spot["cx"])), 0), width - 1)
-            seed_y = min(max(int(round(spot["cy"])), 0), height - 1)
-            # Connected-components is recomputed on the accepted mask to avoid using
-            # labels from components that were rejected as tiny noise.
-            n_acc, labels_acc, _, _ = cv2.connectedComponentsWithStats(accepted, 8)
-            accepted_label = int(labels_acc[seed_y, seed_x]) if n_acc > 1 else 0
-            spot_mask = labels_acc == accepted_label if accepted_label > 0 else np.zeros_like(accepted, dtype=bool)
+            spot_mask = component_labels == label_index
             values = difference[spot_mask]
             brown_pixels = int((spot_mask & brown).sum())
             spot_rows.append(
@@ -154,7 +148,9 @@ def write_spot_qc(
                     "equivalent_diameter_mm": round(spot["equivalent_diameter_mm"], 4),
                     "mean_a_minus_b": round(float(values.mean()), 3) if values.size else "",
                     "median_a_minus_b": round(float(np.median(values)), 3) if values.size else "",
-                    "brown_overlap_pct": round(100.0 * brown_pixels / max(int(spot_mask.sum()), 1), 3),
+                    "brown_overlap_pct": round(
+                        100.0 * brown_pixels / max(int(spot_mask.sum()), 1), 3
+                    ),
                     "exclude_FILL": "",
                 }
             )
@@ -165,9 +161,13 @@ def write_spot_qc(
         colour_layer[brown & corolla & ~accepted_bool] = (0, 140, 255)
         overlay = cv2.addWeighted(overlay, 0.70, colour_layer, 0.30, 0)
 
-        contours, _ = cv2.findContours(corolla.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(
+            corolla.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
         cv2.drawContours(overlay, contours, -1, (0, 255, 0), 3)
-        spot_contours, _ = cv2.findContours(accepted.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        spot_contours, _ = cv2.findContours(
+            accepted.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
         cv2.drawContours(overlay, spot_contours, -1, (255, 255, 0), 1)
 
         mask_panel[corolla] = (230, 230, 230)
