@@ -24,7 +24,6 @@ MIN_ORGAN_LENGTH_MM = 8.0
 MIN_SPLIT_CENTRE_SEPARATION = 0.90
 
 # Normalised polygons (x/W, y/H), verified against the displayed source overlay.
-# Artifact polygons are removed from both corolla and organ searches.
 MANUAL_ARTIFACT_POLYGONS = {
     ("shikinejima", "shikine1~4"): [
         # Thin foreign strip above circled individual ①.
@@ -32,32 +31,33 @@ MANUAL_ARTIFACT_POLYGONS = {
     ],
 }
 
-# These polygons contain reproductive organs or attached foreign material that the
-# broad foreground mask had incorrectly absorbed into a corolla. They are removed
-# from the corolla mask only; reviewed organ centre-lines are added separately below.
+# Remove only a clearly visible reproductive-organ appendage absorbed into the
+# right edge of C4. Do not cut the C3/C4 boundary: the prior rectangular cut
+# removed real C4 petal tissue and is intentionally deleted.
 MANUAL_COROLLA_ORGAN_POLYGONS = {
     ("shikinejima", "shikine1~4"): [
-        # Between the two flowers of circled individual ③: a style plus a thin bridge/noise.
-        [(0.220, 0.495), (0.307, 0.495), (0.307, 0.602), (0.220, 0.602)],
-        # Style/pistil attached to the right edge of machine flower C4.
-        [(0.536, 0.515), (0.607, 0.515), (0.607, 0.608), (0.536, 0.608)],
+        [
+            (0.522, 0.522),
+            (0.551, 0.526),
+            (0.560, 0.540),
+            (0.554, 0.572),
+            (0.568, 0.588),
+            (0.531, 0.592),
+            (0.524, 0.573),
+            (0.519, 0.555),
+        ],
     ],
 }
 
-# Reviewed centre-lines for obvious pistil/style specimens. Coordinates are
-# normalised and therefore independent of the saved overlay scale.
+# Visible reproductive-organ candidates only. There is deliberately no entry for
+# C3: stamens/styles may be missing, damaged, hidden, or not mounted on a sheet.
+# nearest_corolla_hint is proximity only, never a biological assignment.
 MANUAL_ORGAN_SEGMENTS = {
     ("shikinejima", "shikine1~4"): [
-        # Right of C2.
-        {"p1": (0.708, 0.372), "p2": (0.740, 0.447), "width_mm": 1.6, "flower_hint": "C2"},
-        # Between C3 and C4; belongs to the left flower in the pair.
-        {"p1": (0.258, 0.505), "p2": (0.256, 0.590), "width_mm": 1.8, "flower_hint": "C3"},
-        # Previously absorbed into the right side of C4.
-        {"p1": (0.565, 0.523), "p2": (0.567, 0.595), "width_mm": 1.8, "flower_hint": "C4"},
-        # Right of C5.
-        {"p1": (0.952, 0.493), "p2": (0.955, 0.567), "width_mm": 1.8, "flower_hint": "C5"},
-        # Right of C6.
-        {"p1": (0.834, 0.671), "p2": (0.839, 0.744), "width_mm": 1.8, "flower_hint": "C6"},
+        {"p1": (0.695, 0.381), "p2": (0.735, 0.445), "width_mm": 1.6, "nearest_corolla_hint": "C2"},
+        {"p1": (0.548, 0.527), "p2": (0.560, 0.596), "width_mm": 1.8, "nearest_corolla_hint": "C4"},
+        {"p1": (0.953, 0.505), "p2": (0.958, 0.565), "width_mm": 1.8, "nearest_corolla_hint": "C5"},
+        {"p1": (0.834, 0.676), "p2": (0.839, 0.747), "width_mm": 1.8, "nearest_corolla_hint": "C6"},
     ],
 }
 
@@ -76,11 +76,7 @@ def _fill_polygons(mask: np.ndarray, polygons: list[list[tuple[float, float]]]) 
     return output
 
 
-def apply_current_exclusions(
-    mask: np.ndarray,
-    *,
-    include_organ_cuts: bool = False,
-) -> np.ndarray:
+def apply_current_exclusions(mask: np.ndarray, *, include_organ_cuts: bool = False) -> np.ndarray:
     """Apply verified sheet-specific exclusions.
 
     Artifact polygons are always removed. Organ polygons are removed only from
@@ -88,10 +84,7 @@ def apply_current_exclusions(
     """
     output = _fill_polygons(mask, MANUAL_ARTIFACT_POLYGONS.get(_CURRENT_SHEET, []))
     if include_organ_cuts:
-        output = _fill_polygons(
-            output,
-            MANUAL_COROLLA_ORGAN_POLYGONS.get(_CURRENT_SHEET, []),
-        )
+        output = _fill_polygons(output, MANUAL_COROLLA_ORGAN_POLYGONS.get(_CURRENT_SHEET, []))
     return output
 
 
@@ -106,7 +99,7 @@ def manual_organ_rows(
     image_shape: tuple[int, ...],
     sheet: tuple[str, str] | None = None,
 ) -> list[dict] | None:
-    """Return reviewed organ rows for a sheet, or None when no manual review exists."""
+    """Return visible reviewed organ candidates, or None for an unreviewed sheet."""
     key = sheet if sheet is not None else _CURRENT_SHEET
     segments = MANUAL_ORGAN_SEGMENTS.get(key)
     if segments is None:
@@ -141,22 +134,19 @@ def manual_organ_rows(
                 aspect=round(length_mm / max(width_mm, 1e-6), 2),
                 angle_deg=round(angle, 2),
                 score=round(1000.0 - index, 3),
-                organ_type_auto="pistil_candidate_reviewed",
+                organ_type_auto="visible_reproductive_organ_candidate",
                 organ_type_FILL="",
                 exclude_FILL="",
                 detection_source="manual_overlay_review",
-                flower_hint=segment["flower_hint"],
+                nearest_corolla_hint=segment["nearest_corolla_hint"],
+                association_confirmed=0,
+                visibility_note="visible candidate only; missing organs are allowed",
             )
         )
     return rows
 
 
-def _draw_reviewed_organ_lines(
-    path: str,
-    folder: str,
-    out_dir: str,
-    organs: list[dict],
-) -> None:
+def _draw_reviewed_organ_lines(path: str, folder: str, out_dir: str, organs: list[dict]) -> None:
     manual = [row for row in organs if row.get("detection_source") == "manual_overlay_review"]
     if not manual:
         return
@@ -181,7 +171,7 @@ def _draw_reviewed_organ_lines(
         cv2.line(overlay, p1, p2, (0, 140, 255), 5)
         cv2.putText(
             overlay,
-            f"P{index} {row['flower_hint']}",
+            f"O{index}",
             (p1[0] + 6, max(18, p1[1] - 8)),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.52,
@@ -216,10 +206,7 @@ def try_split_reviewed(mask: np.ndarray):
         return pieces, status
 
     separation = math.dist(_centroid(pieces[0]), _centroid(pieces[1]))
-    equivalent_diameters = [
-        2.0 * math.sqrt(float(piece.sum()) / math.pi)
-        for piece in pieces
-    ]
+    equivalent_diameters = [2.0 * math.sqrt(float(piece.sum()) / math.pi) for piece in pieces]
     separation_ratio = separation / max(float(np.mean(equivalent_diameters)), 1.0)
     if separation_ratio < MIN_SPLIT_CENTRE_SEPARATION:
         return [mask], "not_triggered"
