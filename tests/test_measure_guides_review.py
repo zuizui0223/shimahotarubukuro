@@ -29,8 +29,6 @@ class ReviewedPipelineTests(unittest.TestCase):
         self.assertEqual(len(pieces), 1)
 
     def test_two_touching_corollas_remain_two_bodies(self) -> None:
-        # Based on Shikine circled individual ③: two distinct flower bodies joined
-        # by a narrow tissue bridge, rather than two arbitrary halves of one body.
         mask = np.zeros((1200, 1500), dtype=np.uint8)
         cv2.ellipse(mask, (420, 650), (165, 275), 0, 0, 360, 1, -1)
         cv2.ellipse(mask, (850, 650), (185, 275), 0, 0, 360, 1, -1)
@@ -50,7 +48,7 @@ class ReviewedPipelineTests(unittest.TestCase):
 
         self.assertEqual(organs, [])
 
-    def test_shikine_review_has_five_explicit_pistil_candidates(self) -> None:
+    def test_shikine_review_records_only_visible_candidates(self) -> None:
         rows = review.manual_organ_rows(
             (1900, 1189, 3),
             ("shikinejima", "shikine1~4"),
@@ -58,29 +56,24 @@ class ReviewedPipelineTests(unittest.TestCase):
 
         self.assertIsNotNone(rows)
         assert rows is not None
-        self.assertEqual(len(rows), 5)
-        self.assertEqual(
-            {row["flower_hint"] for row in rows},
-            {"C2", "C3", "C4", "C5", "C6"},
-        )
+        self.assertEqual(len(rows), 4)
+        hints = {row["nearest_corolla_hint"] for row in rows}
+        self.assertEqual(hints, {"C2", "C4", "C5", "C6"})
+        self.assertNotIn("C3", hints)
+        self.assertTrue(all(row["association_confirmed"] == 0 for row in rows))
         self.assertTrue(
-            all(row["detection_source"] == "manual_overlay_review" for row in rows)
+            all(row["organ_type_auto"] == "visible_reproductive_organ_candidate" for row in rows)
         )
 
-    def test_organ_cut_polygons_are_corolla_only(self) -> None:
-        previous = review._CURRENT_SHEET
-        review._CURRENT_SHEET = ("shikinejima", "shikine1~4")
-        try:
-            mask = np.ones((1900, 1189), dtype=np.uint8)
-            artifact_only = review.apply_current_exclusions(mask)
-            corolla_cleaned = review.apply_current_exclusions(
-                mask,
-                include_organ_cuts=True,
-            )
-        finally:
-            review._CURRENT_SHEET = previous
-
-        self.assertLess(int(corolla_cleaned.sum()), int(artifact_only.sum()))
+    def test_c3_c4_boundary_is_not_removed_by_manual_polygon(self) -> None:
+        polygons = review.MANUAL_COROLLA_ORGAN_POLYGONS[
+            ("shikinejima", "shikine1~4")
+        ]
+        # Only the narrow C4-right appendage polygon remains; the broad C3/C4
+        # boundary rectangle that removed real C4 petal tissue must never return.
+        self.assertEqual(len(polygons), 1)
+        xs = [point[0] for point in polygons[0]]
+        self.assertGreater(min(xs), 0.50)
 
 
 if __name__ == "__main__":
