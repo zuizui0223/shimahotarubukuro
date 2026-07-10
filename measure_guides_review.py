@@ -31,22 +31,15 @@ MANUAL_ARTIFACT_POLYGONS = {
     ],
 }
 
-# Remove only a clearly visible reproductive-organ appendage absorbed into the
-# right edge of C4. Do not cut the C3/C4 boundary: the prior rectangular cut
-# removed real C4 petal tissue and is intentionally deleted.
-MANUAL_COROLLA_ORGAN_POLYGONS = {
-    ("shikinejima", "shikine1~4"): [
-        [
-            (0.522, 0.522),
-            (0.551, 0.526),
-            (0.560, 0.540),
-            (0.554, 0.572),
-            (0.568, 0.588),
-            (0.531, 0.592),
-            (0.524, 0.573),
-            (0.519, 0.555),
-        ],
-    ],
+# The global 27 px closing joins circled individual ③'s two separate flowers and
+# also preserves a thin paper/tape artifact above the gap. Recompute only this
+# local region with a smaller closing kernel. The two flowers then remain distinct,
+# while the artifact remains a small component below the normal corolla area filter.
+LOCAL_FOREGROUND_RULES = {
+    ("shikinejima", "shikine1~4"): {
+        "rect": (0.04, 0.44, 0.60, 0.68),
+        "close_size": 17,
+    },
 }
 
 # Visible reproductive-organ candidates only. There is deliberately no entry for
@@ -76,21 +69,67 @@ def _fill_polygons(mask: np.ndarray, polygons: list[list[tuple[float, float]]]) 
     return output
 
 
-def apply_current_exclusions(mask: np.ndarray, *, include_organ_cuts: bool = False) -> np.ndarray:
-    """Apply verified sheet-specific exclusions.
+def apply_current_exclusions(mask: np.ndarray) -> np.ndarray:
+    """Remove only reviewed non-specimen artifacts from the current sheet."""
+    return _fill_polygons(mask, MANUAL_ARTIFACT_POLYGONS.get(_CURRENT_SHEET, []))
 
-    Artifact polygons are always removed. Organ polygons are removed only from
-    corolla masks, so the organ detector does not erase the same structures.
-    """
-    output = _fill_polygons(mask, MANUAL_ARTIFACT_POLYGONS.get(_CURRENT_SHEET, []))
-    if include_organ_cuts:
-        output = _fill_polygons(output, MANUAL_COROLLA_ORGAN_POLYGONS.get(_CURRENT_SHEET, []))
-    return output
+
+def _foreground_with_close(
+    img: np.ndarray,
+    top: int,
+    close_size: int,
+) -> np.ndarray:
+    """Rebuild the v2 foreground with a specified closing kernel."""
+    lc, a, b = base.channels(img)
+    chroma = np.sqrt(a * a + b * b)
+    tex = base._lstd(lc, 15)
+    foreground = ((chroma > 10) | ((tex > 7) & (chroma > 4))).astype(np.uint8) * 255
+    foreground[:top] = 0
+    foreground = cv2.morphologyEx(
+        foreground,
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)),
+    )
+    foreground = cv2.morphologyEx(
+        foreground,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (close_size, close_size)),
+    )
+
+    height, width = foreground.shape
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(foreground, 8)
+    filled = np.zeros_like(foreground)
+    for index in range(1, n):
+        if stats[index, cv2.CC_STAT_AREA] * base.MM2_PX < 20:
+            continue
+        component = (labels == index).astype(np.uint8)
+        flood = component.copy() * 255
+        cv2.floodFill(
+            flood,
+            np.zeros((height + 2, width + 2), np.uint8),
+            (0, 0),
+            255,
+        )
+        filled |= cv2.bitwise_or(component * 255, cv2.bitwise_not(flood))
+    filled[:top] = 0
+    return filled
 
 
 def foreground_reviewed(img: np.ndarray, top: int):
     filled, a, b = _ORIGINAL_FOREGROUND(img, top)
-    filled = apply_current_exclusions(filled, include_organ_cuts=True)
+
+    rule = LOCAL_FOREGROUND_RULES.get(_CURRENT_SHEET)
+    if rule is not None:
+        local = _foreground_with_close(img, top, int(rule["close_size"]))
+        height, width = filled.shape
+        x0f, y0f, x1f, y1f = rule["rect"]
+        x0 = max(0, min(width, int(round(x0f * width))))
+        x1 = max(0, min(width, int(round(x1f * width))))
+        y0 = max(top, min(height, int(round(y0f * height))))
+        y1 = max(top, min(height, int(round(y1f * height))))
+        filled[y0:y1, x0:x1] = local[y0:y1, x0:x1]
+
+    filled = apply_current_exclusions(filled)
     filled[:top] = 0
     return filled, a, b
 
