@@ -13,6 +13,17 @@ import measure_guides_review as review
 ORGAN_SEARCH_SCALE = 0.40
 MAX_HOUGH_LINES = 300
 MAX_ORGAN_CANDIDATES_PER_SHEET = 8
+MIN_AXIS_ANGLE_FROM_HORIZONTAL = 30.0
+
+
+def _long_axis_angle(rect_width: float, rect_height: float, angle: float) -> float:
+    """Return the long-axis angle in [-90, 90], where 0 is horizontal."""
+    axis = angle if rect_width >= rect_height else angle + 90.0
+    while axis > 90.0:
+        axis -= 180.0
+    while axis < -90.0:
+        axis += 180.0
+    return axis
 
 
 def _component_rows(
@@ -31,11 +42,15 @@ def _component_rows(
         if not contours:
             continue
         contour = max(contours, key=cv2.contourArea)
-        (cx, cy), (rw, rh), angle = cv2.minAreaRect(contour)
+        (cx, cy), (rw, rh), rect_angle = cv2.minAreaRect(contour)
         length_px = max(rw, rh)
         width_px = min(rw, rh)
         if width_px < 1:
             continue
+        axis_angle = _long_axis_angle(rw, rh, rect_angle)
+        if abs(axis_angle) < MIN_AXIS_ANGLE_FROM_HORIZONTAL:
+            continue
+
         length_mm = length_px * base.MM_PX
         width_mm = width_px * base.MM_PX
         aspect = length_px / width_px
@@ -47,9 +62,9 @@ def _component_rows(
             review.MIN_ORGAN_LENGTH_MM <= length_mm <= 40
             and width_mm <= 6.0
             and aspect >= 2.4
-            and mean_chroma >= 1.5
-            and mean_warmth >= 1.5
-            and support >= 0.08
+            and mean_chroma >= 1.3
+            and mean_warmth >= 1.2
+            and support >= 0.07
         ):
             continue
         score = mean_warmth * mean_chroma * support * math.sqrt(length_mm)
@@ -59,7 +74,7 @@ def _component_rows(
             length_mm=round(length_mm, 2),
             width_mm=round(width_mm, 2),
             aspect=round(aspect, 2),
-            angle_deg=round(angle, 2),
+            angle_deg=round(axis_angle, 2),
             score=round(score, 3),
             organ_type_auto="unclassified_reproductive_organ",
             organ_type_FILL="",
@@ -68,12 +83,30 @@ def _component_rows(
     return rows
 
 
+def _merge_nearby_rows(rows: list[dict]) -> list[dict]:
+    """Keep one best row for nearby collinear fragments of the same organ."""
+    kept: list[dict] = []
+    for row in sorted(rows, key=lambda item: item.get("score", 0), reverse=True):
+        duplicate = False
+        for other in kept:
+            distance_px = math.hypot(row["cx"] - other["cx"], row["cy"] - other["cy"])
+            merge_radius_px = 0.65 * max(row["length_mm"], other["length_mm"]) / base.MM_PX
+            angle_diff = abs(row["angle_deg"] - other["angle_deg"])
+            angle_diff = min(angle_diff, 180.0 - angle_diff)
+            if distance_px <= merge_radius_px and angle_diff <= 30.0:
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(row)
+    return kept
+
+
 def organs_fast(img: np.ndarray, corolla_mask: np.ndarray, top: int):
     lightness, a_star, b_star = base.channels(img)
     chroma = np.sqrt(a_star * a_star + b_star * b_star)
     candidate = (
         (lightness < 253)
-        & ((chroma > 1.6) | (a_star > 1.5) | (b_star > 1.5))
+        & ((chroma > 1.4) | (a_star > 1.3) | (b_star > 1.2))
         & ~((lightness < 145) & (chroma < 12))
     ).astype(np.uint8)
     candidate[:top] = 0
@@ -96,12 +129,12 @@ def organs_fast(img: np.ndarray, corolla_mask: np.ndarray, top: int):
     )
     small = cv2.morphologyEx(small, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
     min_line = max(12, int(round(review.MIN_ORGAN_LENGTH_MM / base.MM_PX * ORGAN_SEARCH_SCALE)))
-    max_gap = max(3, int(round(1.5 / base.MM_PX * ORGAN_SEARCH_SCALE)))
+    max_gap = max(3, int(round(2.0 / base.MM_PX * ORGAN_SEARCH_SCALE)))
     lines = cv2.HoughLinesP(
         small * 255,
         1,
         np.pi / 180,
-        threshold=18,
+        threshold=16,
         minLineLength=min_line,
         maxLineGap=max_gap,
     )
@@ -120,12 +153,20 @@ def organs_fast(img: np.ndarray, corolla_mask: np.ndarray, top: int):
         length_mm = length_px * base.MM_PX
         if not review.MIN_ORGAN_LENGTH_MM <= length_mm <= 35:
             continue
+        line_angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
+        while line_angle > 90.0:
+            line_angle -= 180.0
+        while line_angle < -90.0:
+            line_angle += 180.0
+        if abs(line_angle) < MIN_AXIS_ANGLE_FROM_HORIZONTAL:
+            continue
+
         cx = int(round((x1 + x2) / 2.0))
         cy = int(round((y1 + y2) / 2.0))
         if not (0 <= cy < candidate.shape[0] and 0 <= cx < candidate.shape[1]):
             continue
         boundary_distance_mm = float(distance_from_corolla[cy, cx]) * base.MM_PX
-        if not 0.5 <= boundary_distance_mm <= 25.0:
+        if not 0.5 <= boundary_distance_mm <= 35.0:
             continue
 
         tube = np.zeros_like(candidate)
@@ -134,7 +175,7 @@ def organs_fast(img: np.ndarray, corolla_mask: np.ndarray, top: int):
         support = int(pixels.sum()) / max(length_px * 11.0, 1.0)
         mean_chroma = float(chroma[pixels].mean()) if pixels.any() else 0.0
         mean_warmth = float(b_star[pixels].mean()) if pixels.any() else 0.0
-        if support >= 0.12 and mean_chroma >= 1.5 and mean_warmth >= 1.5:
+        if support >= 0.10 and mean_chroma >= 1.3 and mean_warmth >= 1.2:
             accepted.append((x1, y1, x2, y2))
 
     if not accepted:
@@ -149,7 +190,7 @@ def organs_fast(img: np.ndarray, corolla_mask: np.ndarray, top: int):
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)),
     )
 
-    rows = _component_rows(line_union, candidate, chroma, b_star)
+    rows = _merge_nearby_rows(_component_rows(line_union, candidate, chroma, b_star))
     rows = sorted(rows, key=lambda row: row.get("score", 0), reverse=True)
     return sorted(rows[:MAX_ORGAN_CANDIDATES_PER_SHEET], key=lambda row: (row["cy"], row["cx"]))
 
