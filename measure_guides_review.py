@@ -19,6 +19,8 @@ import numpy as np
 import measure_guides as base
 import measure_guides_v2 as v2
 
+_ORIGINAL_FOREGROUND = v2.foreground_v2
+_ORIGINAL_TRY_SPLIT = v2.try_split
 
 MIN_ORGAN_LENGTH_MM = 8.0
 SPUR_CORE_RADIUS_PX = 6
@@ -27,12 +29,6 @@ SPUR_MIN_RETAINED_FRAC = 0.90
 
 
 def prune_thin_spurs(mask: np.ndarray) -> tuple[np.ndarray, bool]:
-    """Remove only long thin appendages distant from the thick tissue core.
-
-    The retained mask is always a subset of the source mask. The change is
-    accepted only when at least 90% of the source area remains, preventing folded
-    or genuinely narrow corollas from being aggressively eroded.
-    """
     source = (mask > 0).astype(np.uint8)
     if source.sum() == 0:
         return source, False
@@ -59,18 +55,16 @@ def prune_thin_spurs(mask: np.ndarray) -> tuple[np.ndarray, bool]:
         return source, False
     largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
     cleaned = (labels == largest).astype(np.uint8)
-    changed = cleaned.sum() < source.sum()
-    return cleaned, bool(changed)
+    return cleaned, bool(cleaned.sum() < source.sum())
 
 
 def foreground_reviewed(img: np.ndarray, top: int):
-    filled, a, b = v2.foreground_v2(img, top)
+    filled, a, b = _ORIGINAL_FOREGROUND(img, top)
     n, labels, stats, _ = cv2.connectedComponentsWithStats(filled, 8)
     cleaned = np.zeros_like(filled)
     for index in range(1, n):
         component = (labels == index).astype(np.uint8)
-        area_mm2 = stats[index, cv2.CC_STAT_AREA] * base.MM2_PX
-        if area_mm2 < 20:
+        if stats[index, cv2.CC_STAT_AREA] * base.MM2_PX < 20:
             continue
         pruned, _ = prune_thin_spurs(component)
         cleaned[pruned > 0] = 255
@@ -79,30 +73,20 @@ def foreground_reviewed(img: np.ndarray, top: int):
 
 
 def try_split_reviewed(mask: np.ndarray):
-    """Split only over-long components; area alone is not biological evidence."""
     measured = v2.metrics(mask)
     length_mm = measured["length_px"] * base.MM_PX
     if length_mm <= v2.SPLIT_LEN_MM:
         return [mask], "not_triggered"
-    return v2.try_split(mask)
+    return _ORIGINAL_TRY_SPLIT(mask)
 
 
 def organs_reviewed(img: np.ndarray, corolla_mask: np.ndarray, top: int):
-    """Find pale, detached elongated reproductive-organ candidates.
-
-    Detection is deliberately class-agnostic. The user assigns stamen/style/
-    artifact in ``organ_type_FILL`` after reviewing each overlay.
-    """
     lightness, a_star, b_star = base.channels(img)
     chroma = np.sqrt(a_star * a_star + b_star * b_star)
 
     coloured_or_warm = (chroma > 1.2) | (a_star > 1.2) | (b_star > 1.0)
     dark_neutral_writing = (lightness < 145) & (chroma < 12)
-    candidate = (
-        (lightness < 252)
-        & coloured_or_warm
-        & ~dark_neutral_writing
-    ).astype(np.uint8)
+    candidate = ((lightness < 252) & coloured_or_warm & ~dark_neutral_writing).astype(np.uint8)
     candidate[:top] = 0
 
     exclusion = cv2.dilate(
@@ -113,13 +97,12 @@ def organs_reviewed(img: np.ndarray, corolla_mask: np.ndarray, top: int):
     candidate = cv2.morphologyEx(candidate, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
 
     merged = np.zeros_like(candidate)
-    kernels = (
+    for kernel in (
         cv2.getStructuringElement(cv2.MORPH_RECT, (19, 3)),
         cv2.getStructuringElement(cv2.MORPH_RECT, (3, 19)),
         np.eye(15, dtype=np.uint8),
         np.fliplr(np.eye(15, dtype=np.uint8)),
-    )
-    for kernel in kernels:
+    ):
         merged |= cv2.morphologyEx(candidate, cv2.MORPH_CLOSE, kernel)
 
     n, labels, stats, _ = cv2.connectedComponentsWithStats(merged, 8)
@@ -130,11 +113,7 @@ def organs_reviewed(img: np.ndarray, corolla_mask: np.ndarray, top: int):
             continue
 
         component = (labels == index).astype(np.uint8)
-        contours, _ = cv2.findContours(
-            component,
-            cv2.RETR_EXTERNAL,
-            cv2.CHAIN_APPROX_SIMPLE,
-        )
+        contours, _ = cv2.findContours(component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
             continue
         contour = max(contours, key=cv2.contourArea)
@@ -158,7 +137,6 @@ def organs_reviewed(img: np.ndarray, corolla_mask: np.ndarray, top: int):
         ):
             continue
 
-        confidence = "high" if length_mm >= 10 and mean_chroma >= 2.0 else "review"
         output.append(
             dict(
                 cx=round(cx, 2),
@@ -167,8 +145,6 @@ def organs_reviewed(img: np.ndarray, corolla_mask: np.ndarray, top: int):
                 width_mm=round(width_mm, 2),
                 aspect=round(aspect, 2),
                 angle_deg=round(angle, 2),
-                mean_chroma=round(mean_chroma, 2),
-                detection_confidence=confidence,
                 organ_type_auto="unclassified_reproductive_organ",
                 organ_type_FILL="",
                 exclude_FILL="",
