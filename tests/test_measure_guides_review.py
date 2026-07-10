@@ -50,6 +50,38 @@ class ReviewedPipelineTests(unittest.TestCase):
 
         self.assertEqual(organs, [])
 
+    def test_shikine_review_has_five_explicit_pistil_candidates(self) -> None:
+        rows = review.manual_organ_rows(
+            (1900, 1189, 3),
+            ("shikinejima", "shikine1~4"),
+        )
+
+        self.assertIsNotNone(rows)
+        assert rows is not None
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(
+            {row["flower_hint"] for row in rows},
+            {"C2", "C3", "C4", "C5", "C6"},
+        )
+        self.assertTrue(
+            all(row["detection_source"] == "manual_overlay_review" for row in rows)
+        )
+
+    def test_organ_cut_polygons_are_corolla_only(self) -> None:
+        previous = review._CURRENT_SHEET
+        review._CURRENT_SHEET = ("shikinejima", "shikine1~4")
+        try:
+            mask = np.ones((1900, 1189), dtype=np.uint8)
+            artifact_only = review.apply_current_exclusions(mask)
+            corolla_cleaned = review.apply_current_exclusions(
+                mask,
+                include_organ_cuts=True,
+            )
+        finally:
+            review._CURRENT_SHEET = previous
+
+        self.assertLess(int(corolla_cleaned.sum()), int(artifact_only.sum()))
+
 
 if __name__ == "__main__":
     unittest.main()
