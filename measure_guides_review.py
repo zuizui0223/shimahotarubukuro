@@ -148,7 +148,7 @@ def manual_organ_rows(
                 flower_hint=segment["flower_hint"],
             )
         )
-    return sorted(rows, key=lambda row: (row["cy"], row["cx"]))
+    return rows
 
 
 def _draw_reviewed_organ_lines(
@@ -178,17 +178,13 @@ def _draw_reviewed_organ_lines(
     for index, row in enumerate(manual, start=1):
         p1 = (int(round(row["x1"] * scale_x)), int(round(row["y1"] * scale_y)))
         p2 = (int(round(row["x2"] * scale_x)), int(round(row["y2"] * scale_y)))
-        midpoint = (
-            int(round((p1[0] + p2[0]) / 2)),
-            int(round((p1[1] + p2[1]) / 2)),
-        )
         cv2.line(overlay, p1, p2, (0, 140, 255), 5)
         cv2.putText(
             overlay,
-            f"P{index} {row['length_mm']:.1f}mm {row['flower_hint']}",
-            (midpoint[0] + 8, midpoint[1]),
+            f"P{index} {row['flower_hint']}",
+            (p1[0] + 6, max(18, p1[1] - 8)),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.58,
+            0.52,
             (0, 140, 255),
             2,
         )
