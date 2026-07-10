@@ -1,0 +1,7 @@
+island,sheet,corolla_id,n_spots,n_large_spot_clusters,guide_area_mm2,guide_cov_pct,spot_density_cm2,mean_spot_area_mm2,median_spot_area_mm2,max_spot_area_mm2,brown_overlap_pct_of_spots,guide_present,spot_qc_source
+Shikinejima,shikine1~4,1,2,0,0.201,0.053,0.526,0.1004,0.1004,0.172,17.857,0,raw_scan_reviewed_corolla
+Shikinejima,shikine1~4,2,4,0,0.165,0.037,0.886,0.0412,0.0358,0.0645,0.0,0,raw_scan_reviewed_corolla
+Shikinejima,shikine1~4,3,10,0,0.91,0.232,2.545,0.091,0.0753,0.2581,8.661,0,raw_scan_reviewed_corolla
+Shikinejima,shikine1~4,4,3,0,0.136,0.019,0.415,0.0502,0.0573,0.0645,0.0,0,raw_scan_reviewed_corolla
+Shikinejima,shikine1~4,5,5,0,0.351,0.045,0.638,0.086,0.043,0.2581,8.163,0,raw_scan_reviewed_corolla
+Shikinejima,shikine1~4,6,366,7,157.749,9.647,22.382,0.431,0.1864,20.5018,0.068,1,raw_scan_reviewed_corolla
