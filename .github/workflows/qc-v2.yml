@@ -1,0 +1,76 @@
+name: QC v2 overlays
+
+on:
+  push:
+    branches:
+      - fix/segmentation-organs-v2
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Prepare private artifact directory
+        run: mkdir -p results_v2
+
+      - name: Run regression tests
+        id: regression
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -v 2>&1 | tee results_v2/regression-tests.txt
+
+      - name: Generate v2 measurements and overlays
+        id: detection
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          python measure_guides_v2.py \
+            --data-root shimahotarubukuro \
+            --out-dir results_v2 \
+            2>&1 | tee results_v2/detection-run.txt
+
+      - name: Record source commit
+        if: always()
+        run: |
+          printf '%s\n' "$GITHUB_SHA" > results_v2/SOURCE_COMMIT.txt
+          printf '%s\n' "Private QC artifact; do not publish specimen overlays." > results_v2/PRIVACY_NOTE.txt
+
+      - name: Upload private QC artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shimahotarubukuro-qc-v2
+          path: results_v2/
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Enforce quality gate
+        if: always()
+        env:
+          REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
+          DETECTION_OUTCOME: ${{ steps.detection.outcome }}
+        run: |
+          test "$REGRESSION_OUTCOME" = success
+          test "$DETECTION_OUTCOME" = success
