@@ -22,27 +22,35 @@ MIN_ORGAN_LENGTH_MM = 8.0
 MIN_SPLIT_CENTRE_SEPARATION = 0.90
 
 # Normalised polygons (x/W, y/H), verified against the displayed source overlay.
-# This removes the thin foreign strip attached above circled individual ① without
-# changing any other corolla or any other sheet.
+# The Shikine polygon severs/removes the thin foreign strip above circled individual ①
+# without entering the main corolla body.
 MANUAL_EXCLUSION_POLYGONS = {
     ("shikinejima", "shikine1~4"): [
-        [(0.154, 0.308), (0.246, 0.308), (0.232, 0.328), (0.184, 0.328)],
+        [(0.155, 0.374), (0.315, 0.374), (0.295, 0.399), (0.165, 0.399)],
     ],
 }
 
 _CURRENT_SHEET: tuple[str, str] | None = None
 
 
+def apply_current_exclusions(mask: np.ndarray) -> np.ndarray:
+    """Apply verified sheet-specific artifact polygons to any binary mask."""
+    output = mask.copy()
+    if _CURRENT_SHEET not in MANUAL_EXCLUSION_POLYGONS:
+        return output
+    height, width = output.shape[:2]
+    for polygon in MANUAL_EXCLUSION_POLYGONS[_CURRENT_SHEET]:
+        points = np.array(
+            [[round(x * width), round(y * height)] for x, y in polygon],
+            dtype=np.int32,
+        )
+        cv2.fillPoly(output, [points], 0)
+    return output
+
+
 def foreground_reviewed(img: np.ndarray, top: int):
     filled, a, b = _ORIGINAL_FOREGROUND(img, top)
-    if _CURRENT_SHEET in MANUAL_EXCLUSION_POLYGONS:
-        height, width = filled.shape
-        for polygon in MANUAL_EXCLUSION_POLYGONS[_CURRENT_SHEET]:
-            points = np.array(
-                [[round(x * width), round(y * height)] for x, y in polygon],
-                dtype=np.int32,
-            )
-            cv2.fillPoly(filled, [points], 0)
+    filled = apply_current_exclusions(filled)
     filled[:top] = 0
     return filled, a, b
 
