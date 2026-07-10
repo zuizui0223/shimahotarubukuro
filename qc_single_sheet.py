@@ -39,7 +39,8 @@ def main() -> None:
         "cx", "cy", "x1", "y1", "x2", "y2",
         "length_mm", "width_mm", "aspect", "angle_deg",
         "organ_type_auto", "organ_type_FILL", "exclude_FILL",
-        "detection_source", "flower_hint",
+        "detection_source", "nearest_corolla_hint",
+        "association_confirmed", "visibility_note",
     ]
     v2.write_csv(args.out_dir / "organs.csv", organs, organ_fields)
     print(f"corollas={len(rows)} organs={len(organs)} -> {args.out_dir}")
