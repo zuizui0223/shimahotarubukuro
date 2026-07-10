@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 import measure_guides_review as review
+import measure_guides_review_fast as fast
 
 
 class ReviewedPipelineTests(unittest.TestCase):
@@ -18,26 +19,32 @@ class ReviewedPipelineTests(unittest.TestCase):
         self.assertEqual(status, "not_triggered")
         self.assertEqual(len(pieces), 1)
 
-    def test_long_thin_attached_spur_is_pruned(self) -> None:
-        mask = np.zeros((700, 700), dtype=np.uint8)
-        cv2.ellipse(mask, (350, 420), (170, 190), 0, 0, 360, 1, -1)
-        cv2.rectangle(mask, (338, 90), (362, 250), 1, -1)
-        cv2.rectangle(mask, (330, 240), (370, 300), 1, -1)
-        before = int(mask.sum())
+    def test_broad_single_body_rejects_internal_kmeans_split(self) -> None:
+        mask = np.zeros((1200, 1200), dtype=np.uint8)
+        cv2.ellipse(mask, (600, 600), (380, 300), 0, 0, 360, 1, -1)
 
-        cleaned, changed = review.prune_thin_spurs(mask)
+        pieces, status = review.try_split_reviewed(mask)
 
-        self.assertTrue(changed)
-        self.assertLess(int(cleaned.sum()), before)
-        self.assertEqual(int(cleaned[110, 350]), 0)
-        self.assertEqual(int(cleaned[420, 350]), 1)
+        self.assertEqual(status, "not_triggered")
+        self.assertEqual(len(pieces), 1)
+
+    def test_two_touching_corollas_remain_two_bodies(self) -> None:
+        mask = np.zeros((1200, 1400), dtype=np.uint8)
+        cv2.ellipse(mask, (480, 650), (175, 275), 0, 0, 360, 1, -1)
+        cv2.ellipse(mask, (780, 650), (175, 275), 0, 0, 360, 1, -1)
+        cv2.rectangle(mask, (640, 610), (660, 690), 1, -1)
+
+        pieces, status = review.try_split_reviewed(mask)
+
+        self.assertEqual(status, "auto_split")
+        self.assertEqual(len(pieces), 2)
 
     def test_short_paper_noise_is_not_an_organ(self) -> None:
         image = np.full((800, 800, 3), 255, dtype=np.uint8)
         cv2.line(image, (250, 400), (300, 400), (150, 170, 190), 5)
         corolla = np.zeros((800, 800), dtype=np.uint8)
 
-        organs = review.organs_reviewed(image, corolla, 100)
+        organs = fast.organs_fast(image, corolla, 100)
 
         self.assertEqual(organs, [])
 
