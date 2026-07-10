@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 import cv2
 import numpy as np
 
+import measure_guides as base
+import measure_guides_v2 as v2
 import measure_guides_review as review
 import measure_guides_review_fast as fast
 
@@ -65,15 +68,37 @@ class ReviewedPipelineTests(unittest.TestCase):
             all(row["organ_type_auto"] == "visible_reproductive_organ_candidate" for row in rows)
         )
 
-    def test_c3_c4_boundary_is_not_removed_by_manual_polygon(self) -> None:
-        polygons = review.MANUAL_COROLLA_ORGAN_POLYGONS[
-            ("shikinejima", "shikine1~4")
+    def test_shikine_pair_uses_smaller_local_closing(self) -> None:
+        rule = review.LOCAL_FOREGROUND_RULES[("shikinejima", "shikine1~4")]
+        self.assertEqual(rule["close_size"], 17)
+        self.assertLess(rule["close_size"], 27)
+
+    def test_shikine_raw_pair_is_separate_without_kmeans_split(self) -> None:
+        image_path = Path("shimahotarubukuro/shikinejima/shikine1~4.jpg")
+        if not image_path.exists():
+            self.skipTest("private Shikine scan is unavailable")
+
+        image = base.load_bgr(str(image_path))
+        top = v2.specimen_top(image)
+        previous = review._CURRENT_SHEET
+        review._CURRENT_SHEET = ("shikinejima", "shikine1~4")
+        try:
+            filled, _, _ = review.foreground_reviewed(image, top)
+            components = v2.corollas(filled, auto_split=True)
+        finally:
+            review._CURRENT_SHEET = previous
+
+        height, width = filled.shape
+        pair = [
+            component for component in components
+            if 0.44 * height <= component["cy"] <= 0.68 * height
+            and component["cx"] <= 0.60 * width
         ]
-        # Only the narrow C4-right appendage polygon remains; the broad C3/C4
-        # boundary rectangle that removed real C4 petal tissue must never return.
-        self.assertEqual(len(polygons), 1)
-        xs = [point[0] for point in polygons[0]]
-        self.assertGreater(min(xs), 0.50)
+        self.assertEqual(len(components), 6)
+        self.assertEqual(len(pair), 2)
+        self.assertTrue(
+            all(component["split_status"] == "not_triggered" for component in pair)
+        )
 
 
 if __name__ == "__main__":
