@@ -1,0 +1,5 @@
+island,sheet,organ_id,nearest_corolla,cx,cy,x1,y1,x2,y2,length_mm,width_mm,aspect,angle_deg,organ_type_auto,organ_type_FILL,exclude_FILL,detection_source,nearest_corolla_hint,association_confirmed,visibility_note
+Shikinejima,shikine1~4,1,2,1291.0,1191.5,1255,1099,1327,1284,16.81,1.6,10.5,68.73,visible_reproductive_organ_candidate,,,manual_overlay_review,C2,0,visible candidate only; missing organs are allowed
+Shikinejima,shikine1~4,2,4,1000.5,1619.5,990,1520,1011,1719,16.94,1.8,9.41,83.98,visible_reproductive_organ_candidate,,,manual_overlay_review,C4,0,visible candidate only; missing organs are allowed
+Shikinejima,shikine1~4,3,5,1725.5,1543.5,1721,1457,1730,1630,14.67,1.8,8.15,87.02,visible_reproductive_organ_candidate,,,manual_overlay_review,C5,0,visible candidate only; missing organs are allowed
+Shikinejima,shikine1~4,4,6,1510.5,2052.5,1506,1950,1515,2155,17.37,1.8,9.65,87.49,visible_reproductive_organ_candidate,,,manual_overlay_review,C6,0,visible candidate only; missing organs are allowed

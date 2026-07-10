@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/segmentation-organs-v2
+      - fix/qc-v2-shikine-review
   pull_request:
     branches:
       - main
@@ -30,7 +31,9 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
 
       - name: Prepare private artifact directory
-        run: mkdir -p results_v2
+        run: |
+          mkdir -p results_v2/raw
+          cp 'shimahotarubukuro/shikinejima/shikine1~4.jpg' 'results_v2/raw/shikine1~4.jpg'
 
       - name: Run regression tests
         id: regression
@@ -40,14 +43,15 @@ jobs:
           set -o pipefail
           python -m unittest discover -s tests -v 2>&1 | tee results_v2/regression-tests.txt
 
-      - name: Generate v2 measurements and overlays
+      - name: Generate Shikine reviewed overlay
         id: detection
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          python measure_guides_v2.py \
-            --data-root shimahotarubukuro \
+          python qc_single_sheet.py \
+            --image 'shimahotarubukuro/shikinejima/shikine1~4.jpg' \
+            --folder shikinejima \
             --out-dir results_v2 \
             2>&1 | tee results_v2/detection-run.txt
 
@@ -55,7 +59,7 @@ jobs:
         if: always()
         run: |
           printf '%s\n' "$GITHUB_SHA" > results_v2/SOURCE_COMMIT.txt
-          printf '%s\n' "Private QC artifact; do not publish specimen overlays." > results_v2/PRIVACY_NOTE.txt
+          printf '%s\n' "Private QC artifact; do not publish specimen overlays or raw scans." > results_v2/PRIVACY_NOTE.txt
 
       - name: Upload private QC artifact
         if: always()
