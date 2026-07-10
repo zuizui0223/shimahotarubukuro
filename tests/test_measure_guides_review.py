@@ -68,37 +68,51 @@ class ReviewedPipelineTests(unittest.TestCase):
             all(row["organ_type_auto"] == "visible_reproductive_organ_candidate" for row in rows)
         )
 
-    def test_shikine_pair_uses_smaller_local_closing(self) -> None:
+    def test_shikine_pair_uses_local_close_and_branch_pruning(self) -> None:
         rule = review.LOCAL_FOREGROUND_RULES[("shikinejima", "shikine1~4")]
         self.assertEqual(rule["close_size"], 17)
         self.assertLess(rule["close_size"], 27)
+        self.assertEqual(rule["open_size"], 11)
 
-    def test_shikine_raw_pair_is_separate_without_kmeans_split(self) -> None:
+    def test_shikine_raw_pair_is_separate_and_tape_branch_is_removed(self) -> None:
         image_path = Path("shimahotarubukuro/shikinejima/shikine1~4.jpg")
         if not image_path.exists():
             self.skipTest("private Shikine scan is unavailable")
 
         image = base.load_bgr(str(image_path))
         top = v2.specimen_top(image)
-        previous = review._CURRENT_SHEET
+        previous_sheet = review._CURRENT_SHEET
+        previous_split = v2.try_split
         review._CURRENT_SHEET = ("shikinejima", "shikine1~4")
+        v2.try_split = review.try_split_reviewed
         try:
             filled, _, _ = review.foreground_reviewed(image, top)
             components = v2.corollas(filled, auto_split=True)
         finally:
-            review._CURRENT_SHEET = previous
+            v2.try_split = previous_split
+            review._CURRENT_SHEET = previous_sheet
 
         height, width = filled.shape
-        pair = [
-            component for component in components
-            if 0.44 * height <= component["cy"] <= 0.68 * height
-            and component["cx"] <= 0.60 * width
-        ]
+        pair = sorted(
+            [
+                component for component in components
+                if 0.44 * height <= component["cy"] <= 0.68 * height
+                and component["cx"] <= 0.60 * width
+            ],
+            key=lambda component: component["cx"],
+        )
         self.assertEqual(len(components), 6)
         self.assertEqual(len(pair), 2)
         self.assertTrue(
             all(component["split_status"] == "not_triggered" for component in pair)
         )
+
+        # Before pruning, the transparent-tape branch pulls C4's mask left to about
+        # 0.23 W. The reviewed mask starts to the right of 0.24 W while preserving
+        # the actual left petal edge.
+        right_mask = pair[1]["mask"].astype(np.uint8)
+        _, xs = np.where(right_mask > 0)
+        self.assertGreater(xs.min(), 0.24 * width)
 
 
 if __name__ == "__main__":
