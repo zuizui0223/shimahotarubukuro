@@ -68,6 +68,54 @@ class ReviewedSpotTests(unittest.TestCase):
         self.assertGreater(required_pixels, 1.0)
         self.assertLess(required_pixels, 4.0)
 
+    def _guide_scene(self, strong_cov_frac: float):
+        """A corolla with a dense purple guide plus one dark, brown-spectrum dot."""
+        shape = (240, 240)
+        corolla = np.zeros(shape, dtype=np.uint8)
+        cv2.circle(corolla, (120, 120), 90, 1, -1)
+        a = np.zeros(shape, dtype=np.float32)
+        b = np.zeros(shape, dtype=np.float32)
+        L = np.full(shape, 235.0, dtype=np.float32)  # cream tissue is bright
+
+        # Dense field of strong purple guide (high a*, a*-b* > 0), sized to hit
+        # the requested fraction of the corolla area.
+        rng = np.random.default_rng(0)
+        cor_px = int(corolla.sum())
+        target = int(strong_cov_frac * cor_px)
+        ys, xs = np.where(corolla.astype(bool))
+        placed = 0
+        idx = rng.permutation(len(ys))
+        for k in idx:
+            if placed >= target:
+                break
+            cv2.circle(a, (int(xs[k]), int(ys[k])), 3, 25.0, -1)
+            placed += (2 * 3 + 1) ** 2
+
+        # A small oxidised (brown-spectrum) dot inside the guide, in a cleared
+        # patch so it reads as an isolated local minimum: dark + reddish but
+        # a*-b* < 0, so the purple detector cannot see it.
+        cv2.circle(a, (120, 120), 9, 0.0, -1)    # clear purple around the dot
+        cv2.circle(a, (120, 120), 2, 12.0, -1)
+        cv2.circle(b, (120, 120), 2, 20.0, -1)   # a*-b* = -8 (brown)
+        cv2.circle(L, (120, 120), 2, 150.0, -1)  # locally dark
+        return a, b, L, corolla
+
+    def test_oxidized_dot_recovered_inside_confirmed_guide(self) -> None:
+        a, b, L, corolla = self._guide_scene(strong_cov_frac=0.08)
+        strong, weak, combined = spots.spot_candidate_masks(a, b, corolla)
+        # The brown-spectrum dot is not part of the purple guide.
+        self.assertEqual(int(combined[120, 120]), 0)
+        oxidized = spots.oxidized_guide_mask(a, L, corolla, strong, combined)
+        self.assertGreater(int(oxidized[120, 120]), 0)
+
+    def test_oxidized_recovery_suppressed_without_a_real_guide(self) -> None:
+        # Same brown-spectrum dot, but almost no purple guide: the seed guard
+        # must refuse to promote the dark dot (degradation stays degradation).
+        a, b, L, corolla = self._guide_scene(strong_cov_frac=0.0)
+        strong, weak, combined = spots.spot_candidate_masks(a, b, corolla)
+        oxidized = spots.oxidized_guide_mask(a, L, corolla, strong, combined)
+        self.assertEqual(int(oxidized.sum()), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
