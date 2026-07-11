@@ -1,11 +1,9 @@
-name: QC v2 overlays
+name: QC v2 all-sheet pre-review
 
 on:
   push:
     branches:
-      - fix/segmentation-organs-v2
-      - fix/qc-v2-shikine-review
-      - fix/shikine-spots-floral-traits
+      - feat/all-sheets-auto-qc-review
   pull_request:
     branches:
       - main
@@ -17,7 +15,7 @@ permissions:
 jobs:
   detect:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -31,10 +29,15 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
 
-      - name: Prepare private artifact directory
+      - name: Verify raw scan inventory
+        id: inventory
+        shell: bash
         run: |
-          mkdir -p results_v2/raw
-          cp 'shimahotarubukuro/shikinejima/shikine1~4.jpg' 'results_v2/raw/shikine1~4.jpg'
+          set -o pipefail
+          mkdir -p results_all_review
+          find shimahotarubukuro -type f \( -iname '*.jpg' -o -iname '*.jpeg' \) | sort | tee results_all_review/raw_inventory.txt
+          test -s results_all_review/raw_inventory.txt
+          printf 'raw_sheet_count=%s\n' "$(wc -l < results_all_review/raw_inventory.txt)" | tee results_all_review/raw_inventory_count.txt
 
       - name: Run regression tests
         id: regression
@@ -42,32 +45,31 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python -m unittest discover -s tests -v 2>&1 | tee results_v2/regression-tests.txt
+          python -m unittest discover -s tests -v 2>&1 | tee results_all_review/regression-tests.txt
 
-      - name: Generate Shikine reviewed overlay
+      - name: Run every raw sheet through pre-QC
         id: detection
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          python qc_single_sheet.py \
-            --image 'shimahotarubukuro/shikinejima/shikine1~4.jpg' \
-            --folder shikinejima \
-            --out-dir results_v2 \
-            2>&1 | tee results_v2/detection-run.txt
+          python run_all_sheets_review_qc.py \
+            --data-root shimahotarubukuro \
+            --out-dir results_all_review \
+            2>&1 | tee results_all_review/all-sheet-run.txt
 
-      - name: Record source commit
+      - name: Record source commit and review status
         if: always()
         run: |
-          printf '%s\n' "$GITHUB_SHA" > results_v2/SOURCE_COMMIT.txt
-          printf '%s\n' "Private QC artifact; do not publish specimen overlays or raw scans." > results_v2/PRIVACY_NOTE.txt
+          printf '%s\n' "$GITHUB_SHA" > results_all_review/SOURCE_COMMIT.txt
+          printf '%s\n' "AUTO PRE-QC ONLY. Human sheet-by-sheet review is required before acceptance." > results_all_review/REVIEW_STATUS.txt
 
-      - name: Upload private QC artifact
+      - name: Upload private all-sheet QC artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: shimahotarubukuro-qc-v2
-          path: results_v2/
+          name: shimahotarubukuro-all-sheets-pre-qc
+          path: results_all_review/
           retention-days: 7
           if-no-files-found: error
 
