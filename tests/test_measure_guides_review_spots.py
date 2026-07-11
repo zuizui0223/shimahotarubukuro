@@ -68,6 +68,34 @@ class ReviewedSpotTests(unittest.TestCase):
         self.assertGreater(required_pixels, 1.0)
         self.assertLess(required_pixels, 4.0)
 
+    def test_purple_micro_dot_recovered_but_orange_fleck_rejected(self) -> None:
+        # A heavy purple guide inflates the global a*-gate; a faint but genuinely
+        # blue-leaning micro-dot must still be recovered, while an orange-brown
+        # degradation fleck of similar size/darkness must be rejected.
+        shape = (240, 240)
+        corolla = np.zeros(shape, dtype=np.uint8)
+        cv2.circle(corolla, (120, 120), 95, 1, -1)
+        a = np.zeros(shape, dtype=np.float32)
+        b = np.zeros(shape, dtype=np.float32)
+
+        # Dense strong-purple field (inflates a_median + k*sigma).
+        for cx in range(60, 181, 8):
+            for cy in range(60, 121, 8):
+                cv2.circle(a, (cx, cy), 2, 25.0, -1)
+
+        # Faint blue-leaning purple micro-dot in a cleared patch.
+        cv2.circle(a, (150, 175), 6, 0.0, -1)
+        cv2.circle(b, (150, 175), 6, 0.0, -1)
+        cv2.circle(a, (150, 175), 2, 6.0, -1)   # a*-b* = 6, b* = 0 (purple)
+
+        # Orange-brown fleck: same size, reddish but strongly orange (high b*).
+        cv2.circle(a, (95, 175), 2, 16.0, -1)
+        cv2.circle(b, (95, 175), 2, 30.0, -1)   # a*-b* = -14 (degradation)
+
+        strong, weak, combined = spots.spot_candidate_masks(a, b, corolla)
+        self.assertGreater(int(combined[175, 150]), 0)   # purple recovered
+        self.assertEqual(int(combined[175, 95]), 0)      # orange rejected
+
     def _guide_scene(self, strong_cov_frac: float):
         """A corolla with a dense purple guide plus one dark, brown-spectrum dot."""
         shape = (240, 240)

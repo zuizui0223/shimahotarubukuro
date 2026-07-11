@@ -6,7 +6,10 @@ guide, both driven by the CIELAB pigment index ``a* - b*``:
 
 - ``strong``: clearly magenta pixels or strong local a*-b* contrast;
 - ``weak_recovered``: faint but locally distinct magenta pixels that the original
-  conservative mask missed.
+  conservative mask missed. This includes an **orange-rejecting** micro-stipple
+  branch (strong local a*-b* bump, reddish, and blue-leaning ``b* < 8``) that
+  recovers the few genuinely purple dots surviving on otherwise-degraded corollas
+  while excluding orange-brown degradation flecks (``b*`` ~ 20-35).
 
 Both are restricted to the reviewed corolla mask. Single-pixel noise is rejected
 using the ruler-calibrated area scale. Brown/degraded tissue remains a separate
@@ -103,6 +106,21 @@ def spot_candidate_masks(
         & corolla
         & ~strong
     )
+
+    # Orange-rejecting recovery of sparse, genuinely purple micro-stipples that
+    # survive on otherwise-degraded corollas. Keyed purely on magenta colour, not
+    # darkness: a strong *local* a*-b* bump (dot much more magenta than its
+    # immediate surround), actually reddish, and clearly blue-leaning (b* < 8) so
+    # orange-brown degradation flecks (b* ~ 20-35) are excluded. This runs
+    # independent of the global a*-gate above, which the heavy guide on ⑤ inflates.
+    magenta_micro = (
+        (contrast_9 > 4.0)
+        & (a_channel > 4.0)
+        & (b_channel < 8.0)
+        & corolla
+        & ~strong
+    )
+    weak = weak | magenta_micro
 
     # Do not use an opening here: a 2x2 opening erased genuine tiny guide dots.
     # Ruler-calibrated connected-component area filtering is less destructive.

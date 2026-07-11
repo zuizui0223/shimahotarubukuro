@@ -38,7 +38,12 @@ negative — a clean separator. Colour values are **not** reported; colour is us
 only to locate the spots. Individual dots are isolated with a top-hat + adaptive
 threshold, so faint/absent guides read as `cov ≈ 0` correctly. The primary
 `guide_cov_pct` / `guide_present` therefore stay a strict **purple-pigment**
-measurement.
+measurement. A faint **orange-rejecting** micro-stipple branch (strong local
+`a* − b*` bump, reddish, and blue-leaning `b* < 8`) recovers the few genuinely
+purple dots that survive on otherwise-degraded corollas while excluding
+orange-brown degradation flecks (`b*` ≈ 20–35), so it lifts real faint-spot
+recall without counting browning — degraded flowers stay below the 0.5 %
+`guide_present` threshold.
 
 **Oxidised-inclusive guide (separate columns).** On aged specimens many of the
 fine guide stipples have oxidised toward brown, so they read as `a* − b* < 0` and
