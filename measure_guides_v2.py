@@ -12,6 +12,18 @@ import measure_guides as base
 
 SPLIT_LEN_MM = 55.0
 SPLIT_AREA_MM2 = 1350.0
+# A whole flattened Campanula corolla is >~300 mm2 even folded; a component this
+# small and narrow is a torn strip / detached tube fragment, not a corolla. Flag
+# it for exclusion rather than measuring it as a flower (garbage tube/mouth).
+FRAGMENT_AREA_MM2 = 150.0
+FRAGMENT_WIDTH_MM = 15.0
+
+
+def is_fragment(area_mm2, width_mm):
+    """True for components too small AND narrow to be a whole flattened corolla —
+    i.e. scan noise or a misdetected reproductive organ (pistil/stamen stick), not
+    a flower. Genuine small/folded corollas (>~230 mm2, >~15 mm wide) are kept."""
+    return area_mm2 < FRAGMENT_AREA_MM2 and width_mm < FRAGMENT_WIDTH_MM
 
 
 def specimen_top(img):
@@ -153,11 +165,12 @@ def process_sheet(path,folder,out_dir,loc_map=None,auto_split=True):
         circ=g['throat_width'] if g['n_lobes']>=4 else g['throat_width']*2
         lm=round(g['length']*base.MM_PX,2); wm=round(g['width']*base.MM_PX,2); wl=wm/lm if lm else 0; amm=area_px*base.MM2_PX
         merge='check' if x['split_status'] not in ('not_triggered','auto_split') else ''
+        fragment='check' if is_fragment(amm, wm) else ''
         rows.append(dict(island=island,region_order=order,sheet=stem,site_no=site,site_candidates=candidates,
                          site_lat=lat,site_lon=lon,individual_id='',corolla_id=cid,cx=round(x['cx']),cy=round(x['cy']),
                          source_component_id=x['source_component_id'],split_piece=x['split_piece'],split_status=x['split_status'],
                          corolla_len_mm=lm,corolla_width_mm=wm,wl_ratio=round(wl,3),fold_check='check' if wl<.55 else '',
-                         merge_check=merge,corolla_area_mm2=round(amm,1),guide_area_mm2=round(sp*base.MM2_PX,2),
+                         merge_check=merge,fragment_check=fragment,corolla_area_mm2=round(amm,1),guide_area_mm2=round(sp*base.MM2_PX,2),
                          guide_cov_pct=round(cov*100,2),n_spots=nspot,spot_density_cm2=round(nspot/(amm/100),2),
                          guide_extent_rel=round(ext,3) if ext!='' else '',guide_present=int(cov*100>=.5),
                          brown_frac=round(bf,3),degraded_flag=int(bf>.10),
@@ -194,9 +207,9 @@ def main():
     if not rr:raise SystemExit('No corollas detected')
     write_csv(out/'traits.csv',rr);of=['island','sheet','organ_id','nearest_corolla','cx','cy','length_mm','width_mm','aspect','angle_deg','organ_type_auto','organ_type_FILL','exclude_FILL']
     write_csv(out/'organs.csv',oo,of);write_csv(out/'styles.csv',oo,of)
-    qf=['island','sheet','corolla_id','cx','cy','site_no_auto','site_candidates','site_no_FILL','individual_FILL','flower_no_FILL','fold_state_FILL(open/folded)','split_or_exclude_FILL','site_lat','site_lon','fold_check','merge_check','split_status','notes']
+    qf=['island','sheet','corolla_id','cx','cy','site_no_auto','site_candidates','site_no_FILL','individual_FILL','flower_no_FILL','fold_state_FILL(open/folded)','split_or_exclude_FILL','site_lat','site_lon','fold_check','merge_check','fragment_check','split_status','notes']
     qr=[]
-    for r in rr:qr.append(dict(island=r['island'],sheet=r['sheet'],corolla_id=r['corolla_id'],cx=r['cx'],cy=r['cy'],site_no_auto=r['site_no'],site_candidates=r['site_candidates'],site_no_FILL='',individual_FILL='',flower_no_FILL='',**{'fold_state_FILL(open/folded)':'folded' if r['fold_check'] else '','split_or_exclude_FILL':'CHECK' if r['merge_check'] else ''},site_lat=r['site_lat'],site_lon=r['site_lon'],fold_check=r['fold_check'],merge_check=r['merge_check'],split_status=r['split_status'],notes=''))
+    for r in rr:qr.append(dict(island=r['island'],sheet=r['sheet'],corolla_id=r['corolla_id'],cx=r['cx'],cy=r['cy'],site_no_auto=r['site_no'],site_candidates=r['site_candidates'],site_no_FILL='',individual_FILL='',flower_no_FILL='',**{'fold_state_FILL(open/folded)':'folded' if r['fold_check'] else '','split_or_exclude_FILL':'CHECK' if (r['merge_check'] or r['fragment_check']) else ''},site_lat=r['site_lat'],site_lon=r['site_lon'],fold_check=r['fold_check'],merge_check=r['merge_check'],fragment_check=r['fragment_check'],split_status=r['split_status'],notes=''))
     write_csv(out/'qc_plant_labels.csv',qr,qf);print(f'corollas={len(rr)} organs={len(oo)} -> {out}')
 
 if __name__=='__main__':main()

@@ -42,6 +42,15 @@ class MeasureGuidesV2Tests(unittest.TestCase):
 
         self.assertLessEqual(top, int(1000 * 0.05))
 
+    def test_is_fragment_excludes_slivers_keeps_small_corollas(self) -> None:
+        # oshima4 C6 (pistil) and toshima2~3 C11 (thin strip) are fragments;
+        # the smallest genuine corollas (~229-284 mm2, ~15-18 mm wide) are kept.
+        self.assertTrue(v2.is_fragment(90.0, 11.1))   # oshima4 C6 = pistil
+        self.assertTrue(v2.is_fragment(89.0, 7.1))    # toshima2~3 C11 = sliver
+        self.assertFalse(v2.is_fragment(229.0, 15.3)) # toshima3~6 C6 = real
+        self.assertFalse(v2.is_fragment(284.0, 18.3)) # kozu1 C6 = real
+        self.assertFalse(v2.is_fragment(646.0, 28.0)) # median corolla
+
     def test_touching_corollas_are_split_conservatively(self) -> None:
         # Two biologically plausible, side-by-side flattened corollas. Their overlap
         # makes one connected component, while the union is too long to be one flower.
