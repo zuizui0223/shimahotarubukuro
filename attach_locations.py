@@ -81,7 +81,7 @@ OUTPUT_LOCATION_FIELDS = [
 NUMERIC_SUMMARY_FIELDS = [
     "corolla_len_mm", "corolla_width_mm", "corolla_area_mm2", "guide_area_mm2",
     "guide_cov_pct", "n_spots", "spot_density_cm2", "guide_extent_rel",
-    "guide_present", "brown_frac", "degraded_flag",
+    "guide_present", "guide_cov_incl_oxidized_pct", "brown_frac", "degraded_flag",
 ]
 
 

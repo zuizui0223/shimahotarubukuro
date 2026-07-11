@@ -1,15 +1,29 @@
 # -*- coding: utf-8 -*-
 """Reviewed nectar-guide spot extraction and visual QC.
 
-The reviewed detector uses two evidence levels:
+The reviewed detector uses two evidence levels for the **primary** (purple)
+guide, both driven by the CIELAB pigment index ``a* - b*``:
 
 - ``strong``: clearly magenta pixels or strong local a*-b* contrast;
 - ``weak_recovered``: faint but locally distinct magenta pixels that the original
-  conservative mask missed.
+  conservative mask missed. This includes an **orange-rejecting** micro-stipple
+  branch (strong local a*-b* bump, reddish, and blue-leaning ``b* < 8``) that
+  recovers the few genuinely purple dots surviving on otherwise-degraded corollas
+  while excluding orange-brown degradation flecks (``b*`` ~ 20-35).
 
 Both are restricted to the reviewed corolla mask. Single-pixel noise is rejected
 using the ruler-calibrated area scale. Brown/degraded tissue remains a separate
-class and is never silently relabelled as a guide.
+class and is never silently relabelled as a guide, so the primary
+``guide_cov_pct`` / ``guide_present`` stay strictly a purple-pigment measurement.
+
+On aged specimens many fine guide stipples have oxidised toward brown, so they
+read as ``a* - b* < 0`` and are spectrally indistinguishable from degradation.
+These are reported **separately** (never folded into the primary purple trait)
+as an *oxidised-inclusive* measurement: dark, locally reddish pinpoints are
+recovered, but only inside the field of a **confirmed** purple guide (a corolla
+whose strong-purple coverage clears :data:`OXIDIZED_SEED_MIN_COV_PCT`). Corollas
+without a real guide build no field, so their oxidised-inclusive value equals the
+purple value and ``guide_present`` is unaffected.
 """
 from __future__ import annotations
 
@@ -26,6 +40,12 @@ import measure_guides_review_traits as visitor_traits
 
 MIN_SPOT_AREA_MM2 = 0.01
 LARGE_SPOT_CLUSTER_MM2 = 3.0
+
+# Oxidised-guide recovery (reported separately from the purple guide).
+# Only corollas whose confident purple guide clears this coverage carry a real
+# nectar guide; oxidised pinpoints are recovered only within their guide field.
+OXIDIZED_SEED_MIN_COV_PCT = 1.0
+OXIDIZED_FIELD_DILATE_PX = 35
 
 
 def _robust_scale(values: np.ndarray) -> tuple[float, float]:
@@ -87,6 +107,21 @@ def spot_candidate_masks(
         & ~strong
     )
 
+    # Orange-rejecting recovery of sparse, genuinely purple micro-stipples that
+    # survive on otherwise-degraded corollas. Keyed purely on magenta colour, not
+    # darkness: a strong *local* a*-b* bump (dot much more magenta than its
+    # immediate surround), actually reddish, and clearly blue-leaning (b* < 8) so
+    # orange-brown degradation flecks (b* ~ 20-35) are excluded. This runs
+    # independent of the global a*-gate above, which the heavy guide on ⑤ inflates.
+    magenta_micro = (
+        (contrast_9 > 4.0)
+        & (a_channel > 4.0)
+        & (b_channel < 8.0)
+        & corolla
+        & ~strong
+    )
+    weak = weak | magenta_micro
+
     # Do not use an opening here: a 2x2 opening erased genuine tiny guide dots.
     # Ruler-calibrated connected-component area filtering is less destructive.
     combined = (strong | weak).astype(np.uint8)
@@ -101,6 +136,90 @@ def reviewed_spot_segment(
     """Compatibility wrapper returning the high-recall combined mask."""
     _, _, combined = spot_candidate_masks(a_channel, b_channel, corolla_mask)
     return combined
+
+
+def oxidized_guide_mask(
+    a_channel: np.ndarray,
+    l_channel: np.ndarray,
+    corolla_mask: np.ndarray,
+    strong: np.ndarray,
+    combined: np.ndarray,
+) -> np.ndarray:
+    """Recover aged/oxidised guide pinpoints (``a* - b* < 0``) as a *separate* mask.
+
+    These dark, locally reddish dots are spectrally brown and cannot be told from
+    degradation by colour alone. They are recovered only where a **confirmed**
+    purple guide already exists (strong-purple coverage over
+    :data:`OXIDIZED_SEED_MIN_COV_PCT`) and only inside that guide's dilated field,
+    so guide-absent corollas recover nothing. Pixels already in ``combined``
+    (the primary purple guide) are excluded.
+    """
+    corolla = corolla_mask.astype(bool)
+    empty = np.zeros_like(corolla, dtype=np.uint8)
+    corolla_px = int(corolla.sum())
+    if corolla_px == 0:
+        return empty
+
+    strong_bool = (strong > 0) & corolla
+    strong_cov_pct = 100.0 * int(strong_bool.sum()) / corolla_px
+    if strong_cov_pct < OXIDIZED_SEED_MIN_COV_PCT:
+        # No confirmed purple guide on this corolla: recover nothing.
+        return empty
+
+    field_kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (OXIDIZED_FIELD_DILATE_PX, OXIDIZED_FIELD_DILATE_PX)
+    )
+    field = cv2.dilate(strong_bool.astype(np.uint8), field_kernel) > 0
+    field &= corolla
+
+    l_work = l_channel.astype(np.float32).copy()
+    l_work[~corolla] = float(np.median(l_channel[corolla]))
+    black_hat = (
+        cv2.morphologyEx(
+            l_work, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        )
+        - l_work
+    )
+
+    a_work = a_channel.astype(np.float32).copy()
+    a_work[~corolla] = float(np.median(a_channel[corolla]))
+    a_top_hat = a_channel - cv2.morphologyEx(
+        a_work, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+    )
+
+    dark_reddish = corolla & (black_hat > 4.0) & (a_channel > 2.0) & (a_top_hat > 0.8)
+    oxidized = dark_reddish & field & ~(combined > 0)
+    return oxidized.astype(np.uint8)
+
+
+def _accepted_oxidized(
+    oxidized: np.ndarray, mm_per_px: float
+) -> tuple[np.ndarray, np.ndarray, list[dict[str, object]]]:
+    """Area-filter the oxidised mask; components are class ``oxidized_recovered``."""
+    raw = oxidized.astype(np.uint8)
+    _, labels, stats, centroids = cv2.connectedComponentsWithStats(raw, 8)
+    accepted = np.zeros_like(raw, dtype=np.uint8)
+    components: list[dict[str, object]] = []
+    mm2_per_px2 = mm_per_px * mm_per_px
+    for index in range(1, stats.shape[0]):
+        area_px = int(stats[index, cv2.CC_STAT_AREA])
+        area_mm2 = area_px * mm2_per_px2
+        if area_mm2 < MIN_SPOT_AREA_MM2:
+            continue
+        accepted[labels == index] = 1
+        components.append(
+            {
+                "label_index": index,
+                "cx": float(centroids[index][0]),
+                "cy": float(centroids[index][1]),
+                "area_px": area_px,
+                "area_mm2": float(area_mm2),
+                "equivalent_diameter_mm": 2.0 * math.sqrt(area_mm2 / math.pi),
+                "detection_class": "oxidized_recovered",
+            }
+        )
+    components.sort(key=lambda row: (float(row["cy"]), float(row["cx"])))
+    return accepted, labels, components
 
 
 def _accepted_spots(
@@ -158,12 +277,13 @@ def _write_png(path: Path, image: np.ndarray) -> None:
 
 def _draw_legend(image: np.ndarray, top: int, *, binary: bool = False) -> None:
     y0 = min(max(top + 12, 12), image.shape[0] - 58)
-    cv2.rectangle(image, (12, y0), (900, y0 + 44), (255, 255, 255), -1)
-    cv2.rectangle(image, (12, y0), (900, y0 + 44), (80, 80, 80), 1)
-    if binary:
-        text = "black=strong guides  blue=weak recovered  orange=brown/degraded"
-    else:
-        text = "cyan=strong guides  blue=weak recovered  orange=brown/degraded"
+    cv2.rectangle(image, (12, y0), (1120, y0 + 44), (255, 255, 255), -1)
+    cv2.rectangle(image, (12, y0), (1120, y0 + 44), (80, 80, 80), 1)
+    strong_name = "black=strong guides" if binary else "cyan=strong guides"
+    text = (
+        f"{strong_name}  blue=weak recovered  magenta=oxidised (separate)  "
+        "orange=brown/degraded"
+    )
     cv2.putText(image, text, (22, y0 + 29), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (30, 30, 30), 2)
 
 
@@ -195,6 +315,7 @@ def write_spot_qc(
     finally:
         review._CURRENT_SHEET = previous_sheet
 
+    l_channel, _, _ = base.channels(image)
     difference = (a_channel - b_channel).astype(np.float32)
     brown = (a_channel > 6) & (difference < -15)
     overlay = image.copy()
@@ -211,6 +332,14 @@ def write_spot_qc(
         accepted_bool = (accepted > 0) & corolla
         accepted_strong = accepted_bool & (strong > 0)
         accepted_weak = accepted_bool & (weak > 0)
+
+        oxidized = oxidized_guide_mask(
+            a_channel, l_channel, corolla, strong, combined
+        )
+        oxidized_accepted, oxidized_labels, oxidized_components = _accepted_oxidized(
+            oxidized, mm_per_px
+        )
+        oxidized_bool = (oxidized_accepted > 0) & corolla & ~accepted_bool
 
         corolla_area_px = int(corolla.sum())
         total_area_px = int(accepted_bool.sum())
@@ -230,6 +359,13 @@ def write_spot_qc(
         n_strong = sum(row["detection_class"] in ("strong", "mixed") for row in spot_components)
         n_weak = sum(row["detection_class"] == "weak_recovered" for row in spot_components)
 
+        # Oxidised-inclusive measurement (separate from the purple guide above).
+        oxidized_area_px = int(oxidized_bool.sum())
+        incl_area_px = total_area_px + oxidized_area_px
+        incl_area_mm2 = incl_area_px * mm2_per_px2
+        incl_cov_pct = 100.0 * incl_area_px / max(corolla_area_px, 1)
+        n_oxidized = len(oxidized_components)
+
         summary = {
             "island": island,
             "sheet": stem,
@@ -248,6 +384,9 @@ def write_spot_qc(
             "max_spot_area_mm2": round(float(areas.max()), 4) if areas.size else 0.0,
             "brown_overlap_pct_of_spots": round(brown_overlap_pct, 3),
             "guide_present": int(coverage_pct >= 0.5),
+            "n_oxidized_recovered_spots": n_oxidized,
+            "guide_area_incl_oxidized_mm2": round(incl_area_mm2, 3),
+            "guide_cov_incl_oxidized_pct": round(incl_cov_pct, 3),
             "spot_qc_source": "raw_scan_two_stage_reviewed_ruler_scale",
             **scale_info,
         }
@@ -283,23 +422,53 @@ def write_spot_qc(
                 }
             )
 
+        for spot in oxidized_components:
+            label_index = int(spot["label_index"])
+            spot_mask = oxidized_labels == label_index
+            values = difference[spot_mask]
+            area_mm2 = float(spot["area_mm2"])
+            spot_rows.append(
+                {
+                    "island": island,
+                    "sheet": stem,
+                    "corolla_id": corolla_id,
+                    "spot_id": "",
+                    "cx": round(float(spot["cx"]), 2),
+                    "cy": round(float(spot["cy"]), 2),
+                    "area_mm2": round(area_mm2, 4),
+                    "equivalent_diameter_mm": round(float(spot["equivalent_diameter_mm"]), 4),
+                    "detection_class": spot["detection_class"],
+                    "strong_pixel_fraction": 0.0,
+                    "mean_a_minus_b": round(float(values.mean()), 3) if values.size else "",
+                    "median_a_minus_b": round(float(np.median(values)), 3) if values.size else "",
+                    "brown_overlap_pct": "",
+                    "large_cluster_check": "",
+                    "exclude_FILL": "",
+                }
+            )
+
         colour_layer = overlay.copy()
+        colour_layer[oxidized_bool] = (200, 0, 200)
         colour_layer[accepted_strong] = (255, 255, 0)
         colour_layer[accepted_weak] = (255, 80, 0)
-        colour_layer[brown & corolla & ~accepted_bool] = (0, 140, 255)
+        colour_layer[brown & corolla & ~accepted_bool & ~oxidized_bool] = (0, 140, 255)
         overlay = cv2.addWeighted(overlay, 0.68, colour_layer, 0.32, 0)
         contours, _ = cv2.findContours(corolla.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cv2.drawContours(overlay, contours, -1, (0, 255, 0), 3)
 
         mask_panel[corolla] = (230, 230, 230)
+        mask_panel[oxidized_bool] = (200, 0, 200)
         mask_panel[accepted_strong] = (0, 0, 0)
         mask_panel[accepted_weak] = (255, 80, 0)
-        mask_panel[brown & corolla & ~accepted_bool] = (0, 140, 255)
+        mask_panel[brown & corolla & ~accepted_bool & ~oxidized_bool] = (0, 140, 255)
         cv2.drawContours(mask_panel, contours, -1, (0, 180, 0), 2)
 
         x = int(round(component["cx"]))
         y = int(round(component["cy"]))
-        label = f"C{corolla_id} cov={coverage_pct:.1f}% n={len(spot_components)} +weak={n_weak}"
+        label = (
+            f"C{corolla_id} cov={coverage_pct:.1f}% n={len(spot_components)} +weak={n_weak}"
+            + (f" +ox={n_oxidized}({incl_cov_pct:.1f}%)" if n_oxidized else "")
+        )
         cv2.putText(
             overlay, label, (max(2, x - 145), max(top + 22, y - 65)),
             cv2.FONT_HERSHEY_SIMPLEX, 0.53, (180, 0, 180), 2,

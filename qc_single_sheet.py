@@ -74,6 +74,9 @@ def main() -> None:
         "max_spot_area_mm2",
         "brown_overlap_pct_of_spots",
         "guide_present",
+        "n_oxidized_recovered_spots",
+        "guide_area_incl_oxidized_mm2",
+        "guide_cov_incl_oxidized_pct",
         "spot_qc_source",
     )
     trait_fields_to_merge = tuple(

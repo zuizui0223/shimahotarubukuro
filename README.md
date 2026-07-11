@@ -29,13 +29,36 @@ and Toshima (34.9 vs 35.27 mm):
 | `n_spots`, `spot_density_cm2` | guide pattern (dotted vs solid) |
 | `guide_extent_rel` | how far the guide reaches up from the base |
 | `guide_present` | guide coverage ≥ 0.5 % |
+| `n_oxidized_recovered_spots`, `guide_area_incl_oxidized_mm2`, `guide_cov_incl_oxidized_pct` | *oxidised-inclusive* guide (see below) — reported **separately** |
 | `brown_frac`, `degraded_flag` | preservation control (browning fades pigment) |
 
 Spots are found with the **pigment index `a* − b*`** (CIELAB): purple guide is
 strongly positive, orange-brown degradation strongly negative, cream tissue
 negative — a clean separator. Colour values are **not** reported; colour is used
 only to locate the spots. Individual dots are isolated with a top-hat + adaptive
-threshold, so faint/absent guides read as `cov ≈ 0` correctly.
+threshold, so faint/absent guides read as `cov ≈ 0` correctly. The primary
+`guide_cov_pct` / `guide_present` therefore stay a strict **purple-pigment**
+measurement. A faint **orange-rejecting** micro-stipple branch (strong local
+`a* − b*` bump, reddish, and blue-leaning `b* < 8`) recovers the few genuinely
+purple dots that survive on otherwise-degraded corollas while excluding
+orange-brown degradation flecks (`b*` ≈ 20–35), so it lifts real faint-spot
+recall without counting browning — degraded flowers stay below the 0.5 %
+`guide_present` threshold.
+
+**Oxidised-inclusive guide (separate columns).** On aged specimens many of the
+fine guide stipples have oxidised toward brown, so they read as `a* − b* < 0` and
+are spectrally indistinguishable from degradation — the purple index cannot
+recover them by colour. They are measured separately (never folded into the
+primary trait): dark, locally reddish pinpoints are recovered, but **only inside
+the field of a confirmed purple guide** (a corolla whose strong-purple coverage
+clears `OXIDIZED_SEED_MIN_COV_PCT`, default 1 %). Guide-absent / degraded
+corollas build no field, so their `guide_cov_incl_oxidized_pct` equals
+`guide_cov_pct` and `guide_present` is unaffected. Use the primary purple columns
+for a conservative, colour-defined guide; use the `*_incl_oxidized*` columns when
+aged/oxidised stipples should count as guide (e.g. Shikinejima `⑤`, where purple
+coverage ≈ 11 % but oxidised-inclusive coverage ≈ 23 %). In the QC overlays these
+recovered pinpoints are drawn **magenta**, distinct from cyan strong-purple and
+blue weak-recovered guide.
 
 **Provisional traits (UNRELIABLE — do not use as-is):** `prov_mouth_diam_mm`,
 `prov_tube_depth_mm`, `prov_n_lobes`. Flattening removes the 3-D funnel geometry,
