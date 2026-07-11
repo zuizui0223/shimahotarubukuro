@@ -1,0 +1,6 @@
+﻿island,sheet,organ_id,nearest_corolla,cx,cy,x1,y1,x2,y2,length_mm,width_mm,aspect,angle_deg,organ_type_auto,organ_type_FILL,exclude_FILL,detection_source,nearest_corolla_hint,association_confirmed,visibility_note
+Oshima,oshima4,1,5,659.0,2356.0,,,,,26.29,1.43,18.41,51.89,unclassified_reproductive_organ,,,,,,
+Oshima,oshima4,2,6,1570.0,2377.0,,,,,25.92,1.44,18.06,88.03,unclassified_reproductive_organ,,,,,,
+Oshima,oshima4,3,9,2185.17,2622.49,,,,,29.01,4.31,6.73,85.24,unclassified_reproductive_organ,,,,,,
+Oshima,oshima4,4,9,1400.0,2702.5,,,,,35.54,1.41,25.18,72.15,unclassified_reproductive_organ,,,,,,
+Oshima,oshima4,5,10,2319.0,3065.0,,,,,28.0,1.44,19.39,-85.99,unclassified_reproductive_organ,,,,,,
