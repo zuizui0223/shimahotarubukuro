@@ -8,6 +8,7 @@ from pathlib import Path
 import measure_guides as base
 import measure_guides_v2 as v2
 import measure_guides_review as review
+import measure_guides_review_fold as reviewed_fold
 import measure_guides_review_organs as reviewed_organs
 import measure_guides_review_spots as reviewed_spots
 import measure_guides_review_traits as visitor_traits
@@ -59,6 +60,15 @@ def main() -> None:
             f"corollas={len(rows)}"
         )
 
+    # Apply sheet-by-sheet manual fold-state review before exporting traits.
+    for corolla_id, summary in trait_summaries.items():
+        reviewed_fold.apply_reviewed_fold_state(
+            summary,
+            folder=folder_key,
+            sheet=args.image.stem,
+            corolla_id=corolla_id,
+        )
+
     spot_fields_to_merge = (
         "n_spots",
         "n_strong_spots",
@@ -92,6 +102,17 @@ def main() -> None:
             row[field] = spot_summary[field]
         for field in trait_fields_to_merge:
             row[field] = trait_summary[field]
+
+        reviewed_state = reviewed_fold.get_reviewed_fold_state(
+            folder_key,
+            args.image.stem,
+            corolla_id,
+        )
+        if reviewed_state is not None:
+            row["fold_check"] = "check" if reviewed_state["state"] == "folded_half" else ""
+            row["fold_state_reviewed"] = reviewed_state["state"]
+            row["visible_lobes_reviewed"] = reviewed_state["visible_lobes"]
+            row["fold_state_source"] = "manual_sheet_review"
 
     v2.write_csv(args.out_dir / "traits.csv", rows)
     v2.write_csv(
