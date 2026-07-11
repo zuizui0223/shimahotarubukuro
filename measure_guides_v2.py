@@ -15,16 +15,31 @@ SPLIT_AREA_MM2 = 1350.0
 
 
 def specimen_top(img):
+    """Row below which the specimen area begins — i.e. the bottom of a ruler that
+    sits at the *top* of the sheet, so it is excluded from foreground.
+
+    The ruler's scale bar is a wide horizontal band packed with regularly spaced
+    ticks, giving it a distinctively high vertical-edge density that tissue never
+    reaches. When such a band is found in the upper third we cut just below it
+    (excluding a top ruler and preventing an adjacent specimen from merging into
+    it). Otherwise the ruler is at the bottom — handled downstream by the corolla
+    size/shape filter — so we return only a thin scanner-edge margin and keep
+    every specimen. The previous fixed ~28% fallback silently clipped the top of
+    every bottom-ruler sheet, dropping real specimens.
+    """
     h, w = img.shape[:2]
-    edges = cv2.Canny(cv2.cvtColor(img[:int(h*.48)], cv2.COLOR_BGR2GRAY), 40, 120)
-    lines = cv2.HoughLinesP(edges, 1, np.pi/180, max(80, w//8),
-                            minLineLength=int(w*.48), maxLineGap=int(w*.06))
-    ys=[]
-    if lines is not None:
-        for x1,y1,x2,y2 in np.asarray(lines).reshape(-1,4):
-            if abs(y2-y1) <= max(4,int(h*.004)) and int(h*.12) <= (y1+y2)//2 <= int(h*.46):
-                ys.append((y1+y2)//2)
-    return min(h-1, (max(ys) if ys else int(h*.28)) + max(24,int(h*.018)))
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    vedge = (np.abs(cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)) > 60).astype(np.float32)
+    row = cv2.GaussianBlur(vedge.mean(axis=1).reshape(-1, 1), (1, 31), 0).ravel()
+    margin = max(24, int(h * .012))
+    limit = int(h * .35)
+    top_band = row[:limit]
+    if top_band.size and float(top_band.max()) > 0.28:
+        y = int(np.argmax(top_band))
+        while y + 1 < limit and row[y + 1] > 0.10:
+            y += 1
+        return min(h - 1, y + margin)
+    return margin
 
 
 def foreground_v2(img, top):

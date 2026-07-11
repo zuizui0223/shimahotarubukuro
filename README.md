@@ -18,6 +18,14 @@ and cross-checked against the ruler, so the scale is fixed:
 px/cm = 300 / 2.54 = 118.11      (1 px = 0.08467 mm ; 1 px² = 0.007168 mm²)
 ```
 
+**Sheet orientation is normalised on load.** Scans place the ruler at different
+edges (top, bottom, or left). `load_bgr` rotates each sheet to a canonical
+**ruler-at-top** orientation (per-sheet table in `measure_guides.SHEET_ROTATION`,
+keyed by file stem) so every sheet is processed and drawn the same way up.
+Rotation is a fixed property of each scan and does not affect the 300 DPI scale.
+Previously the specimen detector clipped a fixed top band assuming a top ruler,
+which silently dropped specimens on bottom-/left-ruler sheets.
+
 **Robust traits** (per corolla) — validated: island-mean corolla length
 reproduces Inoue's independent common-garden values for Oshima (38.8 vs 39.31 mm)
 and Toshima (34.9 vs 35.27 mm):

@@ -9,14 +9,38 @@ import measure_guides_v2 as v2
 
 
 class MeasureGuidesV2Tests(unittest.TestCase):
-    def test_specimen_top_falls_below_ruler_edge(self) -> None:
+    def test_specimen_top_falls_below_top_scale_bar(self) -> None:
+        # A ruler scale bar near the top: a wide band of regularly spaced vertical
+        # ticks. specimen_top must cut just below it so the ruler is excluded.
         image = np.full((1000, 800, 3), 255, dtype=np.uint8)
-        cv2.line(image, (50, 300), (750, 300), (0, 0, 0), 4)
+        for x in range(40, 760, 6):
+            cv2.line(image, (x, 200), (x, 262), (0, 0, 0), 2)
 
         top = v2.specimen_top(image)
 
-        self.assertGreaterEqual(top, 315)
-        self.assertLessEqual(top, 345)
+        self.assertGreaterEqual(top, 262)
+        self.assertLessEqual(top, 330)
+
+    def test_canonical_rotation_brings_ruler_to_top(self) -> None:
+        # Ruler position is fixed per scan and recorded by file stem. Bottom-ruler
+        # sheets get 180 deg, left-ruler sheets 90 deg clockwise; ruler-at-top
+        # sheets (e.g. shikine) and unknown files are left unrotated.
+        self.assertEqual(v2.base.canonical_rotation("oshima/oshima7.jpg"), cv2.ROTATE_180)
+        self.assertEqual(
+            v2.base.canonical_rotation("x/oshima10~13.jpg"), cv2.ROTATE_90_CLOCKWISE
+        )
+        self.assertIsNone(v2.base.canonical_rotation("shikinejima/shikine1~4.jpg"))
+        self.assertIsNone(v2.base.canonical_rotation("whatever/kozu1.jpg"))
+
+    def test_specimen_top_is_minimal_without_a_top_ruler(self) -> None:
+        # No ruler at the top (it would be at the bottom): specimen_top must NOT
+        # clip the upper part of the sheet, or specimens there are dropped.
+        image = np.full((1000, 800, 3), 255, dtype=np.uint8)
+        cv2.ellipse(image, (400, 350), (150, 200), 0, 0, 360, (120, 90, 160), -1)
+
+        top = v2.specimen_top(image)
+
+        self.assertLessEqual(top, int(1000 * 0.05))
 
     def test_touching_corollas_are_split_conservatively(self) -> None:
         # Two biologically plausible, side-by-side flattened corollas. Their overlap
