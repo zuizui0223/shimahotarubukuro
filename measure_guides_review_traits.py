@@ -10,6 +10,11 @@ Throat span, tube length, mouth diameter, and entrance area are biologically use
 proxies but remain provisional because flattening/folding changes three-dimensional
 geometry. Definitive 3-D mouth diameter, tube depth, herkogamy, and stamen position
 still require fresh flowers or calibrated lateral photographs.
+
+Fold-robust pollination shape/placement ratios are also reported:
+``flat_incision_rel`` (lobe depth / length — campanulate vs open display),
+``flat_throat_openness`` (throat span / widest span — flared vs constricted access),
+and ``guide_centroid_rel`` (where the nectar guide is centred from base to tip).
 """
 from __future__ import annotations
 
@@ -275,6 +280,30 @@ def measure_flat_traits(
     guide_cov_tube_pct = 100.0 * float((tube_spots & tube_mask).sum()) / max(float(tube_mask.sum()), 1.0)
     guide_cov_lobes_pct = 100.0 * float((lobe_spots & lobe_mask).sum()) / max(float(lobe_mask.sum()), 1.0)
 
+    # --- Additional pollinator-relevant shape/guide-placement traits ---
+    # All are fold-robust ratios (longitudinal folding preserves length and vertical
+    # position and halves both widths, so their ratios are unaffected).
+    #
+    # Corolla incision: how deeply the corolla is lobed. Low = shallowly lobed,
+    # campanulate/bell-shaped (deeper tube handling); high = deeply cut, more
+    # open/rotate display. Ecologically distinguishes floral shape classes.
+    incision_rel = lobe_length_px / max(length_px, 1e-9)
+    # Throat openness: throat span relative to the widest display span. High = the
+    # mouth is nearly as wide as the display (open, easily entered); low = a
+    # constricted throat behind a broad display.
+    throat_openness = throat_span_px / max(maximum_width_px, 1e-9)
+    # Guide vertical placement in the oriented frame (tip at row 0, base at the
+    # last row): fraction of corolla length from the base (0) to the tip (1) at
+    # which the guide pixels are centred. Says *where* the guide steers a visitor,
+    # distinct from how much guide there is (guide_cov_pct), how far up it reaches
+    # (guide_extent_rel), or the tube/lobe split above.
+    if bool(oriented_spots.any()):
+        guide_rows = np.where(oriented_spots)[0].astype(float)
+        axis_len = max(float(height - 1), 1e-9)
+        guide_centroid_rel = (axis_len - float(guide_rows.mean())) / axis_len
+    else:
+        guide_centroid_rel = 0.0
+
     trait_qc: list[str] = []
     if orientation_confidence < 0.08:
         trait_qc.append("orientation")
@@ -299,6 +328,9 @@ def measure_flat_traits(
         "flat_tube_slenderness": round(tube_slenderness, 4),
         "guide_cov_tube_pct": round(guide_cov_tube_pct, 3),
         "guide_cov_lobes_pct": round(guide_cov_lobes_pct, 3),
+        "flat_incision_rel": round(incision_rel, 4),
+        "flat_throat_openness": round(throat_openness, 4),
+        "guide_centroid_rel": round(guide_centroid_rel, 4),
         "flat_n_lobes": int(n_lobes),
         "fold_state_auto": "folded_half" if folded_half else "opened_or_broad",
         "mouth_proxy_assumption": "2x_flat_span_over_pi" if folded_half else "flat_span_over_pi",
