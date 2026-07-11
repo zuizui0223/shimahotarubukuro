@@ -1,0 +1,9 @@
+﻿island,sheet,organ_id,nearest_corolla,cx,cy,x1,y1,x2,y2,length_mm,width_mm,aspect,angle_deg,organ_type_auto,organ_type_FILL,exclude_FILL,detection_source,nearest_corolla_hint,association_confirmed,visibility_note
+Toshima,toshima1~2,1,2,1041.0,892.5,,,,,18.92,1.4,13.53,40.52,unclassified_reproductive_organ,,,,,,
+Toshima,toshima1~2,2,4,1839.0,896.0,,,,,21.4,1.41,15.23,-39.87,unclassified_reproductive_organ,,,,,,
+Toshima,toshima1~2,3,1,761.0,936.0,,,,,21.05,1.44,14.58,-85.56,unclassified_reproductive_organ,,,,,,
+Toshima,toshima1~2,4,4,2042.0,1010.0,,,,,28.79,3.05,9.44,-90.0,unclassified_reproductive_organ,,,,,,
+Toshima,toshima1~2,5,6,842.44,1481.08,,,,,23.38,4.16,5.63,-39.69,unclassified_reproductive_organ,,,,,,
+Toshima,toshima1~2,6,9,1192.5,1738.0,,,,,17.64,1.42,12.45,31.22,unclassified_reproductive_organ,,,,,,
+Toshima,toshima1~2,7,10,1454.0,1827.0,,,,,20.39,1.41,14.44,-41.76,unclassified_reproductive_organ,,,,,,
+Toshima,toshima1~2,8,17,2011.48,2892.17,,,,,18.95,2.66,7.13,84.09,unclassified_reproductive_organ,,,,,,

@@ -1,0 +1,9 @@
+﻿island,sheet,organ_id,nearest_corolla,cx,cy,x1,y1,x2,y2,length_mm,width_mm,aspect,angle_deg,organ_type_auto,organ_type_FILL,exclude_FILL,detection_source,nearest_corolla_hint,association_confirmed,visibility_note
+Kozushima,kozu2,1,2,314.2,1079.68,,,,,30.35,2.21,13.71,-45.14,unclassified_reproductive_organ,,,,,,
+Kozushima,kozu2,2,1,1497.49,1090.46,,,,,18.71,4.34,4.31,82.57,unclassified_reproductive_organ,,,,,,
+Kozushima,kozu2,3,3,1233.5,1377.5,,,,,19.18,1.44,13.31,-33.01,unclassified_reproductive_organ,,,,,,
+Kozushima,kozu2,4,4,782.0,1598.0,,,,,14.9,3.05,4.89,-90.0,unclassified_reproductive_organ,,,,,,
+Kozushima,kozu2,5,6,1628.5,1972.5,,,,,13.64,1.44,9.5,87.24,unclassified_reproductive_organ,,,,,,
+Kozushima,kozu2,6,7,136.0,2422.5,,,,,15.53,1.38,11.27,48.14,unclassified_reproductive_organ,,,,,,
+Kozushima,kozu2,7,8,1170.09,2456.42,,,,,15.63,1.74,9.0,48.18,unclassified_reproductive_organ,,,,,,
+Kozushima,kozu2,8,9,503.5,2885.0,,,,,15.15,1.46,10.36,44.25,unclassified_reproductive_organ,,,,,,

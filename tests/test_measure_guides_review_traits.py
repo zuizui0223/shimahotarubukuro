@@ -49,6 +49,30 @@ class ReviewedVisitorTraitTests(unittest.TestCase):
         self.assertEqual(oriented.shape, oriented_spots.shape)
         self.assertLess(guides["sinus_y"], oriented.shape[0])
 
+    def test_pollination_shape_ratios_are_in_range(self) -> None:
+        mask = np.zeros((600, 500), dtype=np.uint8)
+        cv2.rectangle(mask, (155, 230), (345, 560), 1, -1)  # basal tube
+        for x in (170, 210, 250, 290, 330):                 # five upper lobes
+            cv2.ellipse(mask, (x, 210), (42, 115), 0, 180, 360, 1, -1)
+        spots = np.zeros_like(mask)
+        cv2.circle(spots, (250, 520), 10, 1, -1)  # guide low, near the tube base
+
+        result, oriented, oriented_spots, _ = traits.measure_flat_traits(
+            mask.astype(bool), spots.astype(bool), mm_per_px=0.085
+        )
+
+        # Ratios are bounded fractions.
+        for key in ("flat_incision_rel", "flat_throat_openness", "guide_centroid_rel"):
+            self.assertGreaterEqual(result[key], 0.0)
+            self.assertLessEqual(result[key], 1.0)
+        # A guide placed near the base sits in the lower part of the axis.
+        self.assertLess(result["guide_centroid_rel"], 0.5)
+        # No guide pixels -> guide_centroid_rel is 0.
+        empty, _, _, _ = traits.measure_flat_traits(
+            mask.astype(bool), np.zeros_like(mask).astype(bool), mm_per_px=0.085
+        )
+        self.assertEqual(empty["guide_centroid_rel"], 0.0)
+
     def test_folded_specimen_uses_doubled_circumference_proxy(self) -> None:
         mask = np.zeros((700, 260), dtype=np.uint8)
         cv2.rectangle(mask, (80, 160), (180, 650), 1, -1)

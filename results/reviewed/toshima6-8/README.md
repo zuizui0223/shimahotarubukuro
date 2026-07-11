@@ -1,23 +1,33 @@
-# Shikinejima `shikine1~4` reviewed QC
+# Toshima `toshima6~8` reviewed QC
 
 Numeric reviewed outputs only. Raw scans and QC overlay images remain private and are not committed.
 
 ## Auto-detected summary (merged pipeline)
 
 - Canonical orientation applied on load: **none (ruler already at top)**.
-- Corollas detected: **6**; guide_present=1: **1/6**.
-- Purple guide coverage range: 0.042%-11.621%.
-- Reproductive-organ candidates: **4** (manual association/QC required).
-- Scale: `ruler_1cm_ticks`, 0.0848826 mm/px.
+- Corollas detected: **16**; guide_present=1: **14/16**.
+- Purple guide coverage range: 0.132%-27.237%.
+- Reproductive-organ candidates: **7** (manual association/QC required).
+- Scale: `fallback_verified_300dpi`, 0.0846667 mm/px.
 
 | corolla | guide_cov_pct | guide_present | n_spots | n_oxidized | guide_cov_incl_oxidized_pct |
 |---|---|---|---|---|---|
-| 1 | 0.2 | 0 | 20 | 0 | 0.2 |
-| 2 | 0.079 | 0 | 10 | 0 | 0.079 |
-| 3 | 0.381 | 0 | 19 | 0 | 0.381 |
-| 4 | 0.042 | 0 | 7 | 0 | 0.042 |
-| 5 | 0.145 | 0 | 23 | 0 | 0.145 |
-| 6 | 11.621 | 1 | 429 | 1468 | 23.544 |
+| 1 | 27.237 | 1 | 140 | 598 | 42.849 |
+| 2 | 26.523 | 1 | 111 | 523 | 41.121 |
+| 3 | 8.11 | 1 | 124 | 479 | 23.2 |
+| 4 | 12.333 | 1 | 154 | 400 | 34.573 |
+| 5 | 24.213 | 1 | 147 | 526 | 39.06 |
+| 6 | 12.501 | 1 | 151 | 509 | 25.227 |
+| 7 | 11.725 | 1 | 113 | 342 | 21.366 |
+| 8 | 13.955 | 1 | 73 | 201 | 24.02 |
+| 9 | 6.198 | 1 | 143 | 448 | 16.354 |
+| 10 | 1.207 | 1 | 109 | 211 | 9.765 |
+| 11 | 0.698 | 1 | 70 | 0 | 0.698 |
+| 12 | 6.669 | 1 | 211 | 492 | 18.261 |
+| 13 | 1.124 | 1 | 74 | 153 | 7.56 |
+| 14 | 1.232 | 1 | 103 | 190 | 5.6 |
+| 15 | 0.244 | 0 | 13 | 0 | 0.244 |
+| 16 | 0.132 | 0 | 22 | 0 | 0.132 |
 
 ## Method
 
