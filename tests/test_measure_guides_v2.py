@@ -21,6 +21,17 @@ class MeasureGuidesV2Tests(unittest.TestCase):
         self.assertGreaterEqual(top, 262)
         self.assertLessEqual(top, 330)
 
+    def test_canonical_rotation_brings_ruler_to_top(self) -> None:
+        # Ruler position is fixed per scan and recorded by file stem. Bottom-ruler
+        # sheets get 180 deg, left-ruler sheets 90 deg clockwise; ruler-at-top
+        # sheets (e.g. shikine) and unknown files are left unrotated.
+        self.assertEqual(v2.base.canonical_rotation("oshima/oshima7.jpg"), cv2.ROTATE_180)
+        self.assertEqual(
+            v2.base.canonical_rotation("x/oshima10~13.jpg"), cv2.ROTATE_90_CLOCKWISE
+        )
+        self.assertIsNone(v2.base.canonical_rotation("shikinejima/shikine1~4.jpg"))
+        self.assertIsNone(v2.base.canonical_rotation("whatever/kozu1.jpg"))
+
     def test_specimen_top_is_minimal_without_a_top_ruler(self) -> None:
         # No ruler at the top (it would be at the bottom): specimen_top must NOT
         # clip the upper part of the sheet, or specimens there are dropped.
