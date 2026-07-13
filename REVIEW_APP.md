@@ -1,9 +1,10 @@
-# Review app — manual mask & axis correction
+# Review app — image-grounded floral trait correction
 
 Interactive per-sheet QC for the flattened *Campanula microdonta* corollas. Fix the
-things automation gets wrong — the **corolla mask** (e.g. paper shadow that leaked
-in, as on oshima10~13 C17/C18) and the **central axis** (midline) — plus record
-exclude / fold-state / visible-pistil per corolla.
+things automation gets wrong: the **corolla mask**, **central axis**, measurement
+cross-sections, pigment regions, and reproductive organs mounted on the sheet. The focused
+output contains pollination-related traits that can be traced back to reviewed
+image evidence.
 
 Everything is shown in the **canonical ruler-at-top** frame that the pipeline uses.
 
@@ -30,28 +31,46 @@ python qc_single_sheet.py --image "shimahotarubukuro/oshima/oshima10~13.jpg" \
 
 ## Using it
 
-1. **Sidebar** — pick the sheet, then a corolla (C1…CN). Per-corolla flags live here
-   (Exclude +reason, Fold state open/folded_half, Visible pistil).
-2. **Axis tab (click)** — pick *BASE* or *TIP* and click the point on the flower.
-   Put the base at the throat/top-centre and the tip on the true central-lobe tip.
-   *Reset axis to PRE-QC* restores the automatic axis.
-3. **Mask tab (edge/paint)** — use *EDGE* to select the green mask object, drag or
-   transform it, then press **Apply edge mask**. Use *PAINT* for local
-   *SUBTRACT*/*ADD* brush corrections. Applying an edge mask bakes the current
-   paint state into the new mask outline; paint can still be added afterward.
-4. **Traits tab** — review every measurement column from the committed
-   `traits.csv`. The app shows the original value, the reviewed value, and whether
-   the value came from the original table, the current mask/axis, or a manual edit.
-5. Live **length / width / area (mm)** update as you edit (300 DPI scale).
-6. **Save state** persists to `results/review_state/<sheet>.json` (resume later).
-7. **Export** writes `results/reviewed/<sheet>/app_review/`:
+1. **Sidebar** — pick the sheet, then a corolla (C1…CN).
+2. **Mask workspace** — drag white circular handles to move polygon vertices, drag
+   diamond handles to move an edge, or grab the green outline to insert a new
+   vertex. Brush mode remains available for local add/subtract corrections.
+3. **Shape workspace** — drag both endpoints of the corolla axis, maximum span,
+   throat span, and basal-tube span. Put the axis base at the basal end and the tip
+   on the central-lobe tip. Put the throat line at the lobe-sinus height. Measure
+   axis-to-edge on an open corolla and the full visible width on a folded half.
+4. **Pigment workspace** — review purple guide, oxidized guide, and brown/degraded
+   regions. Final guide area, coverage, and presence use the union of purple and
+   oxidized guide regions.
+5. **Stamen/pistil workspace** — auto-detect sheet-level organ candidates, assign
+   independent O numbers, then review each centre-line length, organ type, and
+   identity confidence. C-to-O correspondence remains unconfirmed at this stage;
+   undetected organs can be added with a new O number.
+6. **Confirmation workspace** — inspect the focused pollination-trait table, set
+   the fold state, exclusion, note, and review-complete flag.
+7. **Save state** persists to `results/review_state/<sheet>.json` (resume later).
+8. **Export** writes `results/reviewed/<sheet>/app_review/` including:
    `reviewed_axes.csv`, `human_review.csv`, `reviewed_exclusions.csv`,
-   `reviewed_mask_corrections.csv`, `reviewed_traits.csv`,
-   `reviewed_trait_overrides.csv`, and `axis_overrides_snippet.py` (paste into
-   `REVIEWED_AXIS_OVERRIDES`).
+   `reviewed_mask_corrections.csv`, `reviewed_measurement_guides.csv`,
+   `reviewed_region_corrections.csv`, `reviewed_reproductive_organs.csv`,
+   `reviewed_pollination_traits.csv`, and `axis_overrides_snippet.py`.
 
-Reviewed decisions are per corolla and never touch the others — the automatic PRE-QC
-result stays the default for anything you don't change.
+## Full-open and half-folded standardization
+
+The four linear traits use the same half-corolla unit in both states. For `open`,
+draw maximum, throat, and basal widths from the axis to one outer edge. For
+`folded_half`, draw each width across the visible half-corolla. Corolla length is
+measured directly in both states. No circumference or diameter conversion is used.
+
+Area traits use a full-corolla unit: `open` mask and guide areas are used as
+observed, while `folded_half` areas are doubled. Coverage, relative opening, and
+tube expansion ratios are not multiplied. For `unknown`, comparison values stay
+blank. `fold_state_reviewed`, `area_correction_factor`, and `area_scope` preserve
+the area correction in the export.
+
+Corolla decisions are stored by C number. Organ decisions are stored separately by
+O number. `nearest_corolla_hint` is only a spatial hint; exported `corolla_id` stays
+blank with `association_status=unconfirmed` until correspondence is reviewed later.
 
 ## Deploying to Streamlit Cloud
 
@@ -73,5 +92,6 @@ Two caveats on Cloud:
 
 - Orientation is derived from the overlay + committed centroids (robust to the
   per-sheet `SHEET_ROTATION`), so masks/axes always line up with the raw scan.
-- Mask edits store polygons (not new segmentations). Edge edits replace the
-  corolla mask base; paint edits are subtracted/added on top.
+- Mask and pigment edits store polygons (not raster screenshots). Measurement and
+  organ corrections store calibrated image coordinates, so every reviewed number
+  remains traceable to visible evidence.
