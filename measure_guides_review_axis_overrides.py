@@ -50,6 +50,21 @@ REVIEWED_AXIS_OVERRIDES: Mapping[tuple[str, str, int], dict[str, float | str]] =
         "review_status": "ACCEPT",
         "review_note": "Original PRE-QC start retained; reviewed end follows the central/third-petal guide direction.",
     },
+    # Oshima / oshima10~13 — C10 axis corrected after visual inspection of the raw
+    # flower (canonical ruler-at-top). The PRE-QC symmetry axis (base 1422.9,1610.8
+    # -> tip 1509.2,1932.9; 75deg) was tilted: its base sat on the top-left edge and
+    # its tip fell in the sinus between the central and right lobes. The reviewed
+    # axis follows the visible vertical midline seam from the top-centre throat down
+    # the CENTRAL (third) petal to that lobe's tip. Mask unchanged; only the two axis
+    # endpoints moved (base ~50 px, tip ~44 px), the minimum needed to remove the tilt.
+    ("oshima", "oshima10~13", 10): {
+        "base_x": 1472.000,
+        "base_y": 1602.000,
+        "tip_x": 1466.000,
+        "tip_y": 1939.000,
+        "review_status": "ACCEPT",
+        "review_note": "Axis moved onto the central-petal midline: base at the top-centre throat seam, tip at the central lobe tip (PRE-QC tip was in the right sinus).",
+    },
 }
 
 
