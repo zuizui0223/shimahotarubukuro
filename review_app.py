@@ -18,6 +18,21 @@ from streamlit_image_coordinates import streamlit_image_coordinates as click_ima
 
 import measure_guides as base
 import measure_guides_symmetry_axis as sym
+from PIL import Image
+
+# streamlit-drawable-canvas needs streamlit.elements.image.image_to_url, which moved
+# (and changed signature) in Streamlit >=1.3x. Restore an old-signature shim.
+import streamlit.elements.image as _st_image_mod
+if not hasattr(_st_image_mod, "image_to_url"):
+    from streamlit.elements.lib.image_utils import image_to_url as _new_i2u
+    from streamlit.elements.lib.layout_utils import create_layout_config as _clc
+
+    def _image_to_url_compat(image, width, clamp, channels, output_format, image_id, *a, **k):
+        lc = _clc(width=int(width)) if isinstance(width, (int, float)) else _clc()
+        return _new_i2u(image, lc, clamp, channels, output_format, image_id)
+
+    _st_image_mod.image_to_url = _image_to_url_compat
+from streamlit_drawable_canvas import st_canvas
 
 MM_PX = base.MM_PX
 MM2_PX = base.MM2_PX
@@ -354,61 +369,86 @@ ids = sorted(cen)
 cid = st.sidebar.selectbox("Corolla", ids, format_func=lambda c: f"C{c}")
 cs = corolla_state(state, cid, get_preqc(cid))
 
-tool = st.sidebar.radio("Click tool", ["Axis: set BASE", "Axis: set TIP",
-                                       "Mask: SUBTRACT polygon (erase shadow)", "Mask: ADD polygon"])
-st.sidebar.caption("Click on the image. For polygons, click vertices then press **Finish polygon**.")
+# per-corolla flags live in the sidebar (apply to the selected corolla)
+st.sidebar.divider()
+st.sidebar.subheader(f"C{cid} flags")
+cs["exclude"] = st.sidebar.checkbox("Exclude corolla", value=cs["exclude"])
+cs["reason"] = st.sidebar.text_input("Reason / note", value=cs["reason"])
+cs["fold_state"] = st.sidebar.radio("Fold state", ["open", "folded_half"],
+                                    index=0 if cs["fold_state"] == "open" else 1, horizontal=True)
+cs["pistil"] = st.sidebar.checkbox("Visible attached pistil", value=cs["pistil"])
 
-col1, col2 = st.columns([3, 1])
-with col1:
-    box = bbox_of(masks[cid], 80, raw.shape)
-    scale = DISPLAY_W / (box[2] - box[0])
-    disp, edited = render_crop(raw, masks[cid], cs, cid, box, scale, st.session_state.pending)
-    click = click_image(disp, key=f"img_{stem}_{cid}")
-    if click is not None and click != st.session_state.last_click:
-        st.session_state.last_click = click
-        rx = box[0] + click["x"] / scale
-        ry = box[1] + click["y"] / scale
-        if tool == "Axis: set BASE":
-            cs["axis_base"] = [rx, ry]; cs["axis_changed"] = True
-        elif tool == "Axis: set TIP":
-            cs["axis_tip"] = [rx, ry]; cs["axis_changed"] = True
-        else:
-            st.session_state.pending.append([rx, ry])
-        st.rerun()
+box = bbox_of(masks[cid], 80, raw.shape)
+scale = DISPLAY_W / (box[2] - box[0])
+disp_h = int((box[3] - box[1]) * scale)
+mgen = st.session_state.get("mask_gen", 0)
 
-with col2:
-    st.subheader(f"C{cid}")
-    tr = corolla_traits(edited, cs["axis_base"], cs["axis_tip"])
-    st.metric("length mm", tr["length_mm"])
-    st.metric("width mm", tr["width_mm"])
-    st.metric("area mm²", tr["area_mm2"])
+tab_axis, tab_mask = st.tabs(["✎ Axis — click base→tip", "🖌 Mask — drag to paint"])
 
-    if st.button("Finish polygon", width="stretch", disabled=len(st.session_state.pending) < 3):
-        target = "subtract" if tool.startswith("Mask: SUB") else "add"
-        cs[target].append([list(map(float, p)) for p in st.session_state.pending])
-        st.session_state.pending = []
-        st.rerun()
-    if st.button("Clear pending points", width="stretch"):
-        st.session_state.pending = []; st.rerun()
+with tab_axis:
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        atool = st.radio("Set point", ["BASE (throat / top-centre)", "TIP (central lobe)"], horizontal=True)
+        disp, edited = render_crop(raw, masks[cid], cs, cid, box, scale, [])
+        click = click_image(disp, key=f"axis_{stem}_{cid}")
+        if click is not None and click != st.session_state.last_click:
+            st.session_state.last_click = click
+            rx = box[0] + click["x"] / scale
+            ry = box[1] + click["y"] / scale
+            if atool.startswith("BASE"):
+                cs["axis_base"] = [rx, ry]
+            else:
+                cs["axis_tip"] = [rx, ry]
+            cs["axis_changed"] = True
+            st.rerun()
+    with c2:
+        tr = corolla_traits(edited, cs["axis_base"], cs["axis_tip"])
+        st.metric("length mm", tr["length_mm"])
+        st.metric("width mm", tr["width_mm"])
+        st.metric("area mm²", tr["area_mm2"])
+        if st.button("Reset axis to PRE-QC", width="stretch"):
+            pa = get_preqc(cid)
+            if pa:
+                cs["axis_base"] = list(map(float, pa[0])); cs["axis_tip"] = list(map(float, pa[1]))
+                cs["axis_changed"] = False
+            st.rerun()
 
-    if st.button("Reset axis to PRE-QC", width="stretch"):
-        pa = get_preqc(cid)
-        if pa:
-            cs["axis_base"] = list(map(float, pa[0])); cs["axis_tip"] = list(map(float, pa[1]))
-            cs["axis_changed"] = False
-        st.rerun()
-    if st.button("Undo last mask edit", width="stretch"):
-        for k in ("subtract", "add"):
-            if cs[k]:
-                cs[k].pop(); break
-        st.rerun()
-
-    st.divider()
-    cs["exclude"] = st.checkbox("Exclude corolla", value=cs["exclude"])
-    cs["reason"] = st.text_input("Reason / note", value=cs["reason"])
-    cs["fold_state"] = st.radio("Fold state", ["open", "folded_half"],
-                                index=0 if cs["fold_state"] == "open" else 1, horizontal=True)
-    cs["pistil"] = st.checkbox("Visible attached pistil", value=cs["pistil"])
+with tab_mask:
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        brush = st.slider("Brush size (px)", 5, 70, 24)
+        mode = st.radio("Paint effect", ["SUBTRACT — erase shadow/noise", "ADD — recover tissue"], horizontal=True)
+        edited = apply_mask_edits(masks[cid], cs)
+        crop = raw[box[1]:box[3], box[0]:box[2]].copy()
+        ecnts, _ = cv2.findContours(edited[box[1]:box[3], box[0]:box[2]], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(crop, ecnts, -1, (0, 190, 0), 2)
+        bg = Image.fromarray(cv2.cvtColor(cv2.resize(crop, (DISPLAY_W, disp_h)), cv2.COLOR_BGR2RGB))
+        stroke = "rgba(255,0,0,0.5)" if mode.startswith("SUBTRACT") else "rgba(0,200,255,0.5)"
+        res = st_canvas(background_image=bg, drawing_mode="freedraw", stroke_width=brush,
+                        stroke_color=stroke, height=disp_h, width=DISPLAY_W, display_toolbar=True,
+                        key=f"mask_{stem}_{cid}_{mgen}")
+    with c2:
+        st.metric("area mm²", corolla_traits(edited, cs["axis_base"], cs["axis_tip"])["area_mm2"])
+        st.caption("Drag over the region, then **Apply paint**.")
+        if st.button("Apply paint", width="stretch"):
+            if res is not None and res.image_data is not None:
+                drawn = (res.image_data[..., 3] > 10).astype(np.uint8)
+                if drawn.sum() > 20:
+                    dm = cv2.resize(drawn, (box[2] - box[0], box[3] - box[1]), interpolation=cv2.INTER_NEAREST)
+                    pcnts, _ = cv2.findContours(dm, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    target = "subtract" if mode.startswith("SUBTRACT") else "add"
+                    for pc in pcnts:
+                        if cv2.contourArea(pc) < 15:
+                            continue
+                        cs[target].append([[float(px + box[0]), float(py + box[1])] for [[px, py]] in pc])
+                    st.session_state.mask_gen = mgen + 1
+                    st.rerun()
+        if st.button("Undo last mask edit", width="stretch"):
+            for k in ("subtract", "add"):
+                if cs[k]:
+                    cs[k].pop(); break
+            st.session_state.mask_gen = mgen + 1
+            st.rerun()
 
 st.sidebar.divider()
 if st.sidebar.button("💾 Save state", width="stretch"):

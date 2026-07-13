@@ -30,15 +30,16 @@ python qc_single_sheet.py --image "shimahotarubukuro/oshima/oshima10~13.jpg" \
 
 ## Using it
 
-1. **Sidebar** — pick the sheet, then a corolla (C1…CN), then a **click tool**.
-2. **Axis** — choose *Axis: set BASE* or *set TIP* and click the point on the flower.
+1. **Sidebar** — pick the sheet, then a corolla (C1…CN). Per-corolla flags live here
+   (Exclude +reason, Fold state open/folded_half, Visible pistil).
+2. **Axis tab (click)** — pick *BASE* or *TIP* and click the point on the flower.
    Put the base at the throat/top-centre and the tip on the true central-lobe tip.
    *Reset axis to PRE-QC* restores the automatic axis.
-3. **Mask** — choose *Mask: SUBTRACT polygon* to erase shadow/noise (or *ADD* to
-   recover missed tissue), click the vertices, then **Finish polygon**. Removed area
-   shows in red; *Undo last mask edit* reverts one polygon.
-4. **Flags** — Exclude (+reason), Fold state (open / folded_half), Visible pistil.
-5. Live **length / width / area (mm)** update as you edit (300 DPI scale).
+3. **Mask tab (drag to paint)** — set a brush size, choose *SUBTRACT* (erase
+   shadow/noise) or *ADD* (recover tissue), then **drag over the region** on the
+   flower and press **Apply paint**. The stroke is converted to a mask polygon;
+   *Undo last mask edit* reverts one. (Drag painting uses `streamlit-drawable-canvas`.)
+4. Live **length / width / area (mm)** update as you edit (300 DPI scale).
 6. **Save state** persists to `results/review_state/<sheet>.json` (resume later).
 7. **Export** writes `results/reviewed/<sheet>/app_review/`:
    `reviewed_axes.csv`, `human_review.csv`, `reviewed_exclusions.csv`,
