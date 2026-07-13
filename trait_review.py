@@ -40,12 +40,49 @@ REGION_TARGETS = {
     "brown": {"label": "Brown / degraded tissue", "colour_bgr": (0, 105, 170)},
 }
 
+CORE_SHAPE_GUIDES = ("max_span", "throat_span", "basal_tube_span")
+
+CORE_POLLINATION_TRAITS = (
+    ("corolla_length_ruler_mm", "Corolla length", "mm", "Size"),
+    ("corolla_area_ruler_mm2", "Corolla area", "mm2", "Size"),
+    ("corolla_max_span_ruler_mm", "Maximum span", "mm", "Size"),
+    ("flat_throat_span_mm", "Flattened throat span", "mm", "Access"),
+    ("flat_throat_openness", "Relative throat openness", "ratio", "Access"),
+    ("flat_tube_taper_ratio", "Tube taper", "ratio", "Access"),
+    ("guide_area_mm2", "Guide area", "mm2", "Guide"),
+    ("guide_cov_pct", "Guide coverage", "%", "Guide"),
+    ("guide_present", "Guide detected", "0/1", "Guide"),
+)
+
+GUIDE_ANALYSIS_FIELDS = (
+    "guide_area_mm2",
+    "guide_cov_pct",
+    "guide_present",
+    "n_spots",
+    "guide_area_incl_oxidized_mm2",
+    "guide_cov_incl_oxidized_pct",
+)
+
 
 def _safe_float(value, default=0.0) -> float:
     try:
         return float(value)
     except (TypeError, ValueError):
         return float(default)
+
+
+def reviewed_guide_trait_values(values, presence_status: str):
+    """Apply a manual presence decision to analysis-ready guide values."""
+    output = dict(values)
+    if presence_status == "present":
+        output["guide_present"] = 1
+    elif presence_status == "absent":
+        for field in GUIDE_ANALYSIS_FIELDS:
+            output[field] = 0
+    elif presence_status == "uncertain":
+        for field in GUIDE_ANALYSIS_FIELDS:
+            output[field] = ""
+    return output
 
 
 def _axis(base_xy, tip_xy):
@@ -73,6 +110,54 @@ def line_midpoint(line) -> np.ndarray:
     return (np.asarray(line[0], float) + np.asarray(line[1], float)) / 2.0
 
 
+def organ_candidate_line(row, mm_per_px: float):
+    """Return a detector candidate as a raw-image two-point centre line."""
+    explicit = [_safe_float(row.get(key), float("nan")) for key in ("x1", "y1", "x2", "y2")]
+    if all(math.isfinite(value) for value in explicit):
+        return [[explicit[0], explicit[1]], [explicit[2], explicit[3]]]
+
+    cx = _safe_float(row.get("cx"), float("nan"))
+    cy = _safe_float(row.get("cy"), float("nan"))
+    length_mm = _safe_float(row.get("length_mm"), 0.0)
+    angle_deg = _safe_float(row.get("angle_deg"), float("nan"))
+    if not all(math.isfinite(value) for value in (cx, cy, length_mm, angle_deg)):
+        return None
+    if length_mm <= 0:
+        return None
+    theta = math.radians(angle_deg)
+    half = 0.5 * length_mm / max(float(mm_per_px), 1e-9)
+    direction = np.array([math.cos(theta), math.sin(theta)])
+    centre = np.array([cx, cy], dtype=float)
+    return [(centre - direction * half).tolist(), (centre + direction * half).tolist()]
+
+
+def nearest_detached_organ_candidate(rows, mask, mm_per_px: float, used_ids=()):
+    """Return the closest unassigned detached-organ detector candidate."""
+    if mask is None or not np.any(mask):
+        return None
+    ys, xs = np.where(mask > 0)
+    mask_centre = np.array([float(xs.mean()), float(ys.mean())])
+    used = {str(value) for value in used_ids}
+    best = None
+    for row in rows or []:
+        candidate_id = str(row.get("organ_id", ""))
+        if candidate_id in used:
+            continue
+        line = organ_candidate_line(row, mm_per_px)
+        if line is None:
+            continue
+        distance = float(np.linalg.norm(line_midpoint(line) - mask_centre))
+        candidate = {
+            "candidate_id": candidate_id,
+            "line": line,
+            "width_mm": min(max(_safe_float(row.get("width_mm"), 1.5), 0.5), 5.0),
+            "distance_px": distance,
+        }
+        if best is None or distance < best[0]:
+            best = (distance, candidate)
+    return best[1] if best else None
+
+
 def best_organ_candidate(rows, mask, mm_per_px: float):
     """Return the detector line that overlaps this corolla mask most strongly."""
     if mask is None or not np.any(mask):
@@ -82,25 +167,15 @@ def best_organ_candidate(rows, mask, mm_per_px: float):
     ys, xs = np.where(mask > 0)
     mask_centre = np.array([float(xs.mean()), float(ys.mean())])
     mask_diagonal = max(float(np.hypot(xs.max() - xs.min(), ys.max() - ys.min())), 1.0)
-    px_per_mm = 1.0 / max(float(mm_per_px), 1e-9)
     best = None
 
     for row in rows or []:
-        cx = _safe_float(row.get("cx"), float("nan"))
-        cy = _safe_float(row.get("cy"), float("nan"))
-        length_mm = _safe_float(row.get("length_mm"), 0.0)
-        angle_deg = _safe_float(row.get("angle_deg"), float("nan"))
-        if not all(math.isfinite(value) for value in (cx, cy, length_mm, angle_deg)):
+        line = organ_candidate_line(row, mm_per_px)
+        if line is None:
             continue
-        if length_mm <= 0:
-            continue
-
-        theta = math.radians(angle_deg)
-        half = 0.5 * length_mm * px_per_mm
-        direction = np.array([math.cos(theta), math.sin(theta)])
-        centre = np.array([cx, cy], dtype=float)
-        first = centre - direction * half
-        second = centre + direction * half
+        first, second = (np.asarray(point, dtype=float) for point in line)
+        centre = (first + second) / 2.0
+        cx, cy = centre
         samples = np.linspace(first, second, 81)
         sample_x = np.rint(samples[:, 0]).astype(int)
         sample_y = np.rint(samples[:, 1]).astype(int)

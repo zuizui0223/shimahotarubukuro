@@ -19,7 +19,7 @@ EDITOR_HTML = """
 EDITOR_CSS = """
 .mask-editor-shell {
   width: 100%;
-  max-width: 720px;
+  max-width: 100%;
   line-height: 0;
   user-select: none;
   touch-action: none;
@@ -132,7 +132,7 @@ export default function ({ parentElement, data, setStateValue }) {
     return best;
   }
 
-  function drawLine(points, colour, lineWidth, handles) {
+  function drawLine(points, colour, lineWidth, handles, labels = []) {
     if (!Array.isArray(points) || points.length !== 2) return;
     ctx.save();
     ctx.strokeStyle = colour;
@@ -151,6 +151,18 @@ export default function ({ parentElement, data, setStateValue }) {
         ctx.strokeStyle = colour;
         ctx.lineWidth = 3;
         ctx.stroke();
+        if (labels[index]) {
+          ctx.font = "600 12px sans-serif";
+          ctx.textBaseline = "bottom";
+          const text = String(labels[index]);
+          const textWidth = ctx.measureText(text).width;
+          const labelX = Math.min(width - textWidth - 8, Math.max(4, point[0] + 9));
+          const labelY = Math.max(18, point[1] - 8);
+          ctx.fillStyle = "rgba(255,255,255,.92)";
+          ctx.fillRect(labelX - 3, labelY - 14, textWidth + 6, 16);
+          ctx.fillStyle = colour;
+          ctx.fillText(text, labelX, labelY);
+        }
       });
     }
     ctx.restore();
@@ -207,7 +219,7 @@ export default function ({ parentElement, data, setStateValue }) {
     });
 
     if (mode === "line") {
-      drawLine(line, data?.line_colour ?? "#d92d20", 3, true);
+      drawLine(line, data?.line_colour ?? "#d92d20", 3, true, data?.line_labels ?? []);
     }
     if (mode === "paint" && stroke.length) {
       ctx.save();

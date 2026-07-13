@@ -104,6 +104,103 @@ def test_best_organ_candidate_uses_mask_overlap():
     assert candidate["width_mm"] == 1.4
 
 
+def test_organ_candidate_line_prefers_reviewed_endpoints():
+    row = {
+        "x1": "10.5",
+        "y1": "20.5",
+        "x2": "40.5",
+        "y2": "80.5",
+        "cx": "999",
+        "cy": "999",
+        "length_mm": "1",
+        "angle_deg": "0",
+    }
+    assert trait_review.organ_candidate_line(row, 0.1) == [
+        [10.5, 20.5],
+        [40.5, 80.5],
+    ]
+
+
+def test_organ_candidate_line_reconstructs_legacy_detector_row():
+    row = {
+        "cx": "100",
+        "cy": "200",
+        "length_mm": "20",
+        "angle_deg": "90",
+    }
+    line = trait_review.organ_candidate_line(row, 0.1)
+    assert np.allclose(trait_review.line_midpoint(line), [100, 200])
+    assert np.isclose(trait_review.line_length(line) * 0.1, 20)
+
+
+def test_nearest_detached_organ_skips_assigned_candidate():
+    mask = np.zeros((300, 300), dtype=np.uint8)
+    cv2.circle(mask, (100, 100), 25, 1, -1)
+    rows = [
+        {
+            "organ_id": "1",
+            "x1": "110",
+            "y1": "100",
+            "x2": "150",
+            "y2": "100",
+            "width_mm": "1.1",
+        },
+        {
+            "organ_id": "2",
+            "x1": "180",
+            "y1": "100",
+            "x2": "220",
+            "y2": "100",
+            "width_mm": "1.4",
+        },
+    ]
+    candidate = trait_review.nearest_detached_organ_candidate(
+        rows, mask, 0.1, used_ids=["1"]
+    )
+    assert candidate["candidate_id"] == "2"
+    assert candidate["width_mm"] == 1.4
+
+
+def test_core_pollination_traits_stay_focused():
+    fields = {field for field, _, _, _ in trait_review.CORE_POLLINATION_TRAITS}
+    assert fields == {
+        "corolla_length_ruler_mm",
+        "corolla_area_ruler_mm2",
+        "corolla_max_span_ruler_mm",
+        "flat_throat_span_mm",
+        "flat_throat_openness",
+        "flat_tube_taper_ratio",
+        "guide_area_mm2",
+        "guide_cov_pct",
+        "guide_present",
+    }
+
+
+def test_manual_guide_presence_produces_consistent_analysis_values():
+    automatic = {
+        "guide_area_mm2": 12.3,
+        "guide_cov_pct": 4.5,
+        "guide_present": 1,
+        "n_spots": 7,
+        "guide_area_incl_oxidized_mm2": 15.0,
+        "guide_cov_incl_oxidized_pct": 5.5,
+        "brown_frac": 0.1,
+    }
+    absent = trait_review.reviewed_guide_trait_values(automatic, "absent")
+    uncertain = trait_review.reviewed_guide_trait_values(automatic, "uncertain")
+    present = trait_review.reviewed_guide_trait_values(
+        {**automatic, "guide_present": 0}, "present"
+    )
+
+    assert all(absent[field] == 0 for field in trait_review.GUIDE_ANALYSIS_FIELDS)
+    assert all(
+        uncertain[field] == "" for field in trait_review.GUIDE_ANALYSIS_FIELDS
+    )
+    assert present["guide_present"] == 1
+    assert present["guide_area_mm2"] == automatic["guide_area_mm2"]
+    assert absent["brown_frac"] == automatic["brown_frac"]
+
+
 def test_thin_appendage_seeds_organ_when_detector_misses_it():
     mask = np.zeros((640, 520), dtype=np.uint8)
     cv2.rectangle(mask, (120, 260), (360, 590), 1, -1)

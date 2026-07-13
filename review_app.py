@@ -13,7 +13,6 @@ from __future__ import annotations
 import os, json, csv, glob
 import numpy as np, cv2
 import streamlit as st
-from streamlit_image_coordinates import streamlit_image_coordinates as click_image
 
 import measure_guides as base
 import measure_guides_symmetry_axis as sym
@@ -37,14 +36,7 @@ REVIEW_DIR = "results/reviewed"
 STATE_DIR = "results/review_state"
 ISLAND_FOLDERS = ("oshima", "toshima", "niijima", "shikinejima", "kozushima")
 DISPLAY_W = 720
-LOCKED_TRAIT_FIELDS = {
-    "island", "region_order", "sheet", "corolla_id", "cx", "cy",
-    "source_component_id", "split_piece", "split_status",
-    "site_no", "site_candidates", "site_lat", "site_lon", "individual_id",
-    "scale_source", "scale_qc", "mm_per_px", "px_per_cm",
-    "ruler_spacing_cv", "ruler_tick_count", "ruler_regular_interval_count",
-    "ruler_baseline_y", "ruler_tick_x",
-}
+SHEET_DISPLAY_W = 900
 os.makedirs(STATE_DIR, exist_ok=True)
 
 
@@ -235,8 +227,10 @@ def corolla_state(state, cid, preqc_axis):
             "measurement_lines": {}, "measurement_lines_changed": [],
             "flat_n_lobes": None, "fold_changed": False,
             "organ_exclusions": [],
+            "detached_organs": [],
             "region_edits": {},
-            "trait_overrides": {},
+            "guide_presence_reviewed": "unreviewed",
+            "review_complete": False,
         }
     cs = state[key]
     cs.setdefault("subtract", [])
@@ -250,12 +244,23 @@ def corolla_state(state, cid, preqc_axis):
     cs.setdefault("flat_n_lobes", None)
     cs.setdefault("fold_changed", False)
     cs.setdefault("organ_exclusions", [])
+    cs.setdefault("detached_organs", [])
+    for organ_list in (cs["organ_exclusions"], cs["detached_organs"]):
+        for organ in organ_list:
+            if organ.get("organ_type") in (
+                "unclassified",
+                "unclassified_reproductive_organ",
+            ):
+                organ["organ_type"] = "unknown"
+            organ.setdefault("identity_status", "uncertain")
+            organ.setdefault("note", "")
     cs.setdefault("region_edits", {})
     for target in trait_review.REGION_TARGETS:
         edits = cs["region_edits"].setdefault(target, {})
         edits.setdefault("add", [])
         edits.setdefault("subtract", [])
-    cs.setdefault("trait_overrides", {})
+    cs.setdefault("guide_presence_reviewed", "unreviewed")
+    cs.setdefault("review_complete", False)
     return cs
 
 
@@ -329,7 +334,26 @@ def colour_review_active(cs):
     )
 
 
+def pollination_trait_values(raw, mask, cs, row):
+    edited = apply_mask_edits(mask, cs)
+    mm_per_px = float(row.get("mm_per_px") or MM_PX)
+    trait_review.ensure_measurement_lines(cs, edited, row)
+    values = trait_review.shape_trait_values(edited, cs, mm_per_px)
+    colour_box = bbox_of(edited, 30, raw.shape)
+    colour_values, _ = trait_review.colour_trait_values(
+        raw, analysis_mask(mask, cs), colour_box, cs, mm_per_px
+    )
+    values.update(colour_values)
+    return values
+
+
 def current_trait_updates(raw, mask, cs, row, *, preview=False):
+    if preview:
+        values = pollination_trait_values(raw, mask, cs, row)
+        if "exclude" in row:
+            values["exclude"] = "yes" if cs.get("exclude") else row.get("exclude", "")
+        return {field: value for field, value in values.items() if field in row}
+
     edited = apply_mask_edits(mask, cs)
     mm_per_px = float(row.get("mm_per_px") or MM_PX)
     trait_review.ensure_measurement_lines(cs, edited, row)
@@ -347,10 +371,6 @@ def current_trait_updates(raw, mask, cs, row, *, preview=False):
     return {field: value for field, value in updates.items() if field in row}
 
 
-def editable_trait_fields(fields):
-    return [field for field in fields if field not in LOCKED_TRAIT_FIELDS]
-
-
 def stringify_trait_value(value):
     if value is None:
         return ""
@@ -363,46 +383,6 @@ def values_differ(left, right):
     return stringify_trait_value(left).strip() != stringify_trait_value(right).strip()
 
 
-def build_trait_review_rows(fields, row, live, cs):
-    overrides = cs.setdefault("trait_overrides", {})
-    rows = []
-    for field in editable_trait_fields(fields):
-        original = row.get(field, "")
-        baseline = live.get(field, original)
-        reviewed = overrides.get(field, baseline)
-        if field in overrides:
-            source = "manual"
-        elif field in live:
-            source = "image/recalculated"
-        else:
-            source = "original"
-        rows.append({
-            "field": field,
-            "original": stringify_trait_value(original),
-            "reviewed_value": stringify_trait_value(reviewed),
-            "source": source,
-        })
-    return rows
-
-
-def edited_records(table):
-    return table.to_dict("records") if hasattr(table, "to_dict") else list(table)
-
-
-def apply_trait_review_table(cs, records, fields, row, live):
-    next_overrides = {}
-    allowed = set(editable_trait_fields(fields))
-    for item in records:
-        field = item.get("field")
-        if field not in allowed:
-            continue
-        reviewed = stringify_trait_value(item.get("reviewed_value", ""))
-        baseline = live.get(field, row.get(field, ""))
-        if values_differ(reviewed, baseline):
-            next_overrides[field] = reviewed
-    cs["trait_overrides"] = next_overrides
-
-
 def reviewed_trait_outputs(folder, stem, state, raw, masks, cen, fields, rows):
     if not fields or not rows:
         return [], [], []
@@ -410,6 +390,7 @@ def reviewed_trait_outputs(folder, stem, state, raw, masks, cen, fields, rows):
     extra_fields = [
         "app_review_status", "app_review_note", "visible_pistil_attached",
         "fold_state_reviewed", "axis_reviewed", "mask_edited",
+        "guide_presence_reviewed", "app_review_complete",
     ]
     out_fields = list(fields)
     for field in extra_fields:
@@ -435,23 +416,14 @@ def reviewed_trait_outputs(folder, stem, state, raw, masks, cen, fields, rows):
                         "reviewed_value": stringify_trait_value(value),
                         "source": "image_recalculation",
                     })
-            for field, value in cs.get("trait_overrides", {}).items():
-                if field not in reviewed:
-                    out_fields.append(field)
-                if values_differ(value, original.get(field, "")):
-                    reviewed[field] = stringify_trait_value(value)
-                    override_rows.append({
-                        "island": island, "sheet": stem, "corolla_id": cid,
-                        "field": field, "original_value": original.get(field, ""),
-                        "reviewed_value": stringify_trait_value(value),
-                        "source": "manual_trait_review",
-                    })
             reviewed["app_review_status"] = "excluded" if cs.get("exclude") else "retained"
             reviewed["app_review_note"] = cs.get("reason", "")
             reviewed["visible_pistil_attached"] = "yes" if cs.get("pistil") else ""
             reviewed["fold_state_reviewed"] = cs.get("fold_state", "")
             reviewed["axis_reviewed"] = "yes" if cs.get("axis_changed") else ""
             reviewed["mask_edited"] = "yes" if mask_was_edited(cs) else ""
+            reviewed["guide_presence_reviewed"] = cs.get("guide_presence_reviewed", "")
+            reviewed["app_review_complete"] = "yes" if cs.get("review_complete") else ""
         reviewed_rows.append(reviewed)
     # Keep dynamically added manual fields only once and in insertion order.
     deduped_fields = []
@@ -498,6 +470,63 @@ def render_crop(raw, mask, cs, cid, box, scale, pending_poly):
     return cv2.cvtColor(big, cv2.COLOR_BGR2RGB), edited
 
 
+def render_organ_sheet(raw, masks, current_cid, candidates, mm_per_px, state):
+    canvas = raw.copy()
+    font_scale = max(0.55, min(canvas.shape[:2]) / 2400.0)
+    for candidate_cid, mask in masks.items():
+        contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        colour = (20, 145, 25) if candidate_cid == current_cid else (150, 150, 150)
+        thickness = 4 if candidate_cid == current_cid else 1
+        cv2.drawContours(canvas, contours, -1, colour, thickness)
+        ys, xs = np.where(mask > 0)
+        if len(xs):
+            cv2.putText(
+                canvas, f"C{candidate_cid}", (int(xs.mean()) - 18, int(ys.mean())),
+                cv2.FONT_HERSHEY_SIMPLEX, font_scale, colour, 2, cv2.LINE_AA,
+            )
+    for row in candidates:
+        line = trait_review.organ_candidate_line(row, mm_per_px)
+        if line is None:
+            continue
+        first, second = (tuple(np.rint(point).astype(int)) for point in line)
+        cv2.line(canvas, first, second, (185, 45, 165), 2, cv2.LINE_AA)
+        midpoint = tuple(np.rint(trait_review.line_midpoint(line)).astype(int))
+        cv2.putText(
+            canvas, f"O{row.get('organ_id', '')}", midpoint,
+            cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.8, (150, 25, 135), 2, cv2.LINE_AA,
+        )
+    for other_cid, other_state in state.items():
+        for organ in other_state.get("detached_organs", []):
+            line = organ.get("line", [])
+            if len(line) != 2:
+                continue
+            first, second = (tuple(np.rint(point).astype(int)) for point in line)
+            cv2.line(canvas, first, second, (195, 105, 20), 2, cv2.LINE_AA)
+            midpoint = tuple(np.rint(trait_review.line_midpoint(line)).astype(int))
+            cv2.putText(
+                canvas, f"C{other_cid}:{organ.get('organ_type', 'unknown')[:1].upper()}", midpoint,
+                cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.75, (160, 75, 10), 2, cv2.LINE_AA,
+            )
+    return canvas
+
+
+def organ_length_summary(cs, mm_per_px):
+    by_type = {"pistil": [], "stamen": []}
+    for source in (cs.get("organ_exclusions", []), cs.get("detached_organs", [])):
+        for organ in source:
+            organ_type = organ.get("organ_type", "unknown")
+            line = organ.get("line", [])
+            if organ_type in by_type and len(line) == 2:
+                by_type[organ_type].append(trait_review.line_length(line) * mm_per_px)
+    output = {}
+    for organ_type, lengths in by_type.items():
+        output[f"n_{organ_type}_measurements"] = len(lengths)
+        output[f"{organ_type}_length_mean_mm"] = (
+            round(float(np.mean(lengths)), 3) if lengths else ""
+        )
+    return output
+
+
 # ----------------------------- export -----------------------------
 def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_rows=None):
     outdir = os.path.join(REVIEW_DIR, sheet_dash(stem), "app_review")
@@ -505,6 +534,7 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
     island, _ = base.ISLANDS.get(folder, (folder, ""))
     axes_rows, hr_rows, excl_rows, corr_rows = [], [], [], []
     measurement_rows, organ_rows, region_rows = [], [], []
+    pollination_rows, reproductive_rows = [], []
     trait_by_cid = trait_rows_by_corolla(trait_rows or [])
     ovr_lines = []
     for cid in sorted(cen):
@@ -516,6 +546,38 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
         original_trait = trait_by_cid.get(cid, {})
         mm_per_px = float(original_trait.get("mm_per_px") or MM_PX)
         trait_review.ensure_measurement_lines(cs, edited, original_trait)
+        core_values = pollination_trait_values(raw, masks[cid], cs, original_trait)
+        presence_reviewed = cs.get("guide_presence_reviewed", "unreviewed")
+        analysis_values = trait_review.reviewed_guide_trait_values(
+            core_values, presence_reviewed
+        )
+        presence_analysis = analysis_values.get("guide_present", "")
+        organ_summary = organ_length_summary(cs, mm_per_px)
+        pollination_rows.append({
+            "island": island,
+            "sheet": stem,
+            "corolla_id": cid,
+            "site_no": original_trait.get("site_no", ""),
+            "individual_id": original_trait.get("individual_id", ""),
+            **{
+                field: stringify_trait_value(analysis_values.get(field, ""))
+                for field, _, _, _ in trait_review.CORE_POLLINATION_TRAITS
+            },
+            "guide_presence_reviewed": presence_reviewed,
+            "guide_present_analysis": presence_analysis,
+            "n_spots": analysis_values.get("n_spots", ""),
+            "guide_cov_incl_oxidized_pct": analysis_values.get(
+                "guide_cov_incl_oxidized_pct", ""
+            ),
+            "brown_frac": core_values.get("brown_frac", ""),
+            "degraded_flag": core_values.get("degraded_flag", ""),
+            **organ_summary,
+            "fold_state_reviewed": cs.get("fold_state", ""),
+            "excluded": "yes" if cs.get("exclude") else "",
+            "review_complete": "yes" if cs.get("review_complete") else "",
+            "scale_qc": original_trait.get("scale_qc", ""),
+            "note": cs.get("reason", ""),
+        })
         axes_rows.append({
             "island": island, "sheet": stem, "corolla_id": cid,
             "base_x": round(cs["axis_base"][0], 3), "base_y": round(cs["axis_base"][1], 3),
@@ -567,8 +629,37 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
                 "organ_type": organ.get("organ_type", "unclassified"),
                 "seed_candidate_id": organ.get("seed_candidate_id", ""),
                 "scope": organ.get("scope", ""), "width_mm": organ.get("width_mm", ""),
+                "length_mm": round(trait_review.line_length(line) * mm_per_px, 3),
                 "x1": round(line[0][0], 3), "y1": round(line[0][1], 3),
                 "x2": round(line[1][0], 3), "y2": round(line[1][1], 3),
+            })
+            reproductive_rows.append({
+                "island": island, "sheet": stem, "corolla_id": cid,
+                "measurement_id": f"overlap-{index}",
+                "source": "attached_or_overlapping",
+                "organ_type": organ.get("organ_type", "unknown"),
+                "identity_status": organ.get("identity_status", "uncertain"),
+                "candidate_id": organ.get("seed_candidate_id", ""),
+                "length_mm": round(trait_review.line_length(line) * mm_per_px, 3),
+                "x1": round(line[0][0], 3), "y1": round(line[0][1], 3),
+                "x2": round(line[1][0], 3), "y2": round(line[1][1], 3),
+                "note": organ.get("note", ""),
+            })
+        for index, organ in enumerate(cs.get("detached_organs", []), start=1):
+            line = organ.get("line", [])
+            if len(line) != 2:
+                continue
+            reproductive_rows.append({
+                "island": island, "sheet": stem, "corolla_id": cid,
+                "measurement_id": f"detached-{index}",
+                "source": "detached_on_sheet",
+                "organ_type": organ.get("organ_type", "unknown"),
+                "identity_status": organ.get("identity_status", "uncertain"),
+                "candidate_id": organ.get("candidate_id", ""),
+                "length_mm": round(trait_review.line_length(line) * mm_per_px, 3),
+                "x1": round(line[0][0], 3), "y1": round(line[0][1], 3),
+                "x2": round(line[1][0], 3), "y2": round(line[1][1], 3),
+                "note": organ.get("note", ""),
             })
         for target, edits in cs.get("region_edits", {}).items():
             region_rows.append({
@@ -604,7 +695,21 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
     _w("reviewed_mask_corrections.csv", corr_rows)
     _w("reviewed_measurement_guides.csv", measurement_rows)
     _w("reviewed_organ_exclusions.csv", organ_rows)
+    _w("reviewed_reproductive_organs.csv", reproductive_rows, [
+        "island", "sheet", "corolla_id", "measurement_id", "source",
+        "organ_type", "identity_status", "candidate_id", "length_mm",
+        "x1", "y1", "x2", "y2", "note",
+    ])
     _w("reviewed_region_corrections.csv", region_rows)
+    _w("reviewed_pollination_traits.csv", pollination_rows, [
+        "island", "sheet", "corolla_id", "site_no", "individual_id",
+        *[field for field, _, _, _ in trait_review.CORE_POLLINATION_TRAITS],
+        "guide_presence_reviewed", "guide_present_analysis", "n_spots",
+        "guide_cov_incl_oxidized_pct", "brown_frac", "degraded_flag",
+        "pistil_length_mean_mm", "n_pistil_measurements",
+        "stamen_length_mean_mm", "n_stamen_measurements",
+        "fold_state_reviewed", "excluded", "review_complete", "scale_qc", "note",
+    ])
     trait_fields_out, reviewed_traits, trait_overrides = reviewed_trait_outputs(
         folder, stem, state, raw, masks, cen, trait_fields or [], trait_rows or []
     )
@@ -620,130 +725,133 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
 
 
 # ----------------------------- UI -----------------------------
-st.set_page_config(page_title="Corolla review", layout="wide")
-st.title("シマホタルブクロ — sheet review / manual correction")
+st.set_page_config(page_title="花形質レビュー", layout="wide")
+st.markdown(
+    """
+    <style>
+      .block-container {padding-top: 1.1rem; padding-bottom: 2.5rem; max-width: 1440px;}
+      [data-testid="stSidebar"] {min-width: 276px; max-width: 320px;}
+      [data-testid="stMetric"] {border-left: 3px solid #2e7d32; padding-left: .7rem;}
+      [data-testid="stMetricValue"] {font-size: 1.65rem;}
+      .stDataFrame {border-top: 1px solid #d6d9dc;}
+      .block-container h2 {font-size: 1.65rem; letter-spacing: 0;}
+      .block-container h3 {font-size: 1.2rem; letter-spacing: 0;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+st.markdown("## シマホタルブクロ花形質レビュー")
 
 sheets = list_sheets()
 if not sheets:
-    st.error(f"No raw scans under {DATA_ROOT}/. Check the data path.")
+    st.error(f"{DATA_ROOT}/ に原画像がありません。")
     st.stop()
 
-labels = [f"{f}/{s}" for f, s, _ in sheets]
-sel = st.sidebar.selectbox("Sheet (ruler rotated to top)", labels, index=labels.index("oshima/oshima10~13") if "oshima/oshima10~13" in labels else 0)
-folder, stem, path = sheets[labels.index(sel)]
+sheet_labels = [f"{folder}/{stem}" for folder, stem, _ in sheets]
+default_sheet = "oshima/oshima10~13"
+selected_sheet = st.sidebar.selectbox(
+    "シート",
+    sheet_labels,
+    index=sheet_labels.index(default_sheet) if default_sheet in sheet_labels else 0,
+)
+folder, stem, path = sheets[sheet_labels.index(selected_sheet)]
 
 overlay_path = find_overlay(folder, stem)
 if overlay_path is None:
-    st.error(
-        f"No canonical PRE-QC overlay for **{folder}/{stem}**. Extract it first:\n\n"
-        f"```\npython qc_single_sheet.py --image \"{path}\" "
-        f"--folder {folder} --out-dir results/review_cache/{sheet_dash(stem)}\n```"
+    st.error(f"{folder}/{stem} のレビュー用オーバーレイがありません。")
+    st.code(
+        f'python qc_single_sheet.py --image "{path}" '
+        f'--folder {folder} --out-dir results/review_cache/{sheet_dash(stem)}'
     )
     st.stop()
+
 raw, masks, cen = load_sheet(folder, stem, path, overlay_path)
 trait_fields, trait_rows = committed_trait_table(stem)
 trait_by_cid = trait_rows_by_corolla(trait_rows)
 organ_candidates = committed_organs(stem)
-st.sidebar.caption(f"overlay: {overlay_path}")
 
 
-def get_preqc(cid):
-    return preqc_axis(stem, cid, masks[cid])
+def get_preqc(corolla_id):
+    return preqc_axis(stem, corolla_id, masks[corolla_id])
 
-if "stem" not in st.session_state or st.session_state.stem != stem:
+
+if st.session_state.get("stem") != stem:
     st.session_state.stem = stem
     st.session_state.state = load_state(stem)
-    st.session_state.pending = []
-    st.session_state.last_click = None
+    st.session_state.editor_generation = 0
 state = st.session_state.state
 
 ids = sorted(cen)
-cid = st.sidebar.selectbox("Corolla", ids, format_func=lambda c: f"C{c}")
-cs = corolla_state(state, cid, get_preqc(cid))
-
-# per-corolla flags live in the sidebar (apply to the selected corolla)
-st.sidebar.divider()
-st.sidebar.subheader(f"C{cid} flags")
-cs["exclude"] = st.sidebar.checkbox("Exclude corolla", value=cs["exclude"])
-cs["reason"] = st.sidebar.text_input("Reason / note", value=cs["reason"])
-fold_state = st.sidebar.radio(
-    "Fold state", ["open", "folded_half"],
-    index=0 if cs["fold_state"] == "open" else 1, horizontal=True,
+cid = st.sidebar.selectbox(
+    "花冠",
+    ids,
+    format_func=lambda value: f"C{value}",
+    key=f"corolla_{stem}",
 )
-if fold_state != cs["fold_state"]:
-    cs["fold_state"] = fold_state
-    cs["fold_changed"] = True
-cs["pistil"] = st.sidebar.checkbox("Visible attached pistil", value=cs["pistil"])
-
+cs = corolla_state(state, cid, get_preqc(cid))
 trait_row = trait_by_cid.get(cid, {})
 mm_per_px = float(trait_row.get("mm_per_px") or MM_PX)
+
+reviewed_count = sum(
+    bool(state.get(str(corolla_id), {}).get("review_complete"))
+    for corolla_id in ids
+)
+st.sidebar.progress(reviewed_count / max(len(ids), 1))
+st.sidebar.caption(f"確認済み {reviewed_count} / {len(ids)}")
+
 edited = apply_mask_edits(masks[cid], cs)
 trait_review.ensure_measurement_lines(cs, edited, trait_row)
 box = bbox_of(edited, 80, raw.shape)
-scale = DISPLAY_W / (box[2] - box[0])
-disp_h = int((box[3] - box[1]) * scale)
-mgen = st.session_state.get("mask_gen", 0)
+scale = DISPLAY_W / max(box[2] - box[0], 1)
+display_height = max(180, int(round((box[3] - box[1]) * scale)))
 crop = raw[box[1]:box[3], box[0]:box[2]].copy()
-image_url = bgr_to_jpeg_data_url(crop, DISPLAY_W, disp_h)
-display_mask = mask_to_display_polygons(edited, box, DISPLAY_W, disp_h)
-
-review_view = st.segmented_control(
-    "Review workspace",
-    ["Axis", "Mask", "Measurements", "Pigment", "Organs", "All traits"],
-    default="Axis",
-    key=f"review_view_{stem}_{cid}",
-    width="stretch",
+image_url = bgr_to_jpeg_data_url(crop, DISPLAY_W, display_height)
+display_mask = mask_to_display_polygons(
+    edited, box, DISPLAY_W, display_height
 )
+editor_generation = int(st.session_state.get("editor_generation", 0))
 
-if review_view == "Axis":
-    c1, c2 = st.columns([3, 1])
-    with c1:
-        atool = st.radio("Set point", ["BASE (throat / top-centre)", "TIP (central lobe)"], horizontal=True)
-        disp, edited = render_crop(raw, masks[cid], cs, cid, box, scale, [])
-        click = click_image(disp, key=f"axis_{stem}_{cid}")
-        if click is not None and click != st.session_state.last_click:
-            st.session_state.last_click = click
-            rx = box[0] + click["x"] / scale
-            ry = box[1] + click["y"] / scale
-            if atool.startswith("BASE"):
-                cs["axis_base"] = [rx, ry]
-            else:
-                cs["axis_tip"] = [rx, ry]
-            cs["axis_changed"] = True
-            for name in list(cs["measurement_lines"]):
-                if name not in cs["measurement_lines_changed"]:
-                    cs["measurement_lines"].pop(name, None)
-            st.rerun()
-    with c2:
-        shape_values = trait_review.shape_trait_values(edited, cs, mm_per_px)
-        st.metric("length mm", shape_values["corolla_length_ruler_mm"])
-        st.metric("width mm", shape_values["corolla_max_span_ruler_mm"])
-        st.metric("area mm²", shape_values["corolla_area_ruler_mm2"])
-        if st.button("Reset axis to PRE-QC", width="stretch"):
-            pa = get_preqc(cid)
-            if pa:
-                cs["axis_base"] = list(map(float, pa[0])); cs["axis_tip"] = list(map(float, pa[1]))
-                cs["axis_changed"] = False
-                for name in list(cs["measurement_lines"]):
-                    if name not in cs["measurement_lines_changed"]:
-                        cs["measurement_lines"].pop(name, None)
-            st.rerun()
 
-elif review_view == "Mask":
-    c1, c2 = st.columns([3, 1])
-    with c1:
-        edit_mode = st.segmented_control(
-            "Mask edit mode", ["Vertices / edges", "Brush"], default="Vertices / edges"
-        )
-        if edit_mode == "Vertices / edges":
-            editor_key = f"edge_{stem}_{cid}_{mgen}"
-            draft_polygons = component_value(st.session_state.get(editor_key), "polygons", display_mask)
+def commit_change():
+    save_state(stem, state)
+    st.session_state.editor_generation = editor_generation + 1
+    st.rerun()
+
+
+status_col, progress_col = st.columns([4, 1])
+with status_col:
+    st.subheader(f"{folder}/{stem}  C{cid}")
+with progress_col:
+    st.metric("状態", "確認済み" if cs.get("review_complete") else "作業中")
+
+stage = st.segmented_control(
+    "レビュー工程",
+    ["マスク", "形", "斑点", "雄しべ・雌しべ", "確認"],
+    default="マスク",
+    key=f"review_stage_{stem}_{cid}",
+    width="stretch",
+) or "マスク"
+
+if stage == "マスク":
+    left, right = st.columns([3, 1])
+    with left:
+        mask_mode = st.segmented_control(
+            "編集",
+            ["境界", "ブラシ"],
+            default="境界",
+            key=f"mask_mode_{stem}_{cid}",
+        ) or "境界"
+        if mask_mode == "境界":
+            editor_key = f"mask_boundary_{stem}_{cid}_{editor_generation}"
+            draft_polygons = component_value(
+                st.session_state.get(editor_key), "polygons", display_mask
+            )
             result = image_editor(
                 key=editor_key,
                 data={
                     "image_url": image_url,
                     "width": DISPLAY_W,
-                    "height": disp_h,
+                    "height": display_height,
                     "mode": "polygon",
                     "polygons": draft_polygons,
                 },
@@ -752,23 +860,39 @@ elif review_view == "Mask":
                 width="stretch",
                 height="content",
             )
-            draft_polygons = component_value(result, "polygons", draft_polygons)
+            draft_polygons = component_value(
+                result, "polygons", draft_polygons
+            )
         else:
-            brush = st.slider("Brush size (px)", 5, 70, 24)
-            paint_effect = st.segmented_control("Paint effect", ["Subtract", "Add"], default="Subtract")
-            editor_key = f"mask_paint_{stem}_{cid}_{mgen}"
-            draft_stroke = component_value(st.session_state.get(editor_key), "stroke", [])
+            brush_size = st.slider(
+                "ブラシ幅",
+                5,
+                70,
+                24,
+                key=f"mask_brush_{stem}_{cid}",
+            )
+            paint_label = st.segmented_control(
+                "処理",
+                ["除く", "足す"],
+                default="除く",
+                key=f"mask_effect_{stem}_{cid}",
+            ) or "除く"
+            paint_effect = {"除く": "subtract", "足す": "add"}[paint_label]
+            editor_key = f"mask_paint_{stem}_{cid}_{editor_generation}"
+            draft_stroke = component_value(
+                st.session_state.get(editor_key), "stroke", []
+            )
             result = image_editor(
                 key=editor_key,
                 data={
                     "image_url": image_url,
                     "width": DISPLAY_W,
-                    "height": disp_h,
+                    "height": display_height,
                     "mode": "paint",
                     "polygons": display_mask,
                     "stroke": draft_stroke,
-                    "brush": brush,
-                    "effect": paint_effect.lower(),
+                    "brush": brush_size,
+                    "effect": paint_effect,
                 },
                 default={"stroke": draft_stroke},
                 on_stroke_change=lambda: None,
@@ -776,81 +900,139 @@ elif review_view == "Mask":
                 height="content",
             )
             draft_stroke = component_value(result, "stroke", draft_stroke)
-    with c2:
-        st.metric("area mm²", round(float(edited.sum()) * mm_per_px * mm_per_px, 2))
-        if edit_mode == "Vertices / edges":
-            if st.button("Apply edge mask", width="stretch"):
-                polygons = display_polygons_to_raw(
-                    draft_polygons, box, DISPLAY_W, disp_h, raw.shape
+
+    with right:
+        current_shape = trait_review.shape_trait_values(
+            edited, cs, mm_per_px
+        )
+        st.metric("花弁面積", f'{current_shape["corolla_area_ruler_mm2"]:.1f} mm2')
+        st.metric("マスク修正", "あり" if mask_was_edited(cs) else "なし")
+        if mask_mode == "境界":
+            if st.button(
+                "境界を適用",
+                type="primary",
+                width="stretch",
+                key=f"apply_boundary_{stem}_{cid}",
+            ):
+                raw_polygons = display_polygons_to_raw(
+                    draft_polygons,
+                    box,
+                    DISPLAY_W,
+                    display_height,
+                    raw.shape,
                 )
-                if polygons:
-                    cs["edge_mask_polys"] = polygons
+                if raw_polygons:
+                    cs["edge_mask_polys"] = raw_polygons
                     cs["edge_mask_changed"] = True
                     cs["add"] = []
                     cs["subtract"] = []
-                    st.session_state.mask_gen = mgen + 1
-                    st.rerun()
-                else:
-                    st.warning("No valid mask polygon was returned.")
-            if st.button("Reset edge mask", width="stretch"):
+                    commit_change()
+                st.warning("有効な境界がありません。")
+            if st.button(
+                "境界を自動値へ戻す",
+                width="stretch",
+                key=f"reset_boundary_{stem}_{cid}",
+            ):
                 cs["edge_mask_polys"] = []
                 cs["edge_mask_changed"] = False
-                st.session_state.mask_gen = mgen + 1
-                st.rerun()
+                cs["add"] = []
+                cs["subtract"] = []
+                commit_change()
         else:
-            if st.button("Apply paint", width="stretch"):
+            if st.button(
+                "ブラシ修正を適用",
+                type="primary",
+                width="stretch",
+                key=f"apply_mask_paint_{stem}_{cid}",
+            ):
                 polygons = stroke_to_raw_polygons(
-                    draft_stroke, brush, box, DISPLAY_W, disp_h
+                    draft_stroke,
+                    brush_size,
+                    box,
+                    DISPLAY_W,
+                    display_height,
                 )
-                target = paint_effect.lower()
                 if polygons:
-                    cs[target].extend(polygons)
-                    st.session_state.mask_gen = mgen + 1
-                    st.rerun()
-            if st.button("Undo last paint edit", width="stretch"):
-                fallback = "add" if paint_effect == "Subtract" else "subtract"
-                for k in (paint_effect.lower(), fallback):
-                    if cs[k]:
-                        cs[k].pop(); break
-                st.session_state.mask_gen = mgen + 1
-                st.rerun()
+                    cs[paint_effect].extend(polygons)
+                    commit_change()
+                st.warning("ブラシ軌跡がありません。")
+            if st.button(
+                "直前のブラシ修正を戻す",
+                width="stretch",
+                key=f"undo_mask_paint_{stem}_{cid}",
+            ):
+                fallback = "add" if paint_effect == "subtract" else "subtract"
+                for operation in (paint_effect, fallback):
+                    if cs[operation]:
+                        cs[operation].pop()
+                        commit_change()
 
-elif review_view == "Measurements":
-    c1, c2 = st.columns([3, 1])
+elif stage == "形":
+    left, right = st.columns([3, 1])
     lines = trait_review.ensure_measurement_lines(cs, edited, trait_row)
-    guide_names = list(trait_review.MEASUREMENT_GUIDES)
-    with c1:
-        selected_guide = st.selectbox(
-            "Measurement guide",
-            guide_names,
-            format_func=lambda name: trait_review.MEASUREMENT_GUIDES[name]["label"],
+    shape_targets = {
+        "花冠長（基部－先端）": "axis",
+        "最大幅": "max_span",
+        "筒の開口幅": "throat_span",
+        "筒の基部幅": "basal_tube_span",
+    }
+    with left:
+        selected_shape_label = st.selectbox(
+            "測定線",
+            list(shape_targets),
+            key=f"shape_target_{stem}_{cid}",
         )
-        line_key = f"measure_{selected_guide}_{stem}_{cid}_{mgen}"
-        initial_line = raw_line_to_display(lines[selected_guide], box, DISPLAY_W, disp_h)
-        draft_line = component_value(st.session_state.get(line_key), "line", initial_line)
-        context_lines = [{
-            "points": raw_line_to_display(
-                [cs["axis_base"], cs["axis_tip"]], box, DISPLAY_W, disp_h
-            ),
-            "colour": "rgba(210,35,35,.65)",
-        }]
-        for name, line in lines.items():
-            if name == selected_guide:
+        selected_shape = shape_targets[selected_shape_label]
+        if selected_shape == "axis":
+            active_raw_line = [cs["axis_base"], cs["axis_tip"]]
+            active_colour = "#d32f2f"
+            endpoint_labels = ["BASE", "TIP"]
+        else:
+            active_raw_line = lines[selected_shape]
+            active_colour = trait_review.MEASUREMENT_GUIDES[selected_shape]["colour"]
+            endpoint_labels = ["END 1", "END 2"]
+
+        context_lines = []
+        if selected_shape != "axis":
+            context_lines.append({
+                "points": raw_line_to_display(
+                    [cs["axis_base"], cs["axis_tip"]],
+                    box,
+                    DISPLAY_W,
+                    display_height,
+                ),
+                "colour": "rgba(211,47,47,.65)",
+            })
+        for guide_name in trait_review.CORE_SHAPE_GUIDES:
+            if guide_name == selected_shape:
                 continue
             context_lines.append({
-                "points": raw_line_to_display(line, box, DISPLAY_W, disp_h),
-                "colour": trait_review.MEASUREMENT_GUIDES[name]["colour"],
+                "points": raw_line_to_display(
+                    lines[guide_name], box, DISPLAY_W, display_height
+                ),
+                "colour": trait_review.MEASUREMENT_GUIDES[guide_name]["colour"],
             })
+
+        editor_key = (
+            f"shape_{selected_shape}_{stem}_{cid}_{editor_generation}"
+        )
+        initial_line = raw_line_to_display(
+            active_raw_line, box, DISPLAY_W, display_height
+        )
+        draft_line = component_value(
+            st.session_state.get(editor_key), "line", initial_line
+        )
         result = image_editor(
-            key=line_key,
+            key=editor_key,
             data={
                 "image_url": image_url,
                 "width": DISPLAY_W,
-                "height": disp_h,
+                "height": display_height,
                 "mode": "line",
                 "polygons": display_mask,
                 "line": draft_line,
-                "line_colour": trait_review.MEASUREMENT_GUIDES[selected_guide]["colour"],
+                "line_colour": active_colour,
+                "line_labels": endpoint_labels,
                 "context_lines": context_lines,
             },
             default={"line": draft_line},
@@ -859,76 +1041,129 @@ elif review_view == "Measurements":
             height="content",
         )
         draft_line = component_value(result, "line", draft_line)
-    with c2:
+
+    with right:
         reviewed_line = display_line_to_raw(
-            draft_line, box, DISPLAY_W, disp_h, raw.shape
+            draft_line, box, DISPLAY_W, display_height, raw.shape
         )
         st.metric(
-            "selected span mm",
-            round(trait_review.line_length(reviewed_line) * mm_per_px, 3),
+            "選択線",
+            f"{trait_review.line_length(reviewed_line) * mm_per_px:.2f} mm",
         )
-        lobe_default = cs.get("flat_n_lobes")
-        if lobe_default is None:
-            lobe_default = int(float(
-                trait_row.get("flat_n_lobes") or trait_row.get("prov_n_lobes") or 5
-            ))
-        lobe_count = st.number_input(
-            "Visible lobe count", 1, 12, int(lobe_default), step=1
-        )
-        if st.button("Apply measurement guide", width="stretch"):
-            if reviewed_line:
-                cs["measurement_lines"][selected_guide] = reviewed_line
-                if selected_guide not in cs["measurement_lines_changed"]:
-                    cs["measurement_lines_changed"].append(selected_guide)
-                cs["flat_n_lobes"] = int(lobe_count)
-                st.session_state.mask_gen = mgen + 1
-                st.rerun()
-        if st.button("Reset selected guide", width="stretch"):
-            automatic = trait_review.automatic_measurement_lines(
-                edited, cs["axis_base"], cs["axis_tip"], trait_row
-            )
-            cs["measurement_lines"][selected_guide] = automatic[selected_guide]
-            if selected_guide in cs["measurement_lines_changed"]:
-                cs["measurement_lines_changed"].remove(selected_guide)
-            st.session_state.mask_gen = mgen + 1
-            st.rerun()
         shape_values = trait_review.shape_trait_values(edited, cs, mm_per_px)
-        st.metric("tube length mm", shape_values["flat_tube_length_mm"])
-        st.metric("lobe length mm", shape_values["flat_lobe_length_mm"])
+        st.metric("花冠長", f'{shape_values["corolla_length_ruler_mm"]:.2f} mm')
+        st.metric("開口幅", f'{shape_values["flat_throat_span_mm"]:.2f} mm')
+        st.metric("相対開口", f'{shape_values["flat_throat_openness"]:.3f}')
+        st.metric("筒テーパー", f'{shape_values["flat_tube_taper_ratio"]:.3f}')
 
-elif review_view == "Pigment":
+        if st.button(
+            "測定線を適用",
+            type="primary",
+            width="stretch",
+            key=f"apply_shape_{selected_shape}_{stem}_{cid}",
+        ):
+            if trait_review.line_length(reviewed_line) <= 1:
+                st.warning("測定線が短すぎます。")
+            elif selected_shape == "axis":
+                cs["axis_base"] = reviewed_line[0]
+                cs["axis_tip"] = reviewed_line[1]
+                cs["axis_changed"] = True
+                for guide_name in list(cs["measurement_lines"]):
+                    if guide_name not in cs["measurement_lines_changed"]:
+                        cs["measurement_lines"].pop(guide_name, None)
+                trait_review.ensure_measurement_lines(cs, edited, trait_row)
+                commit_change()
+            else:
+                cs["measurement_lines"][selected_shape] = reviewed_line
+                if selected_shape not in cs["measurement_lines_changed"]:
+                    cs["measurement_lines_changed"].append(selected_shape)
+                commit_change()
+
+        if st.button(
+            "選択線を自動値へ戻す",
+            width="stretch",
+            key=f"reset_shape_{selected_shape}_{stem}_{cid}",
+        ):
+            if selected_shape == "axis":
+                original_axis = get_preqc(cid)
+                if original_axis:
+                    cs["axis_base"] = list(map(float, original_axis[0]))
+                    cs["axis_tip"] = list(map(float, original_axis[1]))
+                    cs["axis_changed"] = False
+            else:
+                automatic = trait_review.automatic_measurement_lines(
+                    edited,
+                    cs["axis_base"],
+                    cs["axis_tip"],
+                    trait_row,
+                )
+                cs["measurement_lines"][selected_shape] = automatic[selected_shape]
+                if selected_shape in cs["measurement_lines_changed"]:
+                    cs["measurement_lines_changed"].remove(selected_shape)
+            commit_change()
+
+elif stage == "斑点":
     analysis = analysis_mask(masks[cid], cs)
     colour_values, colour_masks = trait_review.colour_trait_values(
         raw, analysis, box, cs, mm_per_px
     )
-    c1, c2 = st.columns([3, 1])
-    with c1:
-        target = st.selectbox(
-            "Region",
-            list(trait_review.REGION_TARGETS),
-            format_func=lambda name: trait_review.REGION_TARGETS[name]["label"],
+    left, right = st.columns([3, 1])
+    target_labels = {
+        "紫色のネクターガイド": "guide",
+        "酸化したガイド": "oxidized",
+        "褐変・劣化": "brown",
+    }
+    presence_labels = {
+        "未判定": "unreviewed",
+        "あり": "present",
+        "なし": "absent",
+        "不明": "uncertain",
+    }
+    current_presence = cs.get("guide_presence_reviewed", "unreviewed")
+    with left:
+        selected_target_label = st.selectbox(
+            "領域",
+            list(target_labels),
+            key=f"region_target_{stem}_{cid}",
         )
-        operation = st.segmented_control(
-            "Region edit", ["Subtract", "Add"], default="Subtract"
+        target = target_labels[selected_target_label]
+        operation_label = st.segmented_control(
+            "処理",
+            ["除く", "足す"],
+            default="除く",
+            key=f"region_operation_{stem}_{cid}",
+        ) or "除く"
+        operation = {"除く": "subtract", "足す": "add"}[operation_label]
+        brush_size = st.slider(
+            "ブラシ幅",
+            3,
+            50,
+            12,
+            key=f"region_brush_{stem}_{cid}",
         )
-        brush = st.slider("Region brush size (px)", 3, 50, 12)
         overlay_crop = trait_review.render_region_overlay(
             raw, analysis, box, colour_masks, target
         )
-        overlay_url = bgr_to_jpeg_data_url(overlay_crop, DISPLAY_W, disp_h)
-        region_key = f"region_{target}_{stem}_{cid}_{mgen}"
-        draft_stroke = component_value(st.session_state.get(region_key), "stroke", [])
+        overlay_url = bgr_to_jpeg_data_url(
+            overlay_crop, DISPLAY_W, display_height
+        )
+        editor_key = (
+            f"region_{target}_{stem}_{cid}_{editor_generation}"
+        )
+        draft_stroke = component_value(
+            st.session_state.get(editor_key), "stroke", []
+        )
         result = image_editor(
-            key=region_key,
+            key=editor_key,
             data={
                 "image_url": overlay_url,
                 "width": DISPLAY_W,
-                "height": disp_h,
+                "height": display_height,
                 "mode": "paint",
                 "polygons": [],
                 "stroke": draft_stroke,
-                "brush": brush,
-                "effect": operation.lower(),
+                "brush": brush_size,
+                "effect": operation,
             },
             default={"stroke": draft_stroke},
             on_stroke_change=lambda: None,
@@ -936,224 +1171,661 @@ elif review_view == "Pigment":
             height="content",
         )
         draft_stroke = component_value(result, "stroke", draft_stroke)
-    with c2:
-        if target == "guide":
-            st.metric("guide coverage %", colour_values["guide_cov_pct"])
-            st.metric("spots", colour_values["n_spots"])
-        elif target == "oxidized":
-            st.metric(
-                "inclusive coverage %", colour_values["guide_cov_incl_oxidized_pct"]
-            )
-            st.metric("oxidized spots", colour_values["n_oxidized_recovered_spots"])
-        else:
-            st.metric("brown fraction", colour_values["brown_frac"])
-            st.metric("degraded", colour_values["degraded_flag"])
-        if st.button("Apply region edit", width="stretch"):
+
+    with right:
+        presence_label = st.selectbox(
+            "ガイド判定",
+            list(presence_labels),
+            index=list(presence_labels.values()).index(current_presence)
+            if current_presence in presence_labels.values()
+            else 0,
+            key=f"guide_presence_{stem}_{cid}",
+        )
+        st.metric("ガイド面積", f'{colour_values["guide_area_mm2"]:.2f} mm2')
+        st.metric("面積率", f'{colour_values["guide_cov_pct"]:.2f}%')
+        st.metric("斑点数", colour_values["n_spots"])
+        st.metric(
+            "酸化込み面積率",
+            f'{colour_values["guide_cov_incl_oxidized_pct"]:.2f}%',
+        )
+        if st.button(
+            "斑点レビューを保存",
+            type="primary",
+            width="stretch",
+            key=f"apply_region_{stem}_{cid}",
+        ):
             polygons = stroke_to_raw_polygons(
-                draft_stroke, brush, box, DISPLAY_W, disp_h
+                draft_stroke,
+                brush_size,
+                box,
+                DISPLAY_W,
+                display_height,
             )
             if polygons:
-                cs["region_edits"][target][operation.lower()].extend(polygons)
-                st.session_state.mask_gen = mgen + 1
-                st.rerun()
-        if st.button("Undo region edit", width="stretch"):
-            fallback = "add" if operation == "Subtract" else "subtract"
-            for name in (operation.lower(), fallback):
-                if cs["region_edits"][target][name]:
-                    cs["region_edits"][target][name].pop()
-                    break
-            st.session_state.mask_gen = mgen + 1
-            st.rerun()
-
-elif review_view == "Organs":
-    c1, c2 = st.columns([3, 1])
-    organ_seed = trait_review.best_organ_candidate(
-        organ_candidates, masks[cid], mm_per_px
-    )
-    with c1:
-        scope_label = st.segmented_control(
-            "Organ exclusion scope",
-            ["Outline + shape", "Pigment only"],
-            default="Outline + shape",
-            key=f"organ_scope_{stem}_{cid}",
-        )
-        organ_type = st.selectbox(
-            "Organ type",
-            ["Unclassified", "Pistil", "Stamen"],
-            key=f"organ_type_{stem}_{cid}",
-        )
-        default_organ_width = round(
-            organ_seed["width_mm"] if organ_seed else 1.5, 1
-        )
-        organ_width_mm = st.slider(
-            "Organ width (mm)",
-            0.5,
-            5.0,
-            float(default_organ_width),
-            0.1,
-            key=f"organ_width_{stem}_{cid}",
-        )
-        organ_key = f"organ_{stem}_{cid}_{mgen}"
-        initial_organ_line = raw_line_to_display(
-            organ_seed["line"] if organ_seed else [cs["axis_base"], cs["axis_tip"]],
-            box,
-            DISPLAY_W,
-            disp_h,
-        )
-        draft_line = component_value(
-            st.session_state.get(organ_key), "line", initial_organ_line
-        )
-        existing_lines = [{
-            "points": raw_line_to_display(item["line"], box, DISPLAY_W, disp_h),
-            "colour": "rgba(210,0,120,.55)",
-        } for item in cs.get("organ_exclusions", []) if len(item.get("line", [])) == 2]
-        result = image_editor(
-            key=organ_key,
-            data={
-                "image_url": image_url,
-                "width": DISPLAY_W,
-                "height": disp_h,
-                "mode": "line",
-                "polygons": display_mask,
-                "line": draft_line,
-                "line_colour": "#d00078",
-                "context_lines": existing_lines,
-            },
-            default={"line": draft_line},
-            on_line_change=lambda: None,
+                cs["region_edits"][target][operation].extend(polygons)
+            cs["guide_presence_reviewed"] = presence_labels[presence_label]
+            commit_change()
+        if st.button(
+            "直前の領域修正を戻す",
             width="stretch",
-            height="content",
-        )
-        draft_line = component_value(result, "line", draft_line)
-    with c2:
-        raw_organ_line = display_line_to_raw(
-            draft_line, box, DISPLAY_W, disp_h, raw.shape
-        )
-        st.metric(
-            "organ length mm",
-            round(trait_review.line_length(raw_organ_line) * mm_per_px, 3),
-        )
-        st.metric("saved exclusions", len(cs.get("organ_exclusions", [])))
-        if st.button("Apply organ exclusion", width="stretch"):
-            if organ_seed and organ_seed.get("polygons"):
-                polygons = trait_review.transform_seed_polygons(
-                    organ_seed["polygons"],
-                    organ_seed["line"],
-                    raw_organ_line,
-                    organ_width_mm / max(organ_seed["width_mm"], 1e-9),
-                    raw.shape,
-                )
-            else:
+            key=f"undo_region_{stem}_{cid}",
+        ):
+            fallback = "add" if operation == "subtract" else "subtract"
+            for candidate_operation in (operation, fallback):
+                if cs["region_edits"][target][candidate_operation]:
+                    cs["region_edits"][target][candidate_operation].pop()
+                    commit_change()
+        if st.button(
+            "この領域を自動値へ戻す",
+            width="stretch",
+            key=f"reset_region_{stem}_{cid}",
+        ):
+            cs["region_edits"][target] = {"add": [], "subtract": []}
+            commit_change()
+
+elif stage == "雄しべ・雌しべ":
+    organ_mode = st.segmented_control(
+        "配置",
+        ["花の中央・重なり", "シート上に外置き"],
+        default="花の中央・重なり",
+        key=f"organ_mode_{stem}_{cid}",
+        width="stretch",
+    ) or "花の中央・重なり"
+    organ_type_labels = {
+        "雌しべ": "pistil",
+        "雄しべ": "stamen",
+        "不明": "unknown",
+        "その他": "artifact",
+    }
+    identity_labels = {
+        "確実": "confirmed",
+        "不確実": "uncertain",
+    }
+
+    if organ_mode == "花の中央・重なり":
+        left, right = st.columns([3, 1])
+        seed_line = [cs["axis_base"], cs["axis_tip"]]
+        with left:
+            editor_key = (
+                f"central_organ_{stem}_{cid}_{editor_generation}"
+            )
+            initial_line = raw_line_to_display(
+                seed_line, box, DISPLAY_W, display_height
+            )
+            draft_line = component_value(
+                st.session_state.get(editor_key), "line", initial_line
+            )
+            context_lines = [
+                {
+                    "points": raw_line_to_display(
+                        item["line"], box, DISPLAY_W, display_height
+                    ),
+                    "colour": "rgba(230,126,34,.65)",
+                }
+                for item in cs.get("organ_exclusions", [])
+                if len(item.get("line", [])) == 2
+            ]
+            result = image_editor(
+                key=editor_key,
+                data={
+                    "image_url": image_url,
+                    "width": DISPLAY_W,
+                    "height": display_height,
+                    "mode": "line",
+                    "polygons": display_mask,
+                    "line": draft_line,
+                    "line_colour": "#e65100",
+                    "line_labels": ["BASE", "TIP"],
+                    "context_lines": context_lines,
+                },
+                default={"line": draft_line},
+                on_line_change=lambda: None,
+                width="stretch",
+                height="content",
+            )
+            draft_line = component_value(result, "line", draft_line)
+
+        with right:
+            selected_type_label = st.selectbox(
+                "器官",
+                list(organ_type_labels),
+                key=f"central_type_{stem}_{cid}",
+            )
+            selected_identity_label = st.selectbox(
+                "同定",
+                list(identity_labels),
+                key=f"central_identity_{stem}_{cid}",
+            )
+            scope_label = st.segmented_control(
+                "除外範囲",
+                ["形・面積と斑点", "斑点のみ"],
+                default="形・面積と斑点",
+                key=f"central_scope_{stem}_{cid}",
+            ) or "形・面積と斑点"
+            organ_width_mm = st.slider(
+                "器官幅 (mm)",
+                0.5,
+                5.0,
+                1.5,
+                0.1,
+                key=f"central_width_{stem}_{cid}",
+            )
+            organ_note = st.text_input(
+                "メモ",
+                key=f"central_note_{stem}_{cid}",
+            )
+            raw_organ_line = display_line_to_raw(
+                draft_line,
+                box,
+                DISPLAY_W,
+                display_height,
+                raw.shape,
+            )
+            st.metric(
+                "器官長",
+                f"{trait_review.line_length(raw_organ_line) * mm_per_px:.2f} mm",
+            )
+            st.metric("保存数", len(cs.get("organ_exclusions", [])))
+            if st.button(
+                "中央器官を保存",
+                type="primary",
+                width="stretch",
+                key=f"save_central_organ_{stem}_{cid}",
+            ):
                 polygons = buffered_line_polygon(
                     raw_organ_line,
                     organ_width_mm / max(mm_per_px, 1e-9),
                     raw.shape,
                 )
-            if polygons:
-                cs["organ_exclusions"].append({
-                    "line": raw_organ_line,
-                    "width_mm": float(organ_width_mm),
-                    "organ_type": organ_type.lower(),
-                    "seed_candidate_id": organ_seed["candidate_id"] if organ_seed else "",
-                    "scope": (
-                        "outline" if scope_label == "Outline + shape" else "pigment"
-                    ),
-                    "polygons": polygons,
-                })
-                st.session_state.mask_gen = mgen + 1
-                st.rerun()
-        if st.button("Undo organ exclusion", width="stretch"):
-            if cs["organ_exclusions"]:
-                cs["organ_exclusions"].pop()
-                st.session_state.mask_gen = mgen + 1
-                st.rerun()
+                if polygons:
+                    organ_type = organ_type_labels[selected_type_label]
+                    cs["organ_exclusions"].append({
+                        "line": raw_organ_line,
+                        "width_mm": float(organ_width_mm),
+                        "organ_type": organ_type,
+                        "identity_status": identity_labels[
+                            selected_identity_label
+                        ],
+                        "seed_candidate_id": "",
+                        "scope": (
+                            "outline"
+                            if scope_label == "形・面積と斑点"
+                            else "pigment"
+                        ),
+                        "polygons": polygons,
+                        "note": organ_note,
+                    })
+                    if organ_type == "pistil":
+                        cs["pistil"] = True
+                    commit_change()
+                st.warning("有効な器官線がありません。")
 
-elif review_view == "All traits":
-    if not trait_fields or not trait_row:
-        st.info("No committed traits.csv row was found for this corolla.")
-    else:
-        live_updates = current_trait_updates(
-            raw, masks[cid], cs, trait_row, preview=True
-        )
-        c1, c2 = st.columns([3, 1])
-        with c1:
-            review_rows = build_trait_review_rows(
-                trait_fields, trait_row, live_updates, cs
-            )
-            edited_table = st.data_editor(
-                review_rows,
+        central_saved = cs.get("organ_exclusions", [])
+        if central_saved:
+            st.dataframe(
+                [
+                    {
+                        "番号": index + 1,
+                        "器官": item.get("organ_type", "unknown"),
+                        "長さ mm": round(
+                            trait_review.line_length(item.get("line", []))
+                            * mm_per_px,
+                            3,
+                        ),
+                        "同定": item.get("identity_status", "uncertain"),
+                        "除外": item.get("scope", ""),
+                    }
+                    for index, item in enumerate(central_saved)
+                ],
                 hide_index=True,
                 width="stretch",
-                height=600,
-                disabled=["field", "original", "source"],
-                column_config={
-                    "field": st.column_config.TextColumn("trait"),
-                    "original": st.column_config.TextColumn("original"),
-                    "reviewed_value": st.column_config.TextColumn("reviewed"),
-                    "source": st.column_config.TextColumn("source"),
-                },
-                key=f"traits_{stem}_{cid}_all",
             )
-        with c2:
-            shape_values = trait_review.shape_trait_values(edited, cs, mm_per_px)
-            st.metric(
-                "reviewed length mm",
-                live_updates.get(
-                    "corolla_length_ruler_mm", shape_values["corolla_length_ruler_mm"]
+            remove_central = st.selectbox(
+                "削除する中央器官",
+                list(range(len(central_saved))),
+                format_func=lambda index: (
+                    f'{index + 1}: {central_saved[index].get("organ_type", "unknown")}'
                 ),
+                key=f"remove_central_{stem}_{cid}",
             )
-            st.metric(
-                "reviewed width mm",
-                live_updates.get(
-                    "corolla_max_span_ruler_mm", shape_values["corolla_max_span_ruler_mm"]
-                ),
+            if st.button(
+                "選択した中央器官を削除",
+                key=f"delete_central_{stem}_{cid}",
+            ):
+                central_saved.pop(remove_central)
+                commit_change()
+
+    else:
+        assigned_candidates = {}
+        for assigned_cid, assigned_state in state.items():
+            for organ in assigned_state.get("detached_organs", []):
+                candidate_id = str(organ.get("candidate_id", ""))
+                if candidate_id:
+                    assigned_candidates[candidate_id] = str(assigned_cid)
+
+        candidate_by_id = {
+            str(row.get("organ_id")): row
+            for row in organ_candidates
+            if str(row.get("organ_id", "")).strip()
+            and (
+                str(row.get("organ_id")) not in assigned_candidates
+                or assigned_candidates[str(row.get("organ_id"))] == str(cid)
             )
-            st.metric(
-                "reviewed area mm²",
-                live_updates.get(
-                    "corolla_area_ruler_mm2", shape_values["corolla_area_ruler_mm2"]
-                ),
-            )
-            if st.button("Apply trait edits", width="stretch"):
-                apply_trait_review_table(
-                    cs,
-                    edited_records(edited_table),
-                    trait_fields,
-                    trait_row,
-                    live_updates,
+        }
+        nearest = trait_review.nearest_detached_organ_candidate(
+            organ_candidates,
+            masks[cid],
+            mm_per_px,
+            used_ids=[
+                candidate_id
+                for candidate_id, assigned_cid in assigned_candidates.items()
+                if assigned_cid != str(cid)
+            ],
+        )
+        candidate_options = ["manual"] + sorted(
+            candidate_by_id,
+            key=lambda value: (
+                (0, int(value)) if value.isdigit() else (1, value)
+            ),
+        )
+        default_candidate = (
+            str(nearest["candidate_id"])
+            if nearest
+            and str(nearest["candidate_id"]) in candidate_by_id
+            and str(
+                candidate_by_id[str(nearest["candidate_id"])].get(
+                    "nearest_corolla", ""
                 )
-                st.rerun()
-            if st.button("Reset trait edits", width="stretch"):
-                cs["trait_overrides"] = {}
-                st.rerun()
-            st.write(f"manual overrides: {len(cs.get('trait_overrides', {}))}")
+            ) == str(cid)
+            else "manual"
+        )
+
+        left, right = st.columns([3, 1])
+        with left:
+            selected_candidate = st.selectbox(
+                "検出候補",
+                candidate_options,
+                index=candidate_options.index(default_candidate),
+                format_func=lambda value: (
+                    "手動線"
+                    if value == "manual"
+                    else (
+                        f'O{value}  候補C'
+                        f'{candidate_by_id[value].get("nearest_corolla", "")}'
+                    )
+                ),
+                key=(
+                    f"detached_candidate_{stem}_{cid}_{editor_generation}"
+                ),
+            )
+            existing_candidate = next(
+                (
+                    item
+                    for item in cs.get("detached_organs", [])
+                    if str(item.get("candidate_id", "")) == selected_candidate
+                ),
+                None,
+            )
+            candidate_row = candidate_by_id.get(selected_candidate)
+            candidate_line = (
+                trait_review.organ_candidate_line(candidate_row, mm_per_px)
+                if candidate_row
+                else None
+            )
+            initial_raw_line = (
+                existing_candidate.get("line")
+                if existing_candidate
+                else candidate_line
+                if candidate_line
+                else [cs["axis_base"], cs["axis_tip"]]
+            )
+
+            sheet_canvas = render_organ_sheet(
+                raw,
+                masks,
+                cid,
+                organ_candidates,
+                mm_per_px,
+                state,
+            )
+            sheet_height = max(
+                240,
+                int(round(raw.shape[0] * SHEET_DISPLAY_W / raw.shape[1])),
+            )
+            sheet_url = bgr_to_jpeg_data_url(
+                sheet_canvas, SHEET_DISPLAY_W, sheet_height
+            )
+            sheet_box = (0, 0, raw.shape[1], raw.shape[0])
+            editor_key = (
+                f"detached_organ_{selected_candidate}_{stem}_{cid}_"
+                f"{editor_generation}"
+            )
+            initial_line = raw_line_to_display(
+                initial_raw_line,
+                sheet_box,
+                SHEET_DISPLAY_W,
+                sheet_height,
+            )
+            draft_line = component_value(
+                st.session_state.get(editor_key), "line", initial_line
+            )
+            result = image_editor(
+                key=editor_key,
+                data={
+                    "image_url": sheet_url,
+                    "width": SHEET_DISPLAY_W,
+                    "height": sheet_height,
+                    "mode": "line",
+                    "polygons": [],
+                    "line": draft_line,
+                    "line_colour": "#1565c0",
+                    "line_labels": ["BASE", "TIP"],
+                    "context_lines": [],
+                },
+                default={"line": draft_line},
+                on_line_change=lambda: None,
+                width="stretch",
+                height="content",
+            )
+            draft_line = component_value(result, "line", draft_line)
+
+        with right:
+            selected_type_label = st.selectbox(
+                "器官",
+                list(organ_type_labels),
+                key=f"detached_type_{stem}_{cid}",
+            )
+            selected_identity_label = st.selectbox(
+                "同定",
+                list(identity_labels),
+                key=f"detached_identity_{stem}_{cid}",
+            )
+            detached_note = st.text_input(
+                "メモ",
+                key=f"detached_note_{stem}_{cid}",
+            )
+            raw_detached_line = display_line_to_raw(
+                draft_line,
+                sheet_box,
+                SHEET_DISPLAY_W,
+                sheet_height,
+                raw.shape,
+            )
+            st.metric(
+                "器官長",
+                f"{trait_review.line_length(raw_detached_line) * mm_per_px:.2f} mm",
+            )
+            if st.button(
+                "この花へ対応付け",
+                type="primary",
+                width="stretch",
+                key=f"save_detached_{stem}_{cid}",
+            ):
+                if trait_review.line_length(raw_detached_line) <= 1:
+                    st.warning("器官線が短すぎます。")
+                else:
+                    record = {
+                        "line": raw_detached_line,
+                        "organ_type": organ_type_labels[selected_type_label],
+                        "identity_status": identity_labels[
+                            selected_identity_label
+                        ],
+                        "candidate_id": (
+                            "" if selected_candidate == "manual"
+                            else selected_candidate
+                        ),
+                        "note": detached_note,
+                    }
+                    if existing_candidate:
+                        existing_candidate.update(record)
+                    else:
+                        cs["detached_organs"].append(record)
+                    commit_change()
+
+        detached_saved = cs.get("detached_organs", [])
+        if detached_saved:
+            st.dataframe(
+                [
+                    {
+                        "番号": index + 1,
+                        "候補": item.get("candidate_id", "manual") or "manual",
+                        "器官": item.get("organ_type", "unknown"),
+                        "長さ mm": round(
+                            trait_review.line_length(item.get("line", []))
+                            * mm_per_px,
+                            3,
+                        ),
+                        "同定": item.get("identity_status", "uncertain"),
+                    }
+                    for index, item in enumerate(detached_saved)
+                ],
+                hide_index=True,
+                width="stretch",
+            )
+            remove_detached = st.selectbox(
+                "削除する外置き器官",
+                list(range(len(detached_saved))),
+                format_func=lambda index: (
+                    f'{index + 1}: '
+                    f'{detached_saved[index].get("candidate_id", "manual") or "manual"}'
+                ),
+                key=f"remove_detached_{stem}_{cid}",
+            )
+            if st.button(
+                "選択した外置き器官を削除",
+                key=f"delete_detached_{stem}_{cid}",
+            ):
+                detached_saved.pop(remove_detached)
+                commit_change()
+
+elif stage == "確認":
+    live_values = pollination_trait_values(
+        raw, masks[cid], cs, trait_row
+    )
+    presence_review = cs.get("guide_presence_reviewed", "unreviewed")
+    analysis_values = trait_review.reviewed_guide_trait_values(
+        live_values, presence_review
+    )
+    presence_display = {
+        "unreviewed": "未判定",
+        "present": "あり",
+        "absent": "なし",
+        "uncertain": "不明",
+    }.get(presence_review, presence_review)
+    category_labels = {
+        "Size": "花サイズ",
+        "Access": "開口・形",
+        "Guide": "ネクターガイド",
+    }
+    core_rows = []
+    for field, label, unit, category in trait_review.CORE_POLLINATION_TRAITS:
+        value = analysis_values.get(field, "")
+        core_rows.append({
+            "区分": category_labels[category],
+            "形質": label,
+            "値": value,
+            "単位": unit,
+        })
+
+    organ_summary = organ_length_summary(cs, mm_per_px)
+    top_metrics = st.columns(4)
+    top_metrics[0].metric(
+        "花冠長",
+        f'{live_values.get("corolla_length_ruler_mm", 0):.2f} mm',
+    )
+    top_metrics[1].metric(
+        "開口幅",
+        f'{live_values.get("flat_throat_span_mm", 0):.2f} mm',
+    )
+    top_metrics[2].metric(
+        "ガイド面積率",
+        (
+            f'{analysis_values.get("guide_cov_pct", 0):.2f}%'
+            if analysis_values.get("guide_cov_pct", "") != ""
+            else "判定保留"
+        ),
+    )
+    top_metrics[3].metric("ガイド判定", presence_display)
+
+    left, right = st.columns([3, 1])
+    with left:
+        st.dataframe(
+            core_rows,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "区分": st.column_config.TextColumn("区分"),
+                "形質": st.column_config.TextColumn("送粉関連形質"),
+                "値": st.column_config.TextColumn("レビュー値"),
+                "単位": st.column_config.TextColumn("単位"),
+            },
+        )
+        st.dataframe(
+            [
+                {
+                    "器官": "雌しべ",
+                    "平均長 mm": organ_summary["pistil_length_mean_mm"],
+                    "測定数": organ_summary["n_pistil_measurements"],
+                },
+                {
+                    "器官": "雄しべ",
+                    "平均長 mm": organ_summary["stamen_length_mean_mm"],
+                    "測定数": organ_summary["n_stamen_measurements"],
+                },
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+
+    with right:
+        fold_labels = {
+            "展開": "open",
+            "半分折り": "folded_half",
+        }
+        selected_fold_label = st.radio(
+            "花冠の状態",
+            list(fold_labels),
+            index=(
+                1 if cs.get("fold_state") == "folded_half" else 0
+            ),
+            horizontal=True,
+            key=f"qc_fold_{stem}_{cid}",
+        )
+        visible_pistil = st.checkbox(
+            "中央に雌しべが見える",
+            value=bool(cs.get("pistil")),
+            key=f"qc_pistil_{stem}_{cid}",
+        )
+        exclude_corolla = st.checkbox(
+            "この花冠を除外",
+            value=bool(cs.get("exclude")),
+            key=f"qc_exclude_{stem}_{cid}",
+        )
+        review_note = st.text_area(
+            "レビュー記録",
+            value=cs.get("reason", ""),
+            key=f"qc_note_{stem}_{cid}",
+        )
+        review_complete = st.checkbox(
+            "この花冠のレビュー完了",
+            value=bool(cs.get("review_complete")),
+            key=f"qc_complete_{stem}_{cid}",
+        )
+        if st.button(
+            "確認内容を保存",
+            type="primary",
+            width="stretch",
+            key=f"save_qc_{stem}_{cid}",
+        ):
+            new_fold = fold_labels[selected_fold_label]
+            if new_fold != cs.get("fold_state"):
+                cs["fold_changed"] = True
+            cs["fold_state"] = new_fold
+            cs["pistil"] = visible_pistil
+            cs["exclude"] = exclude_corolla
+            cs["reason"] = review_note
+            cs["review_complete"] = review_complete
+            commit_change()
 
 st.sidebar.divider()
-if st.sidebar.button("💾 Save state", width="stretch"):
-    save_state(stem, state); st.sidebar.success("Saved state JSON")
-if st.sidebar.button("⤓ Export reviewed CSVs + axis snippet", width="stretch"):
+if st.sidebar.button(
+    "作業状態を保存",
+    width="stretch",
+    key=f"save_state_{stem}",
+):
     save_state(stem, state)
-    outdir = export_all(folder, stem, state, raw, masks, cen, trait_fields, trait_rows)
-    st.sidebar.success(f"Exported → {outdir}")
+    st.sidebar.success("保存しました")
 
-# full-sheet preview (uses only already-reviewed state; no bulk axis compute)
-with st.expander("Full-sheet preview (reviewed so far)"):
+if st.sidebar.button(
+    "レビューCSVを書き出す",
+    type="primary",
+    width="stretch",
+    key=f"export_state_{stem}",
+):
+    save_state(stem, state)
+    export_dir = export_all(
+        folder,
+        stem,
+        state,
+        raw,
+        masks,
+        cen,
+        trait_fields,
+        trait_rows,
+    )
+    st.sidebar.success(f"{export_dir} に書き出しました")
+
+with st.expander("シート全体"):
     canvas = raw.copy()
-    for c in ids:
-        s = state.get(str(c))
-        m = apply_mask_edits(masks[c], s) if s else masks[c]
-        cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        excl = bool(s and s["exclude"])
-        cv2.drawContours(canvas, cnts, -1, (0, 0, 230) if excl else (0, 190, 0), 3)
-        if s and not excl and (s["axis_changed"] or c == cid):
-            b, t = s["axis_base"], s["axis_tip"]
-            cv2.arrowedLine(canvas, (int(b[0]), int(b[1])), (int(t[0]), int(t[1])),
-                            (0, 0, 220) if c == cid else (70, 70, 70), 3, cv2.LINE_AA, tipLength=0.03)
-        ys, xs = np.where(m > 0)
+    for preview_cid in ids:
+        preview_state = state.get(str(preview_cid))
+        preview_mask = (
+            apply_mask_edits(masks[preview_cid], preview_state)
+            if preview_state
+            else masks[preview_cid]
+        )
+        contours, _ = cv2.findContours(
+            preview_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        excluded = bool(preview_state and preview_state.get("exclude"))
+        reviewed = bool(
+            preview_state and preview_state.get("review_complete")
+        )
+        outline_colour = (
+            (0, 0, 210)
+            if excluded
+            else (30, 125, 220)
+            if reviewed
+            else (0, 175, 0)
+        )
+        cv2.drawContours(canvas, contours, -1, outline_colour, 3)
+        ys, xs = np.where(preview_mask > 0)
         if len(xs):
-            lab = f"C{c}" + (" EXCL" if excl else "") + (" +p" if (s and s["pistil"]) else "")
-            cv2.putText(canvas, lab, (int(xs.mean()) - 30, int(ys.mean())),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
-    sc = 1100 / max(canvas.shape[:2])
-    st.image(cv2.cvtColor(cv2.resize(canvas, None, fx=sc, fy=sc), cv2.COLOR_BGR2RGB),
-             caption=f"{folder}/{stem}", width="stretch")
+            label = f"C{preview_cid}"
+            if reviewed:
+                label += " OK"
+            if excluded:
+                label += " EXCL"
+            cv2.putText(
+                canvas,
+                label,
+                (int(xs.mean()) - 30, int(ys.mean())),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                outline_colour,
+                2,
+                cv2.LINE_AA,
+            )
+    preview_scale = 1100 / max(canvas.shape[:2])
+    preview = cv2.resize(
+        canvas,
+        None,
+        fx=preview_scale,
+        fy=preview_scale,
+        interpolation=cv2.INTER_AREA,
+    )
+    st.image(
+        cv2.cvtColor(preview, cv2.COLOR_BGR2RGB),
+        caption=f"{folder}/{stem}",
+        width="stretch",
+    )
