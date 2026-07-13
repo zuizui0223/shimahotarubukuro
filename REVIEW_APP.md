@@ -35,15 +35,19 @@ python qc_single_sheet.py --image "shimahotarubukuro/oshima/oshima10~13.jpg" \
 2. **Axis tab (click)** — pick *BASE* or *TIP* and click the point on the flower.
    Put the base at the throat/top-centre and the tip on the true central-lobe tip.
    *Reset axis to PRE-QC* restores the automatic axis.
-3. **Mask tab (drag to paint)** — set a brush size, choose *SUBTRACT* (erase
-   shadow/noise) or *ADD* (recover tissue), then **drag over the region** on the
-   flower and press **Apply paint**. The stroke is converted to a mask polygon;
-   *Undo last mask edit* reverts one. (Drag painting uses `streamlit-drawable-canvas`.)
-4. Live **length / width / area (mm)** update as you edit (300 DPI scale).
+3. **Mask tab (edge/paint)** — use *EDGE* to select the green mask object, drag or
+   transform it, then press **Apply edge mask**. Use *PAINT* for local
+   *SUBTRACT*/*ADD* brush corrections. Applying an edge mask bakes the current
+   paint state into the new mask outline; paint can still be added afterward.
+4. **Traits tab** — review every measurement column from the committed
+   `traits.csv`. The app shows the original value, the reviewed value, and whether
+   the value came from the original table, the current mask/axis, or a manual edit.
+5. Live **length / width / area (mm)** update as you edit (300 DPI scale).
 6. **Save state** persists to `results/review_state/<sheet>.json` (resume later).
 7. **Export** writes `results/reviewed/<sheet>/app_review/`:
    `reviewed_axes.csv`, `human_review.csv`, `reviewed_exclusions.csv`,
-   `reviewed_mask_corrections.csv`, and `axis_overrides_snippet.py` (paste into
+   `reviewed_mask_corrections.csv`, `reviewed_traits.csv`,
+   `reviewed_trait_overrides.csv`, and `axis_overrides_snippet.py` (paste into
    `REVIEWED_AXIS_OVERRIDES`).
 
 Reviewed decisions are per corolla and never touch the others — the automatic PRE-QC
@@ -69,5 +73,5 @@ Two caveats on Cloud:
 
 - Orientation is derived from the overlay + committed centroids (robust to the
   per-sheet `SHEET_ROTATION`), so masks/axes always line up with the raw scan.
-- Mask edits store polygons (not new segmentations); the accepted outline stays the
-  base and your polygons are subtracted/added on top.
+- Mask edits store polygons (not new segmentations). Edge edits replace the
+  corolla mask base; paint edits are subtracted/added on top.

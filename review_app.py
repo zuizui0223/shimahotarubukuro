@@ -41,6 +41,25 @@ REVIEW_DIR = "results/reviewed"
 STATE_DIR = "results/review_state"
 ISLAND_FOLDERS = ("oshima", "toshima", "niijima", "shikinejima", "kozushima")
 DISPLAY_W = 720
+LOCKED_TRAIT_FIELDS = {
+    "island", "region_order", "sheet", "corolla_id", "cx", "cy",
+    "source_component_id", "split_piece", "split_status",
+}
+MEASUREMENT_TOKENS = (
+    "_mm", "_mm2", "_pct", "_rel", "_ratio", "_frac", "_flag",
+    "area", "aspect", "brown", "confidence", "density", "diam",
+    "depth", "extent", "guide", "length", "lobes", "mouth", "n_",
+    "scale", "slenderness", "solidity", "span", "spot", "tube",
+    "width", "wl_ratio",
+)
+LIVE_TRAIT_FIELDS = {
+    "corolla_len_mm": "length_mm",
+    "corolla_width_mm": "width_mm",
+    "corolla_area_mm2": "area_mm2",
+    "corolla_length_ruler_mm": "length_mm",
+    "corolla_max_span_ruler_mm": "width_mm",
+    "corolla_area_ruler_mm2": "area_mm2",
+}
 os.makedirs(STATE_DIR, exist_ok=True)
 
 
@@ -58,10 +77,28 @@ def list_sheets():
 
 
 def committed_traits(stem: str):
+    _, rows = committed_trait_table(stem)
+    return rows or None
+
+
+@st.cache_data(show_spinner=False)
+def committed_trait_table(stem: str):
     path = os.path.join(REVIEW_DIR, sheet_dash(stem), "traits.csv")
     if not os.path.exists(path):
-        return None
-    return list(csv.DictReader(open(path, encoding="utf-8-sig")))
+        return [], []
+    with open(path, newline="", encoding="utf-8-sig") as fh:
+        reader = csv.DictReader(fh)
+        return list(reader.fieldnames or []), list(reader)
+
+
+def trait_rows_by_corolla(rows):
+    out = {}
+    for row in rows:
+        try:
+            out[int(row["corolla_id"])] = row
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
 
 
 def find_overlay(folder: str, stem: str):
@@ -200,18 +237,99 @@ def corolla_state(state, cid, preqc_axis):
             "exclude": False, "reason": "",
             "fold_state": "open", "pistil": False,
             "subtract": [], "add": [],
+            "edge_mask_polys": [], "edge_mask_changed": False,
+            "trait_overrides": {},
         }
-    return state[key]
+    cs = state[key]
+    cs.setdefault("subtract", [])
+    cs.setdefault("add", [])
+    cs.setdefault("edge_mask_polys", [])
+    cs.setdefault("edge_mask_changed", bool(cs.get("edge_mask_poly")))
+    if cs.get("edge_mask_poly") and not cs["edge_mask_polys"]:
+        cs["edge_mask_polys"] = [cs.pop("edge_mask_poly")]
+    cs.setdefault("trait_overrides", {})
+    return cs
 
 
 # ----------------------------- geometry / rendering -----------------------------
+def mask_was_edited(cs):
+    return bool(cs.get("edge_mask_polys") or cs.get("subtract") or cs.get("add"))
+
+
 def apply_mask_edits(mask, cs):
-    m = mask.copy()
+    m = np.zeros_like(mask, dtype=np.uint8) if cs.get("edge_mask_polys") else mask.copy()
+    for poly in cs.get("edge_mask_polys", []):
+        cv2.fillPoly(m, [np.array(poly, np.int32)], 1)
     for poly in cs.get("add", []):
         cv2.fillPoly(m, [np.array(poly, np.int32)], 1)
     for poly in cs.get("subtract", []):
         cv2.fillPoly(m, [np.array(poly, np.int32)], 0)
     return m
+
+
+def mask_to_canvas_drawing(mask, box, width, height):
+    x0, y0, x1, y1 = box
+    crop = mask[y0:y1, x0:x1].astype(np.uint8)
+    disp = cv2.resize(crop, (width, height), interpolation=cv2.INTER_NEAREST)
+    cnts, _ = cv2.findContours(disp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    objects = []
+    for cnt in sorted(cnts, key=cv2.contourArea, reverse=True):
+        if cv2.contourArea(cnt) < 40:
+            continue
+        eps = max(1.5, 0.004 * cv2.arcLength(cnt, True))
+        approx = cv2.approxPolyDP(cnt, eps, True)
+        if len(approx) < 3:
+            continue
+        pts = approx[:, 0, :].astype(float)
+        minx, miny = pts.min(axis=0)
+        maxx, maxy = pts.max(axis=0)
+        objects.append({
+            "type": "polygon",
+            "version": "4.4.0",
+            "originX": "left",
+            "originY": "top",
+            "left": float(minx),
+            "top": float(miny),
+            "width": float(maxx - minx),
+            "height": float(maxy - miny),
+            "fill": "rgba(0,190,0,0.28)",
+            "stroke": "rgba(0,120,0,0.95)",
+            "strokeWidth": 3,
+            "strokeUniform": True,
+            "transparentCorners": False,
+            "objectCaching": False,
+            "points": [{"x": float(x - minx), "y": float(y - miny)} for x, y in pts],
+        })
+    return {"version": "4.4.0", "objects": objects}
+
+
+def canvas_image_to_mask_polys(image_data, box, shape):
+    x0, y0, x1, y1 = box
+    rgba = np.asarray(image_data)
+    if rgba.ndim != 3 or rgba.shape[2] < 4:
+        return []
+    r, g, b, a = [rgba[..., i].astype(np.int16) for i in range(4)]
+    drawn = ((a > 12) & (g > r + 18) & (g > b + 8)).astype(np.uint8)
+    if int(drawn.sum()) < 20:
+        drawn = (a > 12).astype(np.uint8)
+    drawn = cv2.morphologyEx(drawn, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    crop_w, crop_h = x1 - x0, y1 - y0
+    mask_crop = cv2.resize(drawn, (crop_w, crop_h), interpolation=cv2.INTER_NEAREST)
+    cnts, _ = cv2.findContours(mask_crop, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    polys = []
+    for cnt in sorted(cnts, key=cv2.contourArea, reverse=True):
+        if cv2.contourArea(cnt) < 15:
+            continue
+        eps = max(1.0, 0.0025 * cv2.arcLength(cnt, True))
+        approx = cv2.approxPolyDP(cnt, eps, True)
+        poly = []
+        for [[px, py]] in approx:
+            gx = min(max(float(px + x0), 0.0), float(shape[1] - 1))
+            gy = min(max(float(py + y0), 0.0), float(shape[0] - 1))
+            poly.append([gx, gy])
+        if len(poly) >= 3:
+            polys.append(poly)
+    return polys
 
 
 def corolla_traits(mask, base_xy, tip_xy):
@@ -227,6 +345,146 @@ def corolla_traits(mask, base_xy, tip_xy):
         perp = pts @ normal
         width_mm = float(perp.max() - perp.min()) * MM_PX
     return dict(area_mm2=round(area_mm2, 1), length_mm=round(length_mm, 2), width_mm=round(width_mm, 2))
+
+
+def live_trait_updates(tr, cs, row):
+    if not (cs.get("axis_changed") or mask_was_edited(cs)):
+        return {}
+    updates = {}
+    for field, key in LIVE_TRAIT_FIELDS.items():
+        if field in row:
+            updates[field] = tr[key]
+    if "wl_ratio" in row and tr["length_mm"]:
+        updates["wl_ratio"] = round(tr["width_mm"] / tr["length_mm"], 3)
+    if "exclude" in row:
+        updates["exclude"] = "yes" if cs.get("exclude") else row.get("exclude", "")
+    return updates
+
+
+def trait_is_measurement(field):
+    name = field.lower()
+    return any(token in name for token in MEASUREMENT_TOKENS)
+
+
+def editable_trait_fields(fields, *, measurements_only=True):
+    out = [field for field in fields if field not in LOCKED_TRAIT_FIELDS]
+    if measurements_only:
+        out = [field for field in out if trait_is_measurement(field)]
+    return out
+
+
+def stringify_trait_value(value):
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return f"{value:g}"
+    return str(value)
+
+
+def values_differ(left, right):
+    return stringify_trait_value(left).strip() != stringify_trait_value(right).strip()
+
+
+def build_trait_review_rows(fields, row, tr, cs, measurements_only=True):
+    live = live_trait_updates(tr, cs, row)
+    overrides = cs.setdefault("trait_overrides", {})
+    rows = []
+    for field in editable_trait_fields(fields, measurements_only=measurements_only):
+        original = row.get(field, "")
+        baseline = live.get(field, original)
+        reviewed = overrides.get(field, baseline)
+        if field in overrides:
+            source = "manual"
+        elif field in live:
+            source = "mask/axis"
+        else:
+            source = "original"
+        rows.append({
+            "field": field,
+            "original": stringify_trait_value(original),
+            "reviewed_value": stringify_trait_value(reviewed),
+            "source": source,
+        })
+    return rows
+
+
+def edited_records(table):
+    return table.to_dict("records") if hasattr(table, "to_dict") else list(table)
+
+
+def apply_trait_review_table(cs, records, fields, row, tr):
+    live = live_trait_updates(tr, cs, row)
+    next_overrides = {}
+    allowed = set(editable_trait_fields(fields, measurements_only=False))
+    for item in records:
+        field = item.get("field")
+        if field not in allowed:
+            continue
+        reviewed = stringify_trait_value(item.get("reviewed_value", ""))
+        baseline = live.get(field, row.get(field, ""))
+        if values_differ(reviewed, baseline):
+            next_overrides[field] = reviewed
+    cs["trait_overrides"] = next_overrides
+
+
+def reviewed_trait_outputs(folder, stem, state, masks, cen, fields, rows):
+    if not fields or not rows:
+        return [], [], []
+    island, _ = base.ISLANDS.get(folder, (folder, ""))
+    extra_fields = [
+        "app_review_status", "app_review_note", "visible_pistil_attached",
+        "fold_state_reviewed", "axis_reviewed", "mask_edited",
+    ]
+    out_fields = list(fields)
+    for field in extra_fields:
+        if field not in out_fields:
+            out_fields.append(field)
+    reviewed_rows = []
+    override_rows = []
+    for original in rows:
+        try:
+            cid = int(original["corolla_id"])
+        except (KeyError, TypeError, ValueError):
+            reviewed_rows.append(dict(original))
+            continue
+        reviewed = {field: original.get(field, "") for field in fields}
+        cs = state.get(str(cid))
+        if cs and cid in masks:
+            edited = apply_mask_edits(masks[cid], cs)
+            tr = corolla_traits(edited, cs["axis_base"], cs["axis_tip"])
+            for field, value in live_trait_updates(tr, cs, reviewed).items():
+                if values_differ(value, original.get(field, "")):
+                    reviewed[field] = stringify_trait_value(value)
+                    override_rows.append({
+                        "island": island, "sheet": stem, "corolla_id": cid,
+                        "field": field, "original_value": original.get(field, ""),
+                        "reviewed_value": stringify_trait_value(value),
+                        "source": "mask_axis_recalculation",
+                    })
+            for field, value in cs.get("trait_overrides", {}).items():
+                if field not in reviewed:
+                    out_fields.append(field)
+                if values_differ(value, original.get(field, "")):
+                    reviewed[field] = stringify_trait_value(value)
+                    override_rows.append({
+                        "island": island, "sheet": stem, "corolla_id": cid,
+                        "field": field, "original_value": original.get(field, ""),
+                        "reviewed_value": stringify_trait_value(value),
+                        "source": "manual_trait_review",
+                    })
+            reviewed["app_review_status"] = "excluded" if cs.get("exclude") else "retained"
+            reviewed["app_review_note"] = cs.get("reason", "")
+            reviewed["visible_pistil_attached"] = "yes" if cs.get("pistil") else ""
+            reviewed["fold_state_reviewed"] = cs.get("fold_state", "")
+            reviewed["axis_reviewed"] = "yes" if cs.get("axis_changed") else ""
+            reviewed["mask_edited"] = "yes" if mask_was_edited(cs) else ""
+        reviewed_rows.append(reviewed)
+    # Keep dynamically added manual fields only once and in insertion order.
+    deduped_fields = []
+    for field in out_fields:
+        if field not in deduped_fields:
+            deduped_fields.append(field)
+    return deduped_fields, reviewed_rows, override_rows
 
 
 def bbox_of(mask, mgn, shape):
@@ -267,7 +525,7 @@ def render_crop(raw, mask, cs, cid, box, scale, pending_poly):
 
 
 # ----------------------------- export -----------------------------
-def export_all(folder, stem, state, masks, cen):
+def export_all(folder, stem, state, masks, cen, trait_fields=None, trait_rows=None):
     outdir = os.path.join(REVIEW_DIR, sheet_dash(stem), "app_review")
     os.makedirs(outdir, exist_ok=True)
     island, _ = base.ISLANDS.get(folder, (folder, ""))
@@ -292,14 +550,16 @@ def export_all(folder, stem, state, masks, cen):
             "visible_pistil_attached": "yes" if cs["pistil"] else "",
             "fold_state": cs["fold_state"],
             "axis_reviewed": "yes" if cs["axis_changed"] else "",
-            "mask_edited": "yes" if (cs["subtract"] or cs["add"]) else "",
+            "mask_edited": "yes" if mask_was_edited(cs) else "",
             "note": cs["reason"],
         })
         if cs["exclude"]:
             excl_rows.append({"island": island, "sheet": stem, "corolla_id": cid,
                               "excluded": "yes", "reason": cs["reason"] or "excluded_by_review"})
-        if cs["subtract"] or cs["add"]:
+        if mask_was_edited(cs):
             corr_rows.append({"island": island, "sheet": stem, "corolla_id": cid,
+                              "edge_mask_changed": "yes" if cs.get("edge_mask_polys") else "",
+                              "n_edge_polys": len(cs.get("edge_mask_polys", [])),
                               "n_subtract_polys": len(cs["subtract"]), "n_add_polys": len(cs["add"]),
                               "kept_area_mm2": tr["area_mm2"]})
         if cs["axis_changed"]:
@@ -312,11 +572,14 @@ def export_all(folder, stem, state, masks, cen):
                 f'    }},'
             )
 
-    def _w(name, rows):
+    def _w(name, rows, fields=None):
         p = os.path.join(outdir, name)
-        if rows:
+        if rows or fields:
             with open(p, "w", newline="", encoding="utf-8-sig") as fh:
-                w = csv.DictWriter(fh, fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
+                fieldnames = fields or list(rows[0])
+                w = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
+                w.writeheader()
+                w.writerows(rows)
         else:
             open(p, "w").close()
         return p
@@ -325,6 +588,14 @@ def export_all(folder, stem, state, masks, cen):
     _w("human_review.csv", hr_rows)
     _w("reviewed_exclusions.csv", excl_rows)
     _w("reviewed_mask_corrections.csv", corr_rows)
+    trait_fields_out, reviewed_traits, trait_overrides = reviewed_trait_outputs(
+        folder, stem, state, masks, cen, trait_fields or [], trait_rows or []
+    )
+    _w("reviewed_traits.csv", reviewed_traits, trait_fields_out)
+    _w("reviewed_trait_overrides.csv", trait_overrides, [
+        "island", "sheet", "corolla_id", "field",
+        "original_value", "reviewed_value", "source",
+    ])
     with open(os.path.join(outdir, "axis_overrides_snippet.py"), "w", encoding="utf-8") as fh:
         fh.write("# paste into REVIEWED_AXIS_OVERRIDES in measure_guides_review_axis_overrides.py\n")
         fh.write("\n".join(ovr_lines) + ("\n" if ovr_lines else ""))
@@ -353,6 +624,8 @@ if overlay_path is None:
     )
     st.stop()
 raw, masks, cen = load_sheet(folder, stem, path, overlay_path)
+trait_fields, trait_rows = committed_trait_table(stem)
+trait_by_cid = trait_rows_by_corolla(trait_rows)
 st.sidebar.caption(f"overlay: {overlay_path}")
 
 
@@ -379,12 +652,16 @@ cs["fold_state"] = st.sidebar.radio("Fold state", ["open", "folded_half"],
                                     index=0 if cs["fold_state"] == "open" else 1, horizontal=True)
 cs["pistil"] = st.sidebar.checkbox("Visible attached pistil", value=cs["pistil"])
 
-box = bbox_of(masks[cid], 80, raw.shape)
+box = bbox_of(apply_mask_edits(masks[cid], cs), 80, raw.shape)
 scale = DISPLAY_W / (box[2] - box[0])
 disp_h = int((box[3] - box[1]) * scale)
 mgen = st.session_state.get("mask_gen", 0)
 
-tab_axis, tab_mask = st.tabs(["✎ Axis — click base→tip", "🖌 Mask — drag to paint"])
+tab_axis, tab_mask, tab_traits = st.tabs([
+    "✎ Axis — click base→tip",
+    "Mask — edge/paint",
+    "Traits — all measurements",
+])
 
 with tab_axis:
     c1, c2 = st.columns([3, 1])
@@ -417,46 +694,122 @@ with tab_axis:
 with tab_mask:
     c1, c2 = st.columns([3, 1])
     with c1:
-        brush = st.slider("Brush size (px)", 5, 70, 24)
-        mode = st.radio("Paint effect", ["SUBTRACT — erase shadow/noise", "ADD — recover tissue"], horizontal=True)
         edited = apply_mask_edits(masks[cid], cs)
         crop = raw[box[1]:box[3], box[0]:box[2]].copy()
         ecnts, _ = cv2.findContours(edited[box[1]:box[3], box[0]:box[2]], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cv2.drawContours(crop, ecnts, -1, (0, 190, 0), 2)
-        bg = Image.fromarray(cv2.cvtColor(cv2.resize(crop, (DISPLAY_W, disp_h)), cv2.COLOR_BGR2RGB))
-        stroke = "rgba(255,0,0,0.5)" if mode.startswith("SUBTRACT") else "rgba(0,200,255,0.5)"
-        res = st_canvas(background_image=bg, drawing_mode="freedraw", stroke_width=brush,
-                        stroke_color=stroke, height=disp_h, width=DISPLAY_W, display_toolbar=True,
-                        key=f"mask_{stem}_{cid}_{mgen}")
+        edit_mode = st.radio("Mask edit mode", ["EDGE — drag/transform green mask", "PAINT — add/subtract strokes"],
+                             horizontal=True)
+        bg_crop = crop.copy()
+        cv2.drawContours(bg_crop, ecnts, -1, (0, 150, 0), 2)
+        bg = Image.fromarray(cv2.cvtColor(cv2.resize(bg_crop, (DISPLAY_W, disp_h)), cv2.COLOR_BGR2RGB))
+        if edit_mode.startswith("EDGE"):
+            initial = mask_to_canvas_drawing(edited, box, DISPLAY_W, disp_h)
+            res = st_canvas(
+                background_image=bg,
+                drawing_mode="transform",
+                initial_drawing=initial,
+                fill_color="rgba(0,190,0,0.28)",
+                stroke_width=3,
+                stroke_color="rgba(0,120,0,0.95)",
+                height=disp_h,
+                width=DISPLAY_W,
+                display_toolbar=True,
+                key=f"edge_{stem}_{cid}_{mgen}",
+            )
+        else:
+            brush = st.slider("Brush size (px)", 5, 70, 24)
+            mode = st.radio("Paint effect", ["SUBTRACT — erase shadow/noise", "ADD — recover tissue"], horizontal=True)
+            stroke = "rgba(255,0,0,0.5)" if mode.startswith("SUBTRACT") else "rgba(0,200,255,0.5)"
+            res = st_canvas(background_image=bg, drawing_mode="freedraw", stroke_width=brush,
+                            stroke_color=stroke, height=disp_h, width=DISPLAY_W, display_toolbar=True,
+                            key=f"mask_{stem}_{cid}_{mgen}")
     with c2:
         st.metric("area mm²", corolla_traits(edited, cs["axis_base"], cs["axis_tip"])["area_mm2"])
-        st.caption("Drag over the region, then **Apply paint**.")
-        if st.button("Apply paint", width="stretch"):
-            if res is not None and res.image_data is not None:
-                drawn = (res.image_data[..., 3] > 10).astype(np.uint8)
-                if drawn.sum() > 20:
-                    dm = cv2.resize(drawn, (box[2] - box[0], box[3] - box[1]), interpolation=cv2.INTER_NEAREST)
-                    pcnts, _ = cv2.findContours(dm, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                    target = "subtract" if mode.startswith("SUBTRACT") else "add"
-                    for pc in pcnts:
-                        if cv2.contourArea(pc) < 15:
-                            continue
-                        cs[target].append([[float(px + box[0]), float(py + box[1])] for [[px, py]] in pc])
-                    st.session_state.mask_gen = mgen + 1
-                    st.rerun()
-        if st.button("Undo last mask edit", width="stretch"):
-            for k in ("subtract", "add"):
-                if cs[k]:
-                    cs[k].pop(); break
-            st.session_state.mask_gen = mgen + 1
-            st.rerun()
+        if edit_mode.startswith("EDGE"):
+            st.caption("Select the green mask, drag or transform it, then apply.")
+            if st.button("Apply edge mask", width="stretch"):
+                if res is not None and res.image_data is not None:
+                    polys = canvas_image_to_mask_polys(res.image_data, box, raw.shape)
+                    if polys:
+                        cs["edge_mask_polys"] = polys
+                        cs["edge_mask_changed"] = True
+                        cs["add"] = []
+                        cs["subtract"] = []
+                        st.session_state.mask_gen = mgen + 1
+                        st.rerun()
+                    else:
+                        st.warning("No green mask object was detected.")
+            if st.button("Reset edge mask", width="stretch"):
+                cs["edge_mask_polys"] = []
+                cs["edge_mask_changed"] = False
+                st.session_state.mask_gen = mgen + 1
+                st.rerun()
+        else:
+            st.caption("Drag over the region, then **Apply paint**.")
+            if st.button("Apply paint", width="stretch"):
+                if res is not None and res.image_data is not None:
+                    drawn = (res.image_data[..., 3] > 10).astype(np.uint8)
+                    if drawn.sum() > 20:
+                        dm = cv2.resize(drawn, (box[2] - box[0], box[3] - box[1]), interpolation=cv2.INTER_NEAREST)
+                        pcnts, _ = cv2.findContours(dm, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                        target = "subtract" if mode.startswith("SUBTRACT") else "add"
+                        for pc in pcnts:
+                            if cv2.contourArea(pc) < 15:
+                                continue
+                            cs[target].append([[float(px + box[0]), float(py + box[1])] for [[px, py]] in pc])
+                        st.session_state.mask_gen = mgen + 1
+                        st.rerun()
+            if st.button("Undo last paint edit", width="stretch"):
+                for k in ("subtract", "add"):
+                    if cs[k]:
+                        cs[k].pop(); break
+                st.session_state.mask_gen = mgen + 1
+                st.rerun()
+
+with tab_traits:
+    edited = apply_mask_edits(masks[cid], cs)
+    tr = corolla_traits(edited, cs["axis_base"], cs["axis_tip"])
+    trait_row = trait_by_cid.get(cid, {})
+    if not trait_fields or not trait_row:
+        st.info("No committed traits.csv row was found for this corolla.")
+    else:
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            scope = st.radio("Trait fields", ["Measurements only", "All editable columns"], horizontal=True)
+            measurements_only = scope.startswith("Measurements")
+            review_rows = build_trait_review_rows(trait_fields, trait_row, tr, cs, measurements_only)
+            edited_table = st.data_editor(
+                review_rows,
+                hide_index=True,
+                use_container_width=True,
+                disabled=["field", "original", "source"],
+                column_config={
+                    "field": st.column_config.TextColumn("trait"),
+                    "original": st.column_config.TextColumn("original"),
+                    "reviewed_value": st.column_config.TextColumn("reviewed"),
+                    "source": st.column_config.TextColumn("source"),
+                },
+                key=f"traits_{stem}_{cid}_{measurements_only}",
+            )
+        with c2:
+            st.metric("app length mm", tr["length_mm"])
+            st.metric("app width mm", tr["width_mm"])
+            st.metric("app area mm²", tr["area_mm2"])
+            st.caption("Edit reviewed values, then apply them to this corolla.")
+            if st.button("Apply trait edits", width="stretch"):
+                apply_trait_review_table(cs, edited_records(edited_table), trait_fields, trait_row, tr)
+                st.rerun()
+            if st.button("Reset trait edits", width="stretch"):
+                cs["trait_overrides"] = {}
+                st.rerun()
+            st.write(f"manual overrides: {len(cs.get('trait_overrides', {}))}")
 
 st.sidebar.divider()
 if st.sidebar.button("💾 Save state", width="stretch"):
     save_state(stem, state); st.sidebar.success("Saved state JSON")
 if st.sidebar.button("⤓ Export reviewed CSVs + axis snippet", width="stretch"):
     save_state(stem, state)
-    outdir = export_all(folder, stem, state, masks, cen)
+    outdir = export_all(folder, stem, state, masks, cen, trait_fields, trait_rows)
     st.sidebar.success(f"Exported → {outdir}")
 
 # full-sheet preview (uses only already-reviewed state; no bulk axis compute)
