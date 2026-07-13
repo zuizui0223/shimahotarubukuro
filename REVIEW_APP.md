@@ -49,6 +49,22 @@ python qc_single_sheet.py --image "shimahotarubukuro/oshima/oshima10~13.jpg" \
 Reviewed decisions are per corolla and never touch the others — the automatic PRE-QC
 result stays the default for anything you don't change.
 
+## Deploying to Streamlit Cloud
+
+`requirements.txt` (repo root, the only file Cloud reads) already pins the app deps
+and uses **opencv-python-headless** (plain `opencv-python` fails on Cloud with a
+`libGL` ImportError).
+
+Two caveats on Cloud:
+
+- **Masks need a committed overlay per sheet.** The app reads the canonical reviewed
+  overlay from `results/review_overlays/<sheet>/`. Only `oshima10-13` is committed
+  there; commit the others (copy each `results_single/<sheet>/overlays/*.png` into
+  `results/review_overlays/<sheet>/`) to review them on Cloud.
+- **State is ephemeral on Cloud** — *Save state* / *Export* write files that are lost
+  on restart/redeploy. For real reviewing, **run locally** (`streamlit run
+  review_app.py`) so your `results/review_state/` persists.
+
 ## Notes
 
 - Orientation is derived from the overlay + committed centroids (robust to the

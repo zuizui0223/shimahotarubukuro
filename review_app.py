@@ -68,7 +68,8 @@ def find_overlay(folder: str, stem: str):
     """Locate a CANONICAL reviewed overlay (ruler-at-top) for this sheet."""
     island, _ = base.ISLANDS.get(folder, (folder, ""))
     name = f"{island}_{stem}.png"
-    for d in (os.path.join("results", "review_cache", sheet_dash(stem), "overlays"),
+    for d in (os.path.join("results", "review_overlays", sheet_dash(stem)),  # committed (Cloud)
+              os.path.join("results", "review_cache", sheet_dash(stem), "overlays"),
               os.path.join("results_single", sheet_dash(stem), "overlays"),
               os.path.join("results_all_review", "sheets", folder, stem, "overlays")):
         p = os.path.join(d, name)
