@@ -1,9 +1,9 @@
-# Review app — manual mask & axis correction
+# Review app — image-grounded floral trait correction
 
 Interactive per-sheet QC for the flattened *Campanula microdonta* corollas. Fix the
-things automation gets wrong — the **corolla mask** (e.g. paper shadow that leaked
-in, as on oshima10~13 C17/C18) and the **central axis** (midline) — plus record
-exclude / fold-state / visible-pistil per corolla.
+things automation gets wrong: the **corolla mask**, **central axis**, measurement
+cross-sections, pigment regions, and reproductive-organ contamination. Derived
+trait values are recalculated from the reviewed image evidence.
 
 Everything is shown in the **canonical ruler-at-top** frame that the pipeline uses.
 
@@ -32,23 +32,34 @@ python qc_single_sheet.py --image "shimahotarubukuro/oshima/oshima10~13.jpg" \
 
 1. **Sidebar** — pick the sheet, then a corolla (C1…CN). Per-corolla flags live here
    (Exclude +reason, Fold state open/folded_half, Visible pistil).
-2. **Axis tab (click)** — pick *BASE* or *TIP* and click the point on the flower.
+2. **Axis workspace (click)** — pick *BASE* or *TIP* and click the point on the flower.
    Put the base at the throat/top-centre and the tip on the true central-lobe tip.
    *Reset axis to PRE-QC* restores the automatic axis.
-3. **Mask tab (edge/paint)** — use *EDGE* to select the green mask object, drag or
-   transform it, then press **Apply edge mask**. Use *PAINT* for local
-   *SUBTRACT*/*ADD* brush corrections. Applying an edge mask bakes the current
-   paint state into the new mask outline; paint can still be added afterward.
-4. **Traits tab** — review every measurement column from the committed
-   `traits.csv`. The app shows the original value, the reviewed value, and whether
-   the value came from the original table, the current mask/axis, or a manual edit.
-5. Live **length / width / area (mm)** update as you edit (300 DPI scale).
-6. **Save state** persists to `results/review_state/<sheet>.json` (resume later).
-7. **Export** writes `results/reviewed/<sheet>/app_review/`:
+3. **Mask workspace** — drag white circular handles to move polygon vertices, drag
+   diamond handles to move an edge, or grab the green outline to insert a new
+   vertex. Brush mode remains available for local add/subtract corrections.
+4. **Measurements workspace** — review maximum span, throat/lobe boundary,
+   mid-tube width, basal-tube width, and visible lobe count directly on the flower.
+   Tube length, lobe length, mouth proxy, entrance area, and shape ratios update
+   from these reviewed guides.
+5. **Pigment workspace** — review purple guide, oxidized guide, and brown/degraded
+   regions with add/subtract brushes. Coverage, count, density, placement, and area
+   statistics are recalculated from the corrected regions.
+6. **Organs workspace** — adjust the seeded organ centre-line and set its width.
+   The seed comes from the detector or from a thin appendage in the flower mask. Use
+   *Outline + shape* for an organ incorrectly joined to the flower silhouette, or
+   *Pigment only* when it lies over a petal and should not create a hole in area.
+7. **All traits workspace** — audit every per-flower trait with its original value,
+   reviewed value, and source. Identifiers, coordinates, and sheet-level ruler
+   calibration stay protected; manual overrides remain available for traits that
+   cannot be reconstructed from the scan.
+8. **Save state** persists to `results/review_state/<sheet>.json` (resume later).
+9. **Export** writes `results/reviewed/<sheet>/app_review/` including:
    `reviewed_axes.csv`, `human_review.csv`, `reviewed_exclusions.csv`,
-   `reviewed_mask_corrections.csv`, `reviewed_traits.csv`,
-   `reviewed_trait_overrides.csv`, and `axis_overrides_snippet.py` (paste into
-   `REVIEWED_AXIS_OVERRIDES`).
+   `reviewed_mask_corrections.csv`, `reviewed_measurement_guides.csv`,
+   `reviewed_organ_exclusions.csv`, `reviewed_region_corrections.csv`,
+   `reviewed_traits.csv`, `reviewed_trait_overrides.csv`, and
+   `axis_overrides_snippet.py`.
 
 Reviewed decisions are per corolla and never touch the others — the automatic PRE-QC
 result stays the default for anything you don't change.
@@ -73,5 +84,6 @@ Two caveats on Cloud:
 
 - Orientation is derived from the overlay + committed centroids (robust to the
   per-sheet `SHEET_ROTATION`), so masks/axes always line up with the raw scan.
-- Mask edits store polygons (not new segmentations). Edge edits replace the
-  corolla mask base; paint edits are subtracted/added on top.
+- Mask and pigment edits store polygons (not raster screenshots). Measurement and
+  organ corrections store calibrated image coordinates, so every reviewed number
+  remains traceable to visible evidence.
