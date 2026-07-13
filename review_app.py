@@ -691,7 +691,7 @@ with progress_col:
 
 stage = st.segmented_control(
     "レビュー工程",
-    ["マスク", "形", "斑点", "外置き器官", "確認"],
+    ["マスク", "形", "斑点", "雄しべ・雌しべ", "確認"],
     default="マスク",
     key=f"review_stage_{stem}_{cid}",
     width="stretch",
@@ -1174,7 +1174,7 @@ elif stage == "斑点":
             cs["region_edits"][target] = {"add": [], "subtract": []}
             commit_change()
 
-elif stage == "外置き器官":
+elif stage == "雄しべ・雌しべ":
     organ_type_labels = {
         "不明": "unknown",
         "雌しべ": "pistil",
@@ -1391,7 +1391,7 @@ elif stage == "外置き器官":
             width="stretch",
         )
         remove_detached = st.selectbox(
-            "削除する外置き器官",
+            "削除する雄しべ・雌しべ",
             list(range(len(detached_saved))),
             format_func=lambda index: (
                 f'{index + 1}: '
@@ -1400,7 +1400,7 @@ elif stage == "外置き器官":
             key=f"remove_detached_{stem}_{cid}",
         )
         if st.button(
-            "選択した外置き器官を削除",
+            "選択した雄しべ・雌しべを削除",
             key=f"delete_detached_{stem}_{cid}",
         ):
             detached_saved.pop(remove_detached)
