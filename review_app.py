@@ -15,7 +15,10 @@ import numpy as np, cv2
 import streamlit as st
 
 import measure_guides as base
+import measure_guides_review as reviewed_pipeline
+import measure_guides_review_fast as organ_detector
 import measure_guides_symmetry_axis as sym
+import measure_guides_v2 as v2
 import trait_review
 from mask_editor_component import (
     bgr_to_jpeg_data_url,
@@ -41,6 +44,8 @@ FOLD_STATE_LABELS = {
     "半折り（約2.5裂片）": "folded_half",
     "不明": "unknown",
 }
+ORGAN_STATE_KEY = "_organ_reviews"
+ORGAN_CANDIDATE_STATE_KEY = "_organ_candidates"
 os.makedirs(STATE_DIR, exist_ok=True)
 
 
@@ -79,6 +84,46 @@ def committed_organs(stem: str):
         return []
     with open(path, newline="", encoding="utf-8-sig") as fh:
         return list(csv.DictReader(fh))
+
+
+def detect_sheet_organs(raw, masks, cen, folder, stem):
+    union = np.zeros(raw.shape[:2], dtype=np.uint8)
+    for mask in masks.values():
+        union |= mask.astype(np.uint8)
+
+    previous_sheet = reviewed_pipeline._CURRENT_SHEET
+    reviewed_pipeline._CURRENT_SHEET = (folder.lower(), stem.lower())
+    try:
+        rows = organ_detector.organs_review_candidates(
+            raw,
+            union,
+            v2.specimen_top(raw),
+            max_candidates=60,
+        )
+    finally:
+        reviewed_pipeline._CURRENT_SHEET = previous_sheet
+
+    detected = []
+    for organ_id, row in enumerate(
+        sorted(rows, key=lambda item: (item["cy"], item["cx"])), start=1
+    ):
+        nearest = min(
+            cen,
+            key=lambda corolla_id: (
+                (cen[corolla_id][0] - float(row["cx"])) ** 2
+                + (cen[corolla_id][1] - float(row["cy"])) ** 2
+            ),
+            default="",
+        )
+        detected.append({
+            **row,
+            "organ_id": str(organ_id),
+            "detection_source": row.get(
+                "detection_source", "app_auto_detector"
+            ),
+            "nearest_corolla_hint": nearest,
+        })
+    return detected
 
 
 def trait_rows_by_corolla(rows):
@@ -216,6 +261,76 @@ def save_state(stem, state):
     json.dump(state, open(state_path(stem), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 
 
+def organ_id_sort_key(value):
+    text = str(value).strip().removeprefix("O")
+    return (0, int(text)) if text.isdigit() else (1, text)
+
+
+def next_organ_id(candidates, reviews):
+    numbers = []
+    for value in [
+        *(row.get("organ_id", "") for row in candidates),
+        *(review.get("organ_id", "") for review in reviews),
+    ]:
+        text = str(value).strip().removeprefix("O")
+        if text.isdigit():
+            numbers.append(int(text))
+    return str(max(numbers, default=0) + 1)
+
+
+def sheet_organ_reviews(state):
+    """Return sheet-level O records, migrating old C-linked measurements."""
+    reviews = state.setdefault(ORGAN_STATE_KEY, [])
+    if isinstance(reviews, dict):
+        reviews = list(reviews.values())
+        state[ORGAN_STATE_KEY] = reviews
+
+    used_ids = {
+        str(review.get("organ_id", "")).strip()
+        for review in reviews
+        if str(review.get("organ_id", "")).strip()
+    }
+    for corolla_id, corolla in list(state.items()):
+        if not str(corolla_id).isdigit() or not isinstance(corolla, dict):
+            continue
+        for old_record in corolla.pop("detached_organs", []):
+            requested_id = str(old_record.get("candidate_id", "")).strip()
+            if not requested_id.isdigit() or requested_id in used_ids:
+                requested_id = str(
+                    max(
+                        [int(value) for value in used_ids if value.isdigit()],
+                        default=0,
+                    )
+                    + 1
+                )
+            record = dict(old_record)
+            record.update(
+                organ_id=requested_id,
+                source="legacy_corolla_review",
+                nearest_corolla_hint=str(corolla_id),
+                association_status="unconfirmed",
+            )
+            reviews.append(record)
+            used_ids.add(requested_id)
+
+    for review in reviews:
+        review["organ_id"] = (
+            str(review.get("organ_id", "")).strip().removeprefix("O")
+        )
+        if review.get("organ_type") in (
+            "unclassified",
+            "unclassified_reproductive_organ",
+        ):
+            review["organ_type"] = "unknown"
+        review.setdefault("organ_type", "unknown")
+        review.setdefault("identity_status", "uncertain")
+        review.setdefault("source", "manual")
+        review.setdefault("nearest_corolla_hint", "")
+        review["association_status"] = "unconfirmed"
+        review.setdefault("note", "")
+    return reviews
+
+
 def corolla_state(state, cid, preqc_axis):
     key = str(cid)
     if key not in state:
@@ -232,7 +347,6 @@ def corolla_state(state, cid, preqc_axis):
             "measurement_protocol": "half_corolla_widths_v1",
             "flat_n_lobes": None, "fold_changed": False,
             "organ_exclusions": [],
-            "detached_organs": [],
             "region_edits": {},
             "guide_presence_reviewed": "unreviewed",
             "review_complete": False,
@@ -259,8 +373,7 @@ def corolla_state(state, cid, preqc_axis):
     cs.setdefault("fold_changed", False)
     cs.setdefault("fold_state", "unknown")
     cs.setdefault("organ_exclusions", [])
-    cs.setdefault("detached_organs", [])
-    for organ_list in (cs["organ_exclusions"], cs["detached_organs"]):
+    for organ_list in (cs["organ_exclusions"],):
         for organ in organ_list:
             if organ.get("organ_type") in (
                 "unclassified",
@@ -354,13 +467,15 @@ def bbox_of(mask, mgn, shape):
             min(shape[1], xs.max() + mgn), min(shape[0], ys.max() + mgn))
 
 
-def render_organ_sheet(raw, masks, current_cid, candidates, mm_per_px, state):
+def render_organ_sheet(
+    raw, masks, candidates, mm_per_px, reviews, selected_organ_id
+):
     canvas = raw.copy()
     font_scale = max(0.55, min(canvas.shape[:2]) / 2400.0)
     for candidate_cid, mask in masks.items():
         contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        colour = (20, 145, 25) if candidate_cid == current_cid else (150, 150, 150)
-        thickness = 4 if candidate_cid == current_cid else 1
+        colour = (150, 150, 150)
+        thickness = 1
         cv2.drawContours(canvas, contours, -1, colour, thickness)
         ys, xs = np.where(mask > 0)
         if len(xs):
@@ -372,44 +487,37 @@ def render_organ_sheet(raw, masks, current_cid, candidates, mm_per_px, state):
         line = trait_review.organ_candidate_line(row, mm_per_px)
         if line is None:
             continue
+        organ_id = str(row.get("organ_id", ""))
         first, second = (tuple(np.rint(point).astype(int)) for point in line)
-        cv2.line(canvas, first, second, (185, 45, 165), 2, cv2.LINE_AA)
+        colour = (
+            (20, 145, 25)
+            if organ_id == str(selected_organ_id)
+            else (185, 45, 165)
+        )
+        cv2.line(canvas, first, second, colour, 2, cv2.LINE_AA)
         midpoint = tuple(np.rint(trait_review.line_midpoint(line)).astype(int))
         cv2.putText(
-            canvas, f"O{row.get('organ_id', '')}", midpoint,
-            cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.8, (150, 25, 135), 2, cv2.LINE_AA,
+            canvas, f"O{organ_id}", midpoint,
+            cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.8, colour, 2, cv2.LINE_AA,
         )
-    for other_cid, other_state in state.items():
-        for organ in other_state.get("detached_organs", []):
-            line = organ.get("line", [])
-            if len(line) != 2:
-                continue
-            first, second = (tuple(np.rint(point).astype(int)) for point in line)
-            cv2.line(canvas, first, second, (195, 105, 20), 2, cv2.LINE_AA)
-            midpoint = tuple(np.rint(trait_review.line_midpoint(line)).astype(int))
-            cv2.putText(
-                canvas, f"C{other_cid}:{organ.get('organ_type', 'unknown')[:1].upper()}", midpoint,
-                cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.75, (160, 75, 10), 2, cv2.LINE_AA,
-            )
-    return canvas
-
-
-def organ_length_summary(cs, mm_per_px):
-    by_type = {"pistil": [], "stamen": []}
-    for organ in cs.get("detached_organs", []):
-        organ_type = organ.get("organ_type", "unknown")
+    for organ in reviews:
         line = organ.get("line", [])
-        if organ_type in by_type and len(line) == 2:
-            by_type[organ_type].append(
-                trait_review.line_length(line) * mm_per_px
-            )
-    output = {}
-    for organ_type, lengths in by_type.items():
-        output[f"n_{organ_type}_measurements"] = len(lengths)
-        output[f"{organ_type}_length_mean_mm"] = (
-            round(float(np.mean(lengths)), 3) if lengths else ""
+        if len(line) != 2:
+            continue
+        organ_id = str(organ.get("organ_id", ""))
+        first, second = (tuple(np.rint(point).astype(int)) for point in line)
+        colour = (
+            (20, 145, 25)
+            if organ_id == str(selected_organ_id)
+            else (195, 105, 20)
         )
-    return output
+        cv2.line(canvas, first, second, colour, 3, cv2.LINE_AA)
+        midpoint = tuple(np.rint(trait_review.line_midpoint(line)).astype(int))
+        cv2.putText(
+            canvas, f"O{organ_id}", midpoint,
+            cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.8, colour, 2, cv2.LINE_AA,
+        )
+    return canvas
 
 
 # ----------------------------- export -----------------------------
@@ -421,6 +529,15 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
     measurement_rows, region_rows = [], []
     pollination_rows, reproductive_rows = [], []
     trait_by_cid = trait_rows_by_corolla(trait_rows or [])
+    organ_reviews = sheet_organ_reviews(state)
+    sheet_mm_per_px = next(
+        (
+            float(row["mm_per_px"])
+            for row in (trait_rows or [])
+            if row.get("mm_per_px")
+        ),
+        MM_PX,
+    )
     ovr_lines = []
     for cid in sorted(cen):
         cs = state.get(str(cid))
@@ -439,7 +556,6 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
         presence_analysis = analysis_values.get(
             "guide_present_incl_oxidized", ""
         )
-        organ_summary = organ_length_summary(cs, mm_per_px)
         pollination_rows.append({
             "island": island,
             "sheet": stem,
@@ -457,7 +573,6 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
             ),
             "brown_frac": core_values.get("brown_frac", ""),
             "degraded_flag": core_values.get("degraded_flag", ""),
-            **organ_summary,
             "fold_state_reviewed": cs.get("fold_state", ""),
             "area_correction_factor": core_values.get(
                 "area_correction_factor", ""
@@ -510,22 +625,6 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
                 "length_mm": round(trait_review.line_length(line) * mm_per_px, 3),
                 "reviewed": "yes" if guide_name in cs.get("measurement_lines_changed", []) else "",
             })
-        for index, organ in enumerate(cs.get("detached_organs", []), start=1):
-            line = organ.get("line", [])
-            if len(line) != 2:
-                continue
-            reproductive_rows.append({
-                "island": island, "sheet": stem, "corolla_id": cid,
-                "measurement_id": f"detached-{index}",
-                "source": "detached_on_sheet",
-                "organ_type": organ.get("organ_type", "unknown"),
-                "identity_status": organ.get("identity_status", "uncertain"),
-                "candidate_id": organ.get("candidate_id", ""),
-                "length_mm": round(trait_review.line_length(line) * mm_per_px, 3),
-                "x1": round(line[0][0], 3), "y1": round(line[0][1], 3),
-                "x2": round(line[1][0], 3), "y2": round(line[1][1], 3),
-                "note": organ.get("note", ""),
-            })
         for target, edits in cs.get("region_edits", {}).items():
             region_rows.append({
                 "island": island, "sheet": stem, "corolla_id": cid, "region": target,
@@ -541,6 +640,32 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
                 f'        "review_note": "Reviewed in app (manual axis on central petal).",\n'
                 f'    }},'
             )
+
+    for organ in sorted(
+        organ_reviews, key=lambda item: organ_id_sort_key(item.get("organ_id", ""))
+    ):
+        line = organ.get("line", [])
+        if len(line) != 2:
+            continue
+        reproductive_rows.append({
+            "island": island,
+            "sheet": stem,
+            "organ_id": organ.get("organ_id", ""),
+            "source": organ.get("source", "manual"),
+            "organ_type": organ.get("organ_type", "unknown"),
+            "identity_status": organ.get("identity_status", "uncertain"),
+            "length_mm": round(
+                trait_review.line_length(line) * sheet_mm_per_px, 3
+            ),
+            "x1": round(line[0][0], 3),
+            "y1": round(line[0][1], 3),
+            "x2": round(line[1][0], 3),
+            "y2": round(line[1][1], 3),
+            "nearest_corolla_hint": organ.get("nearest_corolla_hint", ""),
+            "corolla_id": "",
+            "association_status": "unconfirmed",
+            "note": organ.get("note", ""),
+        })
 
     def _w(name, rows, fields=None):
         p = os.path.join(outdir, name)
@@ -560,9 +685,9 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
     _w("reviewed_mask_corrections.csv", corr_rows)
     _w("reviewed_measurement_guides.csv", measurement_rows)
     _w("reviewed_reproductive_organs.csv", reproductive_rows, [
-        "island", "sheet", "corolla_id", "measurement_id", "source",
-        "organ_type", "identity_status", "candidate_id", "length_mm",
-        "x1", "y1", "x2", "y2", "note",
+        "island", "sheet", "organ_id", "source", "organ_type",
+        "identity_status", "length_mm", "x1", "y1", "x2", "y2",
+        "nearest_corolla_hint", "corolla_id", "association_status", "note",
     ])
     _w("reviewed_region_corrections.csv", region_rows)
     _w("reviewed_pollination_traits.csv", pollination_rows, [
@@ -570,8 +695,6 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
         *[field for field, _, _, _ in trait_review.CORE_POLLINATION_TRAITS],
         "guide_presence_reviewed", "guide_present_analysis",
         "n_spots_incl_oxidized", "brown_frac", "degraded_flag",
-        "pistil_length_mean_mm", "n_pistil_measurements",
-        "stamen_length_mean_mm", "n_stamen_measurements",
         "fold_state_reviewed", "area_correction_factor", "area_scope",
         "excluded", "review_complete", "scale_qc", "note",
     ])
@@ -633,7 +756,7 @@ if overlay_path is None:
 raw, masks, cen = load_sheet(folder, stem, path, overlay_path)
 trait_fields, trait_rows = committed_trait_table(stem)
 trait_by_cid = trait_rows_by_corolla(trait_rows)
-organ_candidates = committed_organs(stem)
+committed_organ_candidates = committed_organs(stem)
 
 
 def get_preqc(corolla_id):
@@ -645,6 +768,12 @@ if st.session_state.get("stem") != stem:
     st.session_state.state = load_state(stem)
     st.session_state.editor_generation = 0
 state = st.session_state.state
+organ_reviews = sheet_organ_reviews(state)
+organ_candidates = state.get(
+    ORGAN_CANDIDATE_STATE_KEY, committed_organ_candidates
+)
+if not isinstance(organ_candidates, list):
+    organ_candidates = committed_organ_candidates
 
 ids = sorted(cen)
 cid = st.sidebar.selectbox(
@@ -683,12 +812,6 @@ def commit_change():
     st.rerun()
 
 
-status_col, progress_col = st.columns([4, 1])
-with status_col:
-    st.subheader(f"{folder}/{stem}  C{cid}")
-with progress_col:
-    st.metric("状態", "確認済み" if cs.get("review_complete") else "作業中")
-
 stage = st.segmented_control(
     "レビュー工程",
     ["マスク", "形", "斑点", "雄しべ・雌しべ", "確認"],
@@ -696,6 +819,23 @@ stage = st.segmented_control(
     key=f"review_stage_{stem}_{cid}",
     width="stretch",
 ) or "マスク"
+
+status_col, progress_col = st.columns([4, 1])
+with status_col:
+    st.subheader(
+        f"{folder}/{stem}  器官O番号"
+        if stage == "雄しべ・雌しべ"
+        else f"{folder}/{stem}  C{cid}"
+    )
+with progress_col:
+    st.metric(
+        "状態",
+        f"測定 {len(organ_reviews)}"
+        if stage == "雄しべ・雌しべ"
+        else "確認済み"
+        if cs.get("review_complete")
+        else "作業中",
+    )
 
 if stage == "マスク":
     left, right = st.columns([3, 1])
@@ -1186,95 +1326,94 @@ elif stage == "雄しべ・雌しべ":
         "確実": "confirmed",
     }
 
-    assigned_candidates = {}
-    for assigned_cid, assigned_state in state.items():
-        for organ in assigned_state.get("detached_organs", []):
-            candidate_id = str(organ.get("candidate_id", ""))
-            if candidate_id:
-                assigned_candidates[candidate_id] = str(assigned_cid)
+    detection_status = st.columns([1, 1, 2])
+    detection_status[0].metric("検出候補", len(organ_candidates))
+    detection_status[1].metric("測定済み", len(organ_reviews))
+    if detection_status[2].button(
+        "雄しべ・雌しべ候補を自動検出",
+        type="primary" if not organ_candidates else "secondary",
+        width="stretch",
+        disabled=bool(organ_reviews),
+        help="測定開始後はO番号を固定するため再検出できません。",
+        key=f"detect_organs_{stem}_{editor_generation}",
+    ):
+        with st.spinner("器官候補を検出中…"):
+            detected_organs = detect_sheet_organs(
+                raw, masks, cen, folder, stem
+            )
+        if detected_organs:
+            state[ORGAN_CANDIDATE_STATE_KEY] = detected_organs
+            commit_change()
+        else:
+            st.warning("器官候補を検出できませんでした。手動でO番号を追加できます。")
 
     candidate_by_id = {
         str(row.get("organ_id")): row
         for row in organ_candidates
         if str(row.get("organ_id", "")).strip()
-        and (
-            str(row.get("organ_id")) not in assigned_candidates
-            or assigned_candidates[str(row.get("organ_id"))] == str(cid)
-        )
     }
-    nearest = trait_review.nearest_detached_organ_candidate(
-        organ_candidates,
-        masks[cid],
-        mm_per_px,
-        used_ids=[
-            candidate_id
-            for candidate_id, assigned_cid in assigned_candidates.items()
-            if assigned_cid != str(cid)
-        ],
+    review_by_id = {
+        str(item.get("organ_id", "")): item
+        for item in organ_reviews
+        if str(item.get("organ_id", "")).strip()
+    }
+    available_ids = sorted(
+        set(candidate_by_id) | set(review_by_id), key=organ_id_sort_key
     )
-    candidate_options = ["manual"] + sorted(
-        candidate_by_id,
-        key=lambda value: (
-            (0, int(value)) if value.isdigit() else (1, value)
-        ),
+    new_organ_id = next_organ_id(organ_candidates, organ_reviews)
+    unreviewed_ids = [
+        organ_id for organ_id in available_ids if organ_id not in review_by_id
+    ]
+    default_organ = (
+        unreviewed_ids[0]
+        if unreviewed_ids
+        else available_ids[0]
+        if available_ids
+        else "new"
     )
-    default_candidate = (
-        str(nearest["candidate_id"])
-        if nearest
-        and str(nearest["candidate_id"]) in candidate_by_id
-        and str(
-            candidate_by_id[str(nearest["candidate_id"])].get(
-                "nearest_corolla", ""
-            )
-        ) == str(cid)
-        else "manual"
-    )
+    organ_options = available_ids + ["new"]
 
     left, right = st.columns([3, 1])
     with left:
-        selected_candidate = st.selectbox(
-            "検出候補",
-            candidate_options,
-            index=candidate_options.index(default_candidate),
+        selected_organ = st.selectbox(
+            "器官番号",
+            organ_options,
+            index=organ_options.index(default_organ),
             format_func=lambda value: (
-                "手動線"
-                if value == "manual"
-                else (
-                    f'O{value}  候補C'
-                    f'{candidate_by_id[value].get("nearest_corolla", "")}'
-                )
+                f"新しいO番号（O{new_organ_id}）"
+                if value == "new"
+                else f'O{value}  {"測定済み" if value in review_by_id else "未測定"}'
             ),
-            key=f"detached_candidate_{stem}_{cid}_{editor_generation}",
+            key=f"organ_number_{stem}_{editor_generation}",
         )
-        existing_candidate = next(
-            (
-                item
-                for item in cs.get("detached_organs", [])
-                if str(item.get("candidate_id", "")) == selected_candidate
-            ),
-            None,
+        working_organ_id = (
+            new_organ_id if selected_organ == "new" else selected_organ
         )
-        candidate_row = candidate_by_id.get(selected_candidate)
+        existing_review = review_by_id.get(working_organ_id)
+        candidate_row = candidate_by_id.get(working_organ_id)
         candidate_line = (
             trait_review.organ_candidate_line(candidate_row, mm_per_px)
             if candidate_row
             else None
         )
         initial_raw_line = (
-            existing_candidate.get("line")
-            if existing_candidate
+            existing_review.get("line")
+            if existing_review
             else candidate_line
             if candidate_line
-            else [cs["axis_base"], cs["axis_tip"]]
+            else [
+                [raw.shape[1] * 0.5, raw.shape[0] * 0.45],
+                [raw.shape[1] * 0.5, raw.shape[0] * 0.55],
+            ]
         )
 
         sheet_canvas = render_organ_sheet(
             raw,
             masks,
-            cid,
             organ_candidates,
             mm_per_px,
-            state,
+            organ_reviews,
+            working_organ_id,
         )
         sheet_height = max(
             240,
@@ -1285,7 +1424,7 @@ elif stage == "雄しべ・雌しべ":
         )
         sheet_box = (0, 0, raw.shape[1], raw.shape[0])
         editor_key = (
-            f"detached_organ_{selected_candidate}_{stem}_{cid}_"
+            f"organ_{working_organ_id}_{stem}_"
             f"{editor_generation}"
         )
         initial_line = raw_line_to_display(
@@ -1318,21 +1457,46 @@ elif stage == "雄しべ・雌しべ":
         draft_line = component_value(result, "line", draft_line)
 
     with right:
+        st.metric("器官番号", f"O{working_organ_id}")
+        st.metric("花冠との対応", "未確認")
+        type_values = list(organ_type_labels.values())
+        current_type = (
+            existing_review.get("organ_type", "unknown")
+            if existing_review
+            else "unknown"
+        )
         selected_type_label = st.selectbox(
             "器官",
             list(organ_type_labels),
-            key=f"detached_type_{stem}_{cid}",
+            index=(
+                type_values.index(current_type)
+                if current_type in type_values
+                else 0
+            ),
+            key=f"organ_type_{working_organ_id}_{stem}_{editor_generation}",
+        )
+        identity_values = list(identity_labels.values())
+        current_identity = (
+            existing_review.get("identity_status", "uncertain")
+            if existing_review
+            else "uncertain"
         )
         selected_identity_label = st.selectbox(
             "同定",
             list(identity_labels),
-            key=f"detached_identity_{stem}_{cid}",
+            index=(
+                identity_values.index(current_identity)
+                if current_identity in identity_values
+                else 0
+            ),
+            key=f"organ_identity_{working_organ_id}_{stem}_{editor_generation}",
         )
-        detached_note = st.text_input(
+        organ_note = st.text_input(
             "メモ",
-            key=f"detached_note_{stem}_{cid}",
+            value=existing_review.get("note", "") if existing_review else "",
+            key=f"organ_note_{working_organ_id}_{stem}_{editor_generation}",
         )
-        raw_detached_line = display_line_to_raw(
+        raw_organ_line = display_line_to_raw(
             draft_line,
             sheet_box,
             SHEET_DISPLAY_W,
@@ -1341,42 +1505,54 @@ elif stage == "雄しべ・雌しべ":
         )
         st.metric(
             "器官長",
-            f"{trait_review.line_length(raw_detached_line) * mm_per_px:.2f} mm",
+            f"{trait_review.line_length(raw_organ_line) * mm_per_px:.2f} mm",
         )
         if st.button(
-            "この花へ対応付け",
+            f"O{working_organ_id}の測定を保存",
             type="primary",
             width="stretch",
-            key=f"save_detached_{stem}_{cid}",
+            key=f"save_organ_{working_organ_id}_{stem}_{editor_generation}",
         ):
-            if trait_review.line_length(raw_detached_line) <= 1:
+            if trait_review.line_length(raw_organ_line) <= 1:
                 st.warning("器官線が短すぎます。")
             else:
+                nearest_hint = ""
+                if candidate_row:
+                    nearest_hint = candidate_row.get(
+                        "nearest_corolla_hint",
+                        candidate_row.get("nearest_corolla", ""),
+                    )
                 record = {
-                    "line": raw_detached_line,
+                    "organ_id": working_organ_id,
+                    "line": raw_organ_line,
                     "organ_type": organ_type_labels[selected_type_label],
                     "identity_status": identity_labels[
                         selected_identity_label
                     ],
-                    "candidate_id": (
-                        "" if selected_candidate == "manual"
-                        else selected_candidate
+                    "source": (
+                        candidate_row.get("detection_source", "detector")
+                        if candidate_row
+                        else "manual"
                     ),
-                    "note": detached_note,
+                    "nearest_corolla_hint": nearest_hint,
+                    "association_status": "unconfirmed",
+                    "note": organ_note,
                 }
-                if existing_candidate:
-                    existing_candidate.update(record)
+                if existing_review:
+                    existing_review.update(record)
                 else:
-                    cs["detached_organs"].append(record)
+                    organ_reviews.append(record)
                 commit_change()
 
-    detached_saved = cs.get("detached_organs", [])
-    if detached_saved:
+    if organ_reviews:
+        sorted_reviews = sorted(
+            organ_reviews,
+            key=lambda item: organ_id_sort_key(item.get("organ_id", "")),
+        )
         st.dataframe(
             [
                 {
-                    "番号": index + 1,
-                    "候補": item.get("candidate_id", "manual") or "manual",
+                    "番号": f'O{item.get("organ_id", "")}',
                     "器官": item.get("organ_type", "unknown"),
                     "長さ mm": round(
                         trait_review.line_length(item.get("line", []))
@@ -1384,26 +1560,28 @@ elif stage == "雄しべ・雌しべ":
                         3,
                     ),
                     "同定": item.get("identity_status", "uncertain"),
+                    "花冠対応": "未確認",
                 }
-                for index, item in enumerate(detached_saved)
+                for item in sorted_reviews
             ],
             hide_index=True,
             width="stretch",
         )
-        remove_detached = st.selectbox(
-            "削除する雄しべ・雌しべ",
-            list(range(len(detached_saved))),
-            format_func=lambda index: (
-                f'{index + 1}: '
-                f'{detached_saved[index].get("candidate_id", "manual") or "manual"}'
-            ),
-            key=f"remove_detached_{stem}_{cid}",
+        remove_organ_id = st.selectbox(
+            "削除する器官番号",
+            [str(item.get("organ_id", "")) for item in sorted_reviews],
+            format_func=lambda value: f"O{value}",
+            key=f"remove_organ_{stem}_{editor_generation}",
         )
         if st.button(
-            "選択した雄しべ・雌しべを削除",
-            key=f"delete_detached_{stem}_{cid}",
+            "選択した器官測定を削除",
+            key=f"delete_organ_{stem}_{editor_generation}",
         ):
-            detached_saved.pop(remove_detached)
+            organ_reviews[:] = [
+                item
+                for item in organ_reviews
+                if str(item.get("organ_id", "")) != remove_organ_id
+            ]
             commit_change()
 
 
@@ -1436,7 +1614,6 @@ elif stage == "確認":
             "単位": unit,
         })
 
-    organ_summary = organ_length_summary(cs, mm_per_px)
     top_metrics = st.columns(4)
     top_metrics[0].metric(
         "花冠長",
@@ -1474,23 +1651,6 @@ elif stage == "確認":
                 "単位": st.column_config.TextColumn("単位"),
             },
         )
-        st.dataframe(
-            [
-                {
-                    "器官": "雌しべ",
-                    "平均長 mm": organ_summary["pistil_length_mean_mm"],
-                    "測定数": organ_summary["n_pistil_measurements"],
-                },
-                {
-                    "器官": "雄しべ",
-                    "平均長 mm": organ_summary["stamen_length_mean_mm"],
-                    "測定数": organ_summary["n_stamen_measurements"],
-                },
-            ],
-            hide_index=True,
-            width="stretch",
-        )
-
     with right:
         fold_values = list(FOLD_STATE_LABELS.values())
         current_fold = cs.get("fold_state", "unknown")

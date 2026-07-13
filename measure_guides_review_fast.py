@@ -101,7 +101,12 @@ def _merge_nearby_rows(rows: list[dict]) -> list[dict]:
     return kept
 
 
-def organs_fast(img: np.ndarray, corolla_mask: np.ndarray, top: int):
+def organs_fast(
+    img: np.ndarray,
+    corolla_mask: np.ndarray,
+    top: int,
+    max_candidates: int = MAX_ORGAN_CANDIDATES_PER_SHEET,
+):
     lightness, a_star, b_star = base.channels(img)
     chroma = np.sqrt(a_star * a_star + b_star * b_star)
     candidate = (
@@ -192,7 +197,58 @@ def organs_fast(img: np.ndarray, corolla_mask: np.ndarray, top: int):
 
     rows = _merge_nearby_rows(_component_rows(line_union, candidate, chroma, b_star))
     rows = sorted(rows, key=lambda row: row.get("score", 0), reverse=True)
-    return sorted(rows[:MAX_ORGAN_CANDIDATES_PER_SHEET], key=lambda row: (row["cy"], row["cx"]))
+    return sorted(rows[:max_candidates], key=lambda row: (row["cy"], row["cx"]))
+
+
+def organs_review_candidates(
+    img: np.ndarray,
+    corolla_mask: np.ndarray,
+    top: int,
+    max_candidates: int = 60,
+) -> list[dict]:
+    """High-recall candidates for manual O-number review in the app."""
+    fast_rows = organs_fast(
+        img, corolla_mask, top, max_candidates=max_candidates
+    )
+    component_rows = v2.organs(img, corolla_mask, top)
+    outside = (corolla_mask == 0).astype(np.uint8)
+    distance = cv2.distanceTransform(outside, cv2.DIST_L2, 5)
+    height, width = corolla_mask.shape
+    margin_x = max(20, int(round(width * 0.015)))
+    min_y = max(top, int(round(height * 0.08)))
+
+    def spatially_plausible(row, min_length_mm):
+        cx = int(round(float(row["cx"])))
+        cy = int(round(float(row["cy"])))
+        if not (
+            margin_x <= cx < width - margin_x
+            and min_y <= cy < height - 20
+        ):
+            return False
+        distance_mm = float(distance[cy, cx]) * base.MM_PX
+        return (
+            min_length_mm <= float(row["length_mm"]) <= 40.0
+            and abs(float(row["angle_deg"])) >= 30.0
+            and 0.5 <= distance_mm <= 30.0
+        )
+
+    filtered_fast = [
+        row for row in fast_rows if spatially_plausible(row, 8.0)
+    ]
+    high_recall = []
+    for row in component_rows:
+        if not spatially_plausible(row, 5.0):
+            continue
+        high_recall.append({
+            **row,
+            "detection_source": "app_high_recall_component",
+        })
+
+    combined = [
+        {**row, "detection_source": "app_hough_detector"}
+        for row in filtered_fast
+    ] + high_recall
+    return review._deduplicate_organs(combined)[:max_candidates]
 
 
 def main() -> None:

@@ -136,10 +136,13 @@ def organs(img, corolla_mask, top):
         if not cs: continue
         (cx,cy),(rw,rh),ang=cv2.minAreaRect(max(cs,key=cv2.contourArea)); le,wi=max(rw,rh),min(rw,rh)
         if wi<1: continue
+        axis_ang=ang if rw>=rh else ang+90
+        while axis_ang>90: axis_ang-=180
+        while axis_ang<-90: axis_ang+=180
         lm,wm=le*base.MM_PX,wi*base.MM_PX; asp=le/wi
         if 3<=lm<=45 and .15<=wm<=4.5 and asp>=3.2:
             out.append(dict(cx=round(cx,2),cy=round(cy,2),length_mm=round(lm,2),width_mm=round(wm,2),
-                            aspect=round(asp,2),angle_deg=round(ang,2),
+                            aspect=round(asp,2),angle_deg=round(axis_ang,2),
                             organ_type_auto='unclassified_reproductive_organ',organ_type_FILL='',exclude_FILL=''))
     return sorted(out,key=lambda r:(r['cy'],r['cx']))
 

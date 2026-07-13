@@ -2,7 +2,7 @@
 
 Interactive per-sheet QC for the flattened *Campanula microdonta* corollas. Fix the
 things automation gets wrong: the **corolla mask**, **central axis**, measurement
-cross-sections, pigment regions, and detached reproductive organs. The focused
+cross-sections, pigment regions, and reproductive organs mounted on the sheet. The focused
 output contains pollination-related traits that can be traced back to reviewed
 image evidence.
 
@@ -42,8 +42,10 @@ python qc_single_sheet.py --image "shimahotarubukuro/oshima/oshima10~13.jpg" \
 4. **Pigment workspace** — review purple guide, oxidized guide, and brown/degraded
    regions. Final guide area, coverage, and presence use the union of purple and
    oxidized guide regions.
-5. **Detached-organ workspace** — associate a detached pistil or stamen with the
-   current flower and review its centre-line length and identity confidence.
+5. **Stamen/pistil workspace** — auto-detect sheet-level organ candidates, assign
+   independent O numbers, then review each centre-line length, organ type, and
+   identity confidence. C-to-O correspondence remains unconfirmed at this stage;
+   undetected organs can be added with a new O number.
 6. **Confirmation workspace** — inspect the focused pollination-trait table, set
    the fold state, exclusion, note, and review-complete flag.
 7. **Save state** persists to `results/review_state/<sheet>.json` (resume later).
@@ -66,8 +68,9 @@ tube expansion ratios are not multiplied. For `unknown`, comparison values stay
 blank. `fold_state_reviewed`, `area_correction_factor`, and `area_scope` preserve
 the area correction in the export.
 
-Reviewed decisions are per corolla and never touch the others — the automatic PRE-QC
-result stays the default for anything you don't change.
+Corolla decisions are stored by C number. Organ decisions are stored separately by
+O number. `nearest_corolla_hint` is only a spatial hint; exported `corolla_id` stays
+blank with `association_status=unconfirmed` until correspondence is reviewed later.
 
 ## Deploying to Streamlit Cloud
 

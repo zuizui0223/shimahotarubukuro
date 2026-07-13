@@ -51,6 +51,38 @@ class ReviewedPipelineTests(unittest.TestCase):
 
         self.assertEqual(organs, [])
 
+    def test_app_detector_can_return_more_than_pipeline_preview_limit(self) -> None:
+        image = np.full((900, 1000, 3), 255, dtype=np.uint8)
+        corolla = np.zeros((900, 1000), dtype=np.uint8)
+        cv2.rectangle(corolla, (50, 700), (950, 820), 1, -1)
+        for x in (180, 500, 820):
+            cv2.line(image, (x, 300), (x, 500), (120, 160, 210), 9)
+
+        preview = fast.organs_fast(
+            image, corolla, 100, max_candidates=1
+        )
+        review_candidates = fast.organs_fast(
+            image, corolla, 100, max_candidates=10
+        )
+
+        self.assertEqual(len(preview), 1)
+        self.assertEqual(len(review_candidates), 3)
+
+    def test_app_review_detector_drops_image_edge_lines(self) -> None:
+        image = np.full((900, 1000, 3), 255, dtype=np.uint8)
+        corolla = np.zeros((900, 1000), dtype=np.uint8)
+        cv2.rectangle(corolla, (50, 700), (950, 820), 1, -1)
+        cv2.line(image, (5, 300), (5, 500), (120, 160, 210), 9)
+        cv2.line(image, (500, 300), (500, 500), (120, 160, 210), 9)
+
+        rows = fast.organs_review_candidates(
+            image, corolla, 100, max_candidates=10
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertAlmostEqual(rows[0]["cx"], 500.0, delta=2.0)
+        self.assertTrue(rows[0]["detection_source"].startswith("app_"))
+
     def test_shikine_review_records_only_visible_candidates(self) -> None:
         rows = review.manual_organ_rows(
             (1900, 1189, 3),
