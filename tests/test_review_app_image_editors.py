@@ -61,9 +61,87 @@ def test_measurement_guides_drive_derived_traits():
     assert set(lines) == set(trait_review.MEASUREMENT_GUIDES)
     assert values["corolla_length_ruler_mm"] > 35
     assert values["corolla_max_span_ruler_mm"] > 10
+    assert values["corolla_max_span_standardized_mm"] == values[
+        "corolla_max_span_ruler_mm"
+    ]
+    assert values["corolla_area_standardized_mm2"] == values[
+        "corolla_area_ruler_mm2"
+    ]
+    assert values["area_correction_factor"] == 1.0
+    assert values["area_scope"] == "full_area_observed"
     assert values["flat_tube_length_mm"] > values["flat_lobe_length_mm"]
-    assert values["prov_mouth_diameter_ruler_mm"] > 0
     assert values["flat_n_lobes"] == 5
+    full_lines = trait_review.automatic_measurement_lines(
+        mask,
+        state["axis_base"],
+        state["axis_tip"],
+        {"flat_lobe_length_mm": "10", "corolla_length_ruler_mm": "40"},
+    )
+    for guide_name in trait_review.CORE_SHAPE_GUIDES:
+        assert np.isclose(
+            trait_review.line_length(lines[guide_name]),
+            0.5 * trait_review.line_length(full_lines[guide_name]),
+            rtol=0.02,
+        )
+
+
+def test_unknown_fold_state_keeps_raw_measurements_without_comparison_values():
+    mask = synthetic_corolla()
+    state = {
+        "axis_base": [260.0, 585.0],
+        "axis_tip": [260.0, 105.0],
+        "fold_state": "unknown",
+        "measurement_lines": {},
+        "measurement_lines_changed": [],
+    }
+    trait_review.ensure_measurement_lines(
+        state, mask, {"flat_lobe_length_mm": "10", "corolla_length_ruler_mm": "40"}
+    )
+
+    values = trait_review.shape_trait_values(mask, state, 0.085)
+
+    assert values["flat_throat_span_mm"] > 0
+    assert values["corolla_max_span_ruler_mm"] > 0
+    assert values["corolla_max_span_standardized_mm"] == ""
+    assert values["corolla_area_standardized_mm2"] == ""
+    assert values["throat_span_standardized_mm"] == ""
+    assert values["basal_tube_width_standardized_mm"] == ""
+    assert values["fold_state_auto"] == "unknown"
+    assert values["area_scope"] == "unresolved"
+    assert "prov_mouth_diameter_ruler_mm" not in values
+
+
+def test_folded_half_doubles_area_not_reviewed_widths():
+    mask = synthetic_corolla()
+    state = {
+        "axis_base": [260.0, 585.0],
+        "axis_tip": [260.0, 105.0],
+        "fold_state": "folded_half",
+        "measurement_lines": {},
+        "measurement_lines_changed": [],
+    }
+    trait_review.ensure_measurement_lines(
+        state, mask, {"flat_lobe_length_mm": "10", "corolla_length_ruler_mm": "40"}
+    )
+
+    values = trait_review.shape_trait_values(mask, state, 0.085)
+
+    assert values["area_correction_factor"] == 2.0
+    assert np.isclose(
+        values["corolla_area_standardized_mm2"],
+        2 * values["corolla_area_ruler_mm2"],
+        atol=0.002,
+    )
+    assert values["corolla_max_span_standardized_mm"] == values[
+        "corolla_max_span_ruler_mm"
+    ]
+    assert values["throat_span_standardized_mm"] == values[
+        "flat_throat_span_mm"
+    ]
+    assert values["basal_tube_width_standardized_mm"] == values[
+        "flat_basal_tube_width_mm"
+    ]
+    assert values["area_scope"] == "full_area_estimated_from_half"
 
 
 def test_stroke_and_buffered_organ_create_polygons():
@@ -165,39 +243,41 @@ def test_core_pollination_traits_stay_focused():
     fields = {field for field, _, _, _ in trait_review.CORE_POLLINATION_TRAITS}
     assert fields == {
         "corolla_length_ruler_mm",
-        "corolla_area_ruler_mm2",
-        "corolla_max_span_ruler_mm",
-        "flat_throat_span_mm",
+        "corolla_area_standardized_mm2",
+        "corolla_max_span_standardized_mm",
+        "throat_span_standardized_mm",
         "flat_throat_openness",
+        "basal_tube_width_standardized_mm",
         "flat_tube_taper_ratio",
-        "guide_area_mm2",
-        "guide_cov_pct",
-        "guide_present",
+        "guide_area_incl_oxidized_standardized_mm2",
+        "guide_cov_incl_oxidized_pct",
+        "guide_present_incl_oxidized",
     }
 
 
 def test_manual_guide_presence_produces_consistent_analysis_values():
     automatic = {
-        "guide_area_mm2": 12.3,
-        "guide_cov_pct": 4.5,
-        "guide_present": 1,
-        "n_spots": 7,
         "guide_area_incl_oxidized_mm2": 15.0,
+        "guide_area_incl_oxidized_standardized_mm2": 30.0,
         "guide_cov_incl_oxidized_pct": 5.5,
+        "guide_present_incl_oxidized": 1,
+        "n_spots_incl_oxidized": 9,
         "brown_frac": 0.1,
     }
     absent = trait_review.reviewed_guide_trait_values(automatic, "absent")
     uncertain = trait_review.reviewed_guide_trait_values(automatic, "uncertain")
     present = trait_review.reviewed_guide_trait_values(
-        {**automatic, "guide_present": 0}, "present"
+        {**automatic, "guide_present_incl_oxidized": 0}, "present"
     )
 
     assert all(absent[field] == 0 for field in trait_review.GUIDE_ANALYSIS_FIELDS)
     assert all(
         uncertain[field] == "" for field in trait_review.GUIDE_ANALYSIS_FIELDS
     )
-    assert present["guide_present"] == 1
-    assert present["guide_area_mm2"] == automatic["guide_area_mm2"]
+    assert present["guide_present_incl_oxidized"] == 1
+    assert present["guide_area_incl_oxidized_mm2"] == automatic[
+        "guide_area_incl_oxidized_mm2"
+    ]
     assert absent["brown_frac"] == automatic["brown_frac"]
 
 
@@ -245,4 +325,19 @@ def test_colour_traits_return_reviewable_measurements():
     assert set(trait_review.REGION_TARGETS).issubset(regions)
     assert values["guide_area_mm2"] >= 0
     assert values["n_spots"] >= 0
+    assert values["guide_area_incl_oxidized_mm2"] >= values["guide_area_mm2"]
+    assert values["guide_area_incl_oxidized_standardized_mm2"] == values[
+        "guide_area_incl_oxidized_mm2"
+    ]
+    assert values["n_spots_incl_oxidized"] >= 0
     assert 0 <= values["guide_centroid_rel"] <= 1
+
+    state["fold_state"] = "folded_half"
+    folded_values, _ = trait_review.colour_trait_values(
+        raw, mask, (100, 70, 430, 620), state, 0.085
+    )
+    assert np.isclose(
+        folded_values["guide_area_incl_oxidized_standardized_mm2"],
+        2 * folded_values["guide_area_incl_oxidized_mm2"],
+        atol=0.002,
+    )

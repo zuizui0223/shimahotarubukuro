@@ -19,7 +19,6 @@ import measure_guides_symmetry_axis as sym
 import trait_review
 from mask_editor_component import (
     bgr_to_jpeg_data_url,
-    buffered_line_polygon,
     component_value,
     display_line_to_raw,
     display_polygons_to_raw,
@@ -37,6 +36,11 @@ STATE_DIR = "results/review_state"
 ISLAND_FOLDERS = ("oshima", "toshima", "niijima", "shikinejima", "kozushima")
 DISPLAY_W = 720
 SHEET_DISPLAY_W = 900
+FOLD_STATE_LABELS = {
+    "全展開（5裂片）": "open",
+    "半折り（約2.5裂片）": "folded_half",
+    "不明": "unknown",
+}
 os.makedirs(STATE_DIR, exist_ok=True)
 
 
@@ -221,10 +225,11 @@ def corolla_state(state, cid, preqc_axis):
             "axis_tip": list(map(float, base_axis[1])),
             "axis_changed": False,
             "exclude": False, "reason": "",
-            "fold_state": "open", "pistil": False,
+            "fold_state": "unknown", "pistil": False,
             "subtract": [], "add": [],
             "edge_mask_polys": [], "edge_mask_changed": False,
             "measurement_lines": {}, "measurement_lines_changed": [],
+            "measurement_protocol": "half_corolla_widths_v1",
             "flat_n_lobes": None, "fold_changed": False,
             "organ_exclusions": [],
             "detached_organs": [],
@@ -241,8 +246,18 @@ def corolla_state(state, cid, preqc_axis):
         cs["edge_mask_polys"] = [cs.pop("edge_mask_poly")]
     cs.setdefault("measurement_lines", {})
     cs.setdefault("measurement_lines_changed", [])
+    if cs.get("measurement_protocol") != "half_corolla_widths_v1":
+        for guide_name in trait_review.CORE_SHAPE_GUIDES:
+            cs["measurement_lines"].pop(guide_name, None)
+        cs["measurement_lines_changed"] = [
+            guide_name
+            for guide_name in cs["measurement_lines_changed"]
+            if guide_name not in trait_review.CORE_SHAPE_GUIDES
+        ]
+        cs["measurement_protocol"] = "half_corolla_widths_v1"
     cs.setdefault("flat_n_lobes", None)
     cs.setdefault("fold_changed", False)
+    cs.setdefault("fold_state", "unknown")
     cs.setdefault("organ_exclusions", [])
     cs.setdefault("detached_organs", [])
     for organ_list in (cs["organ_exclusions"], cs["detached_organs"]):
@@ -261,13 +276,21 @@ def corolla_state(state, cid, preqc_axis):
         edits.setdefault("subtract", [])
     cs.setdefault("guide_presence_reviewed", "unreviewed")
     cs.setdefault("review_complete", False)
+    # Older app states silently defaulted unreviewed flowers to open.
+    if (
+        cs["fold_state"] == "open"
+        and not cs["fold_changed"]
+        and not cs["review_complete"]
+    ):
+        cs["fold_state"] = "unknown"
     return cs
 
 
 # ----------------------------- geometry / rendering -----------------------------
 def mask_was_edited(cs):
-    organ_outline = any(item.get("scope") == "outline" for item in cs.get("organ_exclusions", []))
-    return bool(cs.get("edge_mask_polys") or cs.get("subtract") or cs.get("add") or organ_outline)
+    return bool(
+        cs.get("edge_mask_polys") or cs.get("subtract") or cs.get("add")
+    )
 
 
 def apply_mask_edits(mask, cs):
@@ -278,59 +301,27 @@ def apply_mask_edits(mask, cs):
         cv2.fillPoly(m, [np.array(poly, np.int32)], 1)
     for poly in cs.get("subtract", []):
         cv2.fillPoly(m, [np.array(poly, np.int32)], 0)
-    for organ in cs.get("organ_exclusions", []):
-        if organ.get("scope") != "outline":
-            continue
-        for poly in organ.get("polygons", []):
-            cv2.fillPoly(m, [np.array(poly, np.int32)], 0)
     return m
 
 
 def analysis_mask(mask, cs):
-    output = apply_mask_edits(mask, cs)
-    for organ in cs.get("organ_exclusions", []):
-        for poly in organ.get("polygons", []):
-            cv2.fillPoly(output, [np.asarray(poly, np.int32)], 0)
-    return output
+    return apply_mask_edits(mask, cs)
 
 
 def corolla_traits(mask, base_xy, tip_xy):
     area_mm2 = float(mask.sum()) * MM2_PX
     b = np.array(base_xy, float); t = np.array(tip_xy, float)
     length_mm = float(np.linalg.norm(t - b)) * MM_PX
-    ys, xs = np.where(mask > 0)
-    width_mm = 0.0
-    if len(xs) and length_mm > 0:
-        axis = (t - b) / (np.linalg.norm(t - b) + 1e-9)
-        normal = np.array([-axis[1], axis[0]])
-        pts = np.stack([xs, ys], 1) - b
-        perp = pts @ normal
-        width_mm = float(perp.max() - perp.min()) * MM_PX
-    return dict(area_mm2=round(area_mm2, 1), length_mm=round(length_mm, 2), width_mm=round(width_mm, 2))
+    return {
+        "area_mm2": round(area_mm2, 1),
+        "length_mm": round(length_mm, 2),
+    }
 
 
 def region_was_edited(cs):
     return any(
         edits.get("add") or edits.get("subtract")
         for edits in cs.get("region_edits", {}).values()
-    )
-
-
-def shape_review_active(cs):
-    return bool(
-        cs.get("axis_changed")
-        or mask_was_edited(cs)
-        or cs.get("measurement_lines_changed")
-        or cs.get("flat_n_lobes") is not None
-        or cs.get("fold_changed")
-    )
-
-
-def colour_review_active(cs):
-    return bool(
-        shape_review_active(cs)
-        or region_was_edited(cs)
-        or cs.get("organ_exclusions")
     )
 
 
@@ -347,30 +338,6 @@ def pollination_trait_values(raw, mask, cs, row):
     return values
 
 
-def current_trait_updates(raw, mask, cs, row, *, preview=False):
-    if preview:
-        values = pollination_trait_values(raw, mask, cs, row)
-        if "exclude" in row:
-            values["exclude"] = "yes" if cs.get("exclude") else row.get("exclude", "")
-        return {field: value for field, value in values.items() if field in row}
-
-    edited = apply_mask_edits(mask, cs)
-    mm_per_px = float(row.get("mm_per_px") or MM_PX)
-    trait_review.ensure_measurement_lines(cs, edited, row)
-    updates = {}
-    if preview or shape_review_active(cs):
-        updates.update(trait_review.shape_trait_values(edited, cs, mm_per_px))
-    if preview or colour_review_active(cs):
-        colour_box = bbox_of(edited, 30, raw.shape)
-        colour_values, _ = trait_review.colour_trait_values(
-            raw, analysis_mask(mask, cs), colour_box, cs, mm_per_px
-        )
-        updates.update(colour_values)
-    if "exclude" in row:
-        updates["exclude"] = "yes" if cs.get("exclude") else row.get("exclude", "")
-    return {field: value for field, value in updates.items() if field in row}
-
-
 def stringify_trait_value(value):
     if value is None:
         return ""
@@ -379,95 +346,12 @@ def stringify_trait_value(value):
     return str(value)
 
 
-def values_differ(left, right):
-    return stringify_trait_value(left).strip() != stringify_trait_value(right).strip()
-
-
-def reviewed_trait_outputs(folder, stem, state, raw, masks, cen, fields, rows):
-    if not fields or not rows:
-        return [], [], []
-    island, _ = base.ISLANDS.get(folder, (folder, ""))
-    extra_fields = [
-        "app_review_status", "app_review_note", "visible_pistil_attached",
-        "fold_state_reviewed", "axis_reviewed", "mask_edited",
-        "guide_presence_reviewed", "app_review_complete",
-    ]
-    out_fields = list(fields)
-    for field in extra_fields:
-        if field not in out_fields:
-            out_fields.append(field)
-    reviewed_rows = []
-    override_rows = []
-    for original in rows:
-        try:
-            cid = int(original["corolla_id"])
-        except (KeyError, TypeError, ValueError):
-            reviewed_rows.append(dict(original))
-            continue
-        reviewed = {field: original.get(field, "") for field in fields}
-        cs = state.get(str(cid))
-        if cs and cid in masks:
-            for field, value in current_trait_updates(raw, masks[cid], cs, reviewed).items():
-                if values_differ(value, original.get(field, "")):
-                    reviewed[field] = stringify_trait_value(value)
-                    override_rows.append({
-                        "island": island, "sheet": stem, "corolla_id": cid,
-                        "field": field, "original_value": original.get(field, ""),
-                        "reviewed_value": stringify_trait_value(value),
-                        "source": "image_recalculation",
-                    })
-            reviewed["app_review_status"] = "excluded" if cs.get("exclude") else "retained"
-            reviewed["app_review_note"] = cs.get("reason", "")
-            reviewed["visible_pistil_attached"] = "yes" if cs.get("pistil") else ""
-            reviewed["fold_state_reviewed"] = cs.get("fold_state", "")
-            reviewed["axis_reviewed"] = "yes" if cs.get("axis_changed") else ""
-            reviewed["mask_edited"] = "yes" if mask_was_edited(cs) else ""
-            reviewed["guide_presence_reviewed"] = cs.get("guide_presence_reviewed", "")
-            reviewed["app_review_complete"] = "yes" if cs.get("review_complete") else ""
-        reviewed_rows.append(reviewed)
-    # Keep dynamically added manual fields only once and in insertion order.
-    deduped_fields = []
-    for field in out_fields:
-        if field not in deduped_fields:
-            deduped_fields.append(field)
-    return deduped_fields, reviewed_rows, override_rows
-
-
 def bbox_of(mask, mgn, shape):
     ys, xs = np.where(mask > 0)
     if not len(xs):
         return 0, 0, shape[1], shape[0]
     return (max(0, xs.min() - mgn), max(0, ys.min() - mgn),
             min(shape[1], xs.max() + mgn), min(shape[0], ys.max() + mgn))
-
-
-def render_crop(raw, mask, cs, cid, box, scale, pending_poly):
-    x0, y0, x1, y1 = box
-    crop = raw[y0:y1, x0:x1].copy()
-    edited = apply_mask_edits(mask, cs)
-    sub = crop[y0:y1, x0:x1] if False else crop  # noqa
-    over = crop.copy()
-    over[edited[y0:y1, x0:x1] > 0] = (0, 190, 0)
-    vis = cv2.addWeighted(crop, 0.6, over, 0.4, 0)
-    # removed (shadow) region in red = original minus edited
-    removed = (mask[y0:y1, x0:x1] > 0) & (edited[y0:y1, x0:x1] == 0)
-    vis[removed] = (0, 0, 235)
-    cnts, _ = cv2.findContours(edited[y0:y1, x0:x1], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cv2.drawContours(vis, cnts, -1, (0, 120, 0), 2)
-    # axis
-    bx, by = cs["axis_base"]; tx, ty = cs["axis_tip"]
-    cv2.arrowedLine(vis, (int(bx - x0), int(by - y0)), (int(tx - x0), int(ty - y0)),
-                    (0, 0, 220), 2, cv2.LINE_AA, tipLength=0.05)
-    cv2.circle(vis, (int(bx - x0), int(by - y0)), 7, (0, 0, 255), -1)
-    cv2.circle(vis, (int(tx - x0), int(ty - y0)), 6, (255, 0, 0), -1)
-    # pending polygon vertices
-    for (px, py) in pending_poly:
-        cv2.circle(vis, (int(px - x0), int(py - y0)), 5, (255, 160, 0), -1)
-    if len(pending_poly) >= 2:
-        pts = np.array([[int(px - x0), int(py - y0)] for px, py in pending_poly], np.int32)
-        cv2.polylines(vis, [pts], False, (255, 160, 0), 2)
-    big = cv2.resize(vis, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-    return cv2.cvtColor(big, cv2.COLOR_BGR2RGB), edited
 
 
 def render_organ_sheet(raw, masks, current_cid, candidates, mm_per_px, state):
@@ -512,12 +396,13 @@ def render_organ_sheet(raw, masks, current_cid, candidates, mm_per_px, state):
 
 def organ_length_summary(cs, mm_per_px):
     by_type = {"pistil": [], "stamen": []}
-    for source in (cs.get("organ_exclusions", []), cs.get("detached_organs", [])):
-        for organ in source:
-            organ_type = organ.get("organ_type", "unknown")
-            line = organ.get("line", [])
-            if organ_type in by_type and len(line) == 2:
-                by_type[organ_type].append(trait_review.line_length(line) * mm_per_px)
+    for organ in cs.get("detached_organs", []):
+        organ_type = organ.get("organ_type", "unknown")
+        line = organ.get("line", [])
+        if organ_type in by_type and len(line) == 2:
+            by_type[organ_type].append(
+                trait_review.line_length(line) * mm_per_px
+            )
     output = {}
     for organ_type, lengths in by_type.items():
         output[f"n_{organ_type}_measurements"] = len(lengths)
@@ -533,7 +418,7 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
     os.makedirs(outdir, exist_ok=True)
     island, _ = base.ISLANDS.get(folder, (folder, ""))
     axes_rows, hr_rows, excl_rows, corr_rows = [], [], [], []
-    measurement_rows, organ_rows, region_rows = [], [], []
+    measurement_rows, region_rows = [], []
     pollination_rows, reproductive_rows = [], []
     trait_by_cid = trait_rows_by_corolla(trait_rows or [])
     ovr_lines = []
@@ -551,7 +436,9 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
         analysis_values = trait_review.reviewed_guide_trait_values(
             core_values, presence_reviewed
         )
-        presence_analysis = analysis_values.get("guide_present", "")
+        presence_analysis = analysis_values.get(
+            "guide_present_incl_oxidized", ""
+        )
         organ_summary = organ_length_summary(cs, mm_per_px)
         pollination_rows.append({
             "island": island,
@@ -565,14 +452,19 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
             },
             "guide_presence_reviewed": presence_reviewed,
             "guide_present_analysis": presence_analysis,
-            "n_spots": analysis_values.get("n_spots", ""),
-            "guide_cov_incl_oxidized_pct": analysis_values.get(
-                "guide_cov_incl_oxidized_pct", ""
+            "n_spots_incl_oxidized": analysis_values.get(
+                "n_spots_incl_oxidized", ""
             ),
             "brown_frac": core_values.get("brown_frac", ""),
             "degraded_flag": core_values.get("degraded_flag", ""),
             **organ_summary,
             "fold_state_reviewed": cs.get("fold_state", ""),
+            "area_correction_factor": core_values.get(
+                "area_correction_factor", ""
+            ),
+            "area_scope": core_values.get(
+                "area_scope", ""
+            ),
             "excluded": "yes" if cs.get("exclude") else "",
             "review_complete": "yes" if cs.get("review_complete") else "",
             "scale_qc": original_trait.get("scale_qc", ""),
@@ -583,18 +475,18 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
             "base_x": round(cs["axis_base"][0], 3), "base_y": round(cs["axis_base"][1], 3),
             "tip_x": round(cs["axis_tip"][0], 3), "tip_y": round(cs["axis_tip"][1], 3),
             "axis_changed": "yes" if cs["axis_changed"] else "no",
-            "length_mm": tr["length_mm"], "width_mm": tr["width_mm"], "area_mm2": tr["area_mm2"],
+            "length_mm": tr["length_mm"], "area_mm2": tr["area_mm2"],
         })
         hr_rows.append({
             "island": island, "sheet": stem, "corolla_id": cid,
             "review_status": "excluded" if cs["exclude"] else "retained",
-            "visible_pistil_attached": "yes" if cs["pistil"] else "",
+            "visible_pistil_attached": "",
             "fold_state": cs["fold_state"],
             "axis_reviewed": "yes" if cs["axis_changed"] else "",
             "mask_edited": "yes" if mask_was_edited(cs) else "",
             "measurement_guides_reviewed": "yes" if cs.get("measurement_lines_changed") else "",
             "pigment_regions_reviewed": "yes" if region_was_edited(cs) else "",
-            "organ_exclusions": len(cs.get("organ_exclusions", [])),
+            "organ_exclusions": 0,
             "note": cs["reason"],
         })
         if cs["exclude"]:
@@ -605,12 +497,10 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
                               "edge_mask_changed": "yes" if cs.get("edge_mask_polys") else "",
                               "n_edge_polys": len(cs.get("edge_mask_polys", [])),
                               "n_subtract_polys": len(cs["subtract"]), "n_add_polys": len(cs["add"]),
-                              "n_outline_organ_exclusions": sum(
-                                  item.get("scope") == "outline" for item in cs.get("organ_exclusions", [])
-                              ),
+                              "n_outline_organ_exclusions": 0,
                               "kept_area_mm2": tr["area_mm2"]})
         for guide_name, line in cs.get("measurement_lines", {}).items():
-            if len(line) != 2:
+            if guide_name not in trait_review.CORE_SHAPE_GUIDES or len(line) != 2:
                 continue
             measurement_rows.append({
                 "island": island, "sheet": stem, "corolla_id": cid,
@@ -619,31 +509,6 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
                 "x2": round(line[1][0], 3), "y2": round(line[1][1], 3),
                 "length_mm": round(trait_review.line_length(line) * mm_per_px, 3),
                 "reviewed": "yes" if guide_name in cs.get("measurement_lines_changed", []) else "",
-            })
-        for index, organ in enumerate(cs.get("organ_exclusions", []), start=1):
-            line = organ.get("line", [])
-            if len(line) != 2:
-                continue
-            organ_rows.append({
-                "island": island, "sheet": stem, "corolla_id": cid, "exclusion_id": index,
-                "organ_type": organ.get("organ_type", "unclassified"),
-                "seed_candidate_id": organ.get("seed_candidate_id", ""),
-                "scope": organ.get("scope", ""), "width_mm": organ.get("width_mm", ""),
-                "length_mm": round(trait_review.line_length(line) * mm_per_px, 3),
-                "x1": round(line[0][0], 3), "y1": round(line[0][1], 3),
-                "x2": round(line[1][0], 3), "y2": round(line[1][1], 3),
-            })
-            reproductive_rows.append({
-                "island": island, "sheet": stem, "corolla_id": cid,
-                "measurement_id": f"overlap-{index}",
-                "source": "attached_or_overlapping",
-                "organ_type": organ.get("organ_type", "unknown"),
-                "identity_status": organ.get("identity_status", "uncertain"),
-                "candidate_id": organ.get("seed_candidate_id", ""),
-                "length_mm": round(trait_review.line_length(line) * mm_per_px, 3),
-                "x1": round(line[0][0], 3), "y1": round(line[0][1], 3),
-                "x2": round(line[1][0], 3), "y2": round(line[1][1], 3),
-                "note": organ.get("note", ""),
             })
         for index, organ in enumerate(cs.get("detached_organs", []), start=1):
             line = organ.get("line", [])
@@ -694,7 +559,6 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
     _w("reviewed_exclusions.csv", excl_rows)
     _w("reviewed_mask_corrections.csv", corr_rows)
     _w("reviewed_measurement_guides.csv", measurement_rows)
-    _w("reviewed_organ_exclusions.csv", organ_rows)
     _w("reviewed_reproductive_organs.csv", reproductive_rows, [
         "island", "sheet", "corolla_id", "measurement_id", "source",
         "organ_type", "identity_status", "candidate_id", "length_mm",
@@ -704,20 +568,21 @@ def export_all(folder, stem, state, raw, masks, cen, trait_fields=None, trait_ro
     _w("reviewed_pollination_traits.csv", pollination_rows, [
         "island", "sheet", "corolla_id", "site_no", "individual_id",
         *[field for field, _, _, _ in trait_review.CORE_POLLINATION_TRAITS],
-        "guide_presence_reviewed", "guide_present_analysis", "n_spots",
-        "guide_cov_incl_oxidized_pct", "brown_frac", "degraded_flag",
+        "guide_presence_reviewed", "guide_present_analysis",
+        "n_spots_incl_oxidized", "brown_frac", "degraded_flag",
         "pistil_length_mean_mm", "n_pistil_measurements",
         "stamen_length_mean_mm", "n_stamen_measurements",
-        "fold_state_reviewed", "excluded", "review_complete", "scale_qc", "note",
+        "fold_state_reviewed", "area_correction_factor", "area_scope",
+        "excluded", "review_complete", "scale_qc", "note",
     ])
-    trait_fields_out, reviewed_traits, trait_overrides = reviewed_trait_outputs(
-        folder, stem, state, raw, masks, cen, trait_fields or [], trait_rows or []
-    )
-    _w("reviewed_traits.csv", reviewed_traits, trait_fields_out)
-    _w("reviewed_trait_overrides.csv", trait_overrides, [
-        "island", "sheet", "corolla_id", "field",
-        "original_value", "reviewed_value", "source",
-    ])
+    for obsolete_name in (
+        "reviewed_organ_exclusions.csv",
+        "reviewed_traits.csv",
+        "reviewed_trait_overrides.csv",
+    ):
+        obsolete_path = os.path.join(outdir, obsolete_name)
+        if os.path.exists(obsolete_path):
+            os.remove(obsolete_path)
     with open(os.path.join(outdir, "axis_overrides_snippet.py"), "w", encoding="utf-8") as fh:
         fh.write("# paste into REVIEWED_AXIS_OVERRIDES in measure_guides_review_axis_overrides.py\n")
         fh.write("\n".join(ovr_lines) + ("\n" if ovr_lines else ""))
@@ -826,7 +691,7 @@ with progress_col:
 
 stage = st.segmented_control(
     "レビュー工程",
-    ["マスク", "形", "斑点", "雄しべ・雌しべ", "確認"],
+    ["マスク", "形", "斑点", "外置き器官", "確認"],
     default="マスク",
     key=f"review_stage_{stem}_{cid}",
     width="stretch",
@@ -905,7 +770,15 @@ if stage == "マスク":
         current_shape = trait_review.shape_trait_values(
             edited, cs, mm_per_px
         )
-        st.metric("花弁面積", f'{current_shape["corolla_area_ruler_mm2"]:.1f} mm2')
+        standardized_area = current_shape["corolla_area_standardized_mm2"]
+        st.metric(
+            "花冠面積（全花冠換算）",
+            (
+                f"{standardized_area:.1f} mm2"
+                if standardized_area != ""
+                else "状態を選択"
+            ),
+        )
         st.metric("マスク修正", "あり" if mask_was_edited(cs) else "なし")
         if mask_mode == "境界":
             if st.button(
@@ -973,7 +846,7 @@ elif stage == "形":
     shape_targets = {
         "花冠長（基部－先端）": "axis",
         "最大幅": "max_span",
-        "筒の開口幅": "throat_span",
+        "開口幅（谷の高さで左右端－端）": "throat_span",
         "筒の基部幅": "basal_tube_span",
     }
     with left:
@@ -990,7 +863,11 @@ elif stage == "形":
         else:
             active_raw_line = lines[selected_shape]
             active_colour = trait_review.MEASUREMENT_GUIDES[selected_shape]["colour"]
-            endpoint_labels = ["END 1", "END 2"]
+            endpoint_labels = (
+                ["AXIS", "EDGE"]
+                if cs.get("fold_state") in {"open", "opened_full"}
+                else ["EDGE 1", "EDGE 2"]
+            )
 
         context_lines = []
         if selected_shape != "axis":
@@ -1043,6 +920,37 @@ elif stage == "形":
         draft_line = component_value(result, "line", draft_line)
 
     with right:
+        fold_values = list(FOLD_STATE_LABELS.values())
+        current_fold = cs.get("fold_state", "unknown")
+        selected_fold_label = st.radio(
+            "花冠の展開状態",
+            list(FOLD_STATE_LABELS),
+            index=(
+                fold_values.index(current_fold)
+                if current_fold in fold_values
+                else fold_values.index("unknown")
+            ),
+            key=f"shape_fold_{stem}_{cid}",
+        )
+        selected_fold = FOLD_STATE_LABELS[selected_fold_label]
+        if selected_fold != current_fold:
+            cs["fold_state"] = selected_fold
+            cs["fold_changed"] = True
+            for guide_name in trait_review.CORE_SHAPE_GUIDES:
+                if guide_name not in cs["measurement_lines_changed"]:
+                    cs["measurement_lines"].pop(guide_name, None)
+            commit_change()
+        if selected_fold == "open":
+            st.caption(
+                "全展開：幅3本は中軸から片側外縁まで。面積は全体を実測。"
+            )
+        elif selected_fold == "folded_half":
+            st.caption(
+                "半折り：幅3本は見えている半花冠を実測。面積だけ2倍。"
+            )
+        else:
+            st.caption("状態不明：実測線は保存し、比較値は保留。")
+
         reviewed_line = display_line_to_raw(
             draft_line, box, DISPLAY_W, display_height, raw.shape
         )
@@ -1051,10 +959,37 @@ elif stage == "形":
             f"{trait_review.line_length(reviewed_line) * mm_per_px:.2f} mm",
         )
         shape_values = trait_review.shape_trait_values(edited, cs, mm_per_px)
+        standardization_pending = shape_values["area_scope"] == "unresolved"
         st.metric("花冠長", f'{shape_values["corolla_length_ruler_mm"]:.2f} mm')
-        st.metric("開口幅", f'{shape_values["flat_throat_span_mm"]:.2f} mm')
-        st.metric("相対開口", f'{shape_values["flat_throat_openness"]:.3f}')
-        st.metric("筒テーパー", f'{shape_values["flat_tube_taper_ratio"]:.3f}')
+        st.metric(
+            "最大幅（半花冠）",
+            (
+                "状態を選択"
+                if standardization_pending
+                else f'{shape_values["corolla_max_span_standardized_mm"]:.2f} mm'
+            ),
+        )
+        st.metric(
+            "開口幅（半花冠）",
+            (
+                "状態を選択"
+                if standardization_pending
+                else f'{shape_values["throat_span_standardized_mm"]:.2f} mm'
+            ),
+        )
+        st.metric("相対開口率", f'{shape_values["flat_throat_openness"]:.3f}')
+        st.metric(
+            "筒基部幅（半花冠）",
+            (
+                "状態を選択"
+                if standardization_pending
+                else f'{shape_values["basal_tube_width_standardized_mm"]:.2f} mm'
+            ),
+        )
+        st.metric(
+            "筒の広がり比",
+            f'{shape_values["flat_tube_taper_ratio"]:.3f}',
+        )
 
         if st.button(
             "測定線を適用",
@@ -1096,6 +1031,10 @@ elif stage == "形":
                     cs["axis_base"],
                     cs["axis_tip"],
                     trait_row,
+                    half_widths=cs.get("fold_state") in {
+                        "open",
+                        "opened_full",
+                    },
                 )
                 cs["measurement_lines"][selected_shape] = automatic[selected_shape]
                 if selected_shape in cs["measurement_lines_changed"]:
@@ -1181,12 +1120,24 @@ elif stage == "斑点":
             else 0,
             key=f"guide_presence_{stem}_{cid}",
         )
-        st.metric("ガイド面積", f'{colour_values["guide_area_mm2"]:.2f} mm2')
-        st.metric("面積率", f'{colour_values["guide_cov_pct"]:.2f}%')
-        st.metric("斑点数", colour_values["n_spots"])
+        standardized_guide_area = colour_values[
+            "guide_area_incl_oxidized_standardized_mm2"
+        ]
         st.metric(
-            "酸化込み面積率",
+            "ガイド面積（紫＋酸化、全花冠換算）",
+            (
+                f"{standardized_guide_area:.2f} mm2"
+                if standardized_guide_area != ""
+                else "状態を選択"
+            ),
+        )
+        st.metric(
+            "面積率（紫＋酸化）",
             f'{colour_values["guide_cov_incl_oxidized_pct"]:.2f}%',
+        )
+        st.metric(
+            "領域数（紫＋酸化）",
+            colour_values["n_spots_incl_oxidized"],
         )
         if st.button(
             "斑点レビューを保存",
@@ -1223,400 +1174,238 @@ elif stage == "斑点":
             cs["region_edits"][target] = {"add": [], "subtract": []}
             commit_change()
 
-elif stage == "雄しべ・雌しべ":
-    organ_mode = st.segmented_control(
-        "配置",
-        ["花の中央・重なり", "シート上に外置き"],
-        default="花の中央・重なり",
-        key=f"organ_mode_{stem}_{cid}",
-        width="stretch",
-    ) or "花の中央・重なり"
+elif stage == "外置き器官":
     organ_type_labels = {
+        "不明": "unknown",
         "雌しべ": "pistil",
         "雄しべ": "stamen",
-        "不明": "unknown",
         "その他": "artifact",
     }
     identity_labels = {
-        "確実": "confirmed",
         "不確実": "uncertain",
+        "確実": "confirmed",
     }
 
-    if organ_mode == "花の中央・重なり":
-        left, right = st.columns([3, 1])
-        seed_line = [cs["axis_base"], cs["axis_tip"]]
-        with left:
-            editor_key = (
-                f"central_organ_{stem}_{cid}_{editor_generation}"
-            )
-            initial_line = raw_line_to_display(
-                seed_line, box, DISPLAY_W, display_height
-            )
-            draft_line = component_value(
-                st.session_state.get(editor_key), "line", initial_line
-            )
-            context_lines = [
-                {
-                    "points": raw_line_to_display(
-                        item["line"], box, DISPLAY_W, display_height
-                    ),
-                    "colour": "rgba(230,126,34,.65)",
-                }
-                for item in cs.get("organ_exclusions", [])
-                if len(item.get("line", [])) == 2
-            ]
-            result = image_editor(
-                key=editor_key,
-                data={
-                    "image_url": image_url,
-                    "width": DISPLAY_W,
-                    "height": display_height,
-                    "mode": "line",
-                    "polygons": display_mask,
-                    "line": draft_line,
-                    "line_colour": "#e65100",
-                    "line_labels": ["BASE", "TIP"],
-                    "context_lines": context_lines,
-                },
-                default={"line": draft_line},
-                on_line_change=lambda: None,
-                width="stretch",
-                height="content",
-            )
-            draft_line = component_value(result, "line", draft_line)
+    assigned_candidates = {}
+    for assigned_cid, assigned_state in state.items():
+        for organ in assigned_state.get("detached_organs", []):
+            candidate_id = str(organ.get("candidate_id", ""))
+            if candidate_id:
+                assigned_candidates[candidate_id] = str(assigned_cid)
 
-        with right:
-            selected_type_label = st.selectbox(
-                "器官",
-                list(organ_type_labels),
-                key=f"central_type_{stem}_{cid}",
-            )
-            selected_identity_label = st.selectbox(
-                "同定",
-                list(identity_labels),
-                key=f"central_identity_{stem}_{cid}",
-            )
-            scope_label = st.segmented_control(
-                "除外範囲",
-                ["形・面積と斑点", "斑点のみ"],
-                default="形・面積と斑点",
-                key=f"central_scope_{stem}_{cid}",
-            ) or "形・面積と斑点"
-            organ_width_mm = st.slider(
-                "器官幅 (mm)",
-                0.5,
-                5.0,
-                1.5,
-                0.1,
-                key=f"central_width_{stem}_{cid}",
-            )
-            organ_note = st.text_input(
-                "メモ",
-                key=f"central_note_{stem}_{cid}",
-            )
-            raw_organ_line = display_line_to_raw(
-                draft_line,
-                box,
-                DISPLAY_W,
-                display_height,
-                raw.shape,
-            )
-            st.metric(
-                "器官長",
-                f"{trait_review.line_length(raw_organ_line) * mm_per_px:.2f} mm",
-            )
-            st.metric("保存数", len(cs.get("organ_exclusions", [])))
-            if st.button(
-                "中央器官を保存",
-                type="primary",
-                width="stretch",
-                key=f"save_central_organ_{stem}_{cid}",
-            ):
-                polygons = buffered_line_polygon(
-                    raw_organ_line,
-                    organ_width_mm / max(mm_per_px, 1e-9),
-                    raw.shape,
-                )
-                if polygons:
-                    organ_type = organ_type_labels[selected_type_label]
-                    cs["organ_exclusions"].append({
-                        "line": raw_organ_line,
-                        "width_mm": float(organ_width_mm),
-                        "organ_type": organ_type,
-                        "identity_status": identity_labels[
-                            selected_identity_label
-                        ],
-                        "seed_candidate_id": "",
-                        "scope": (
-                            "outline"
-                            if scope_label == "形・面積と斑点"
-                            else "pigment"
-                        ),
-                        "polygons": polygons,
-                        "note": organ_note,
-                    })
-                    if organ_type == "pistil":
-                        cs["pistil"] = True
-                    commit_change()
-                st.warning("有効な器官線がありません。")
-
-        central_saved = cs.get("organ_exclusions", [])
-        if central_saved:
-            st.dataframe(
-                [
-                    {
-                        "番号": index + 1,
-                        "器官": item.get("organ_type", "unknown"),
-                        "長さ mm": round(
-                            trait_review.line_length(item.get("line", []))
-                            * mm_per_px,
-                            3,
-                        ),
-                        "同定": item.get("identity_status", "uncertain"),
-                        "除外": item.get("scope", ""),
-                    }
-                    for index, item in enumerate(central_saved)
-                ],
-                hide_index=True,
-                width="stretch",
-            )
-            remove_central = st.selectbox(
-                "削除する中央器官",
-                list(range(len(central_saved))),
-                format_func=lambda index: (
-                    f'{index + 1}: {central_saved[index].get("organ_type", "unknown")}'
-                ),
-                key=f"remove_central_{stem}_{cid}",
-            )
-            if st.button(
-                "選択した中央器官を削除",
-                key=f"delete_central_{stem}_{cid}",
-            ):
-                central_saved.pop(remove_central)
-                commit_change()
-
-    else:
-        assigned_candidates = {}
-        for assigned_cid, assigned_state in state.items():
-            for organ in assigned_state.get("detached_organs", []):
-                candidate_id = str(organ.get("candidate_id", ""))
-                if candidate_id:
-                    assigned_candidates[candidate_id] = str(assigned_cid)
-
-        candidate_by_id = {
-            str(row.get("organ_id")): row
-            for row in organ_candidates
-            if str(row.get("organ_id", "")).strip()
-            and (
-                str(row.get("organ_id")) not in assigned_candidates
-                or assigned_candidates[str(row.get("organ_id"))] == str(cid)
-            )
-        }
-        nearest = trait_review.nearest_detached_organ_candidate(
-            organ_candidates,
-            masks[cid],
-            mm_per_px,
-            used_ids=[
-                candidate_id
-                for candidate_id, assigned_cid in assigned_candidates.items()
-                if assigned_cid != str(cid)
-            ],
+    candidate_by_id = {
+        str(row.get("organ_id")): row
+        for row in organ_candidates
+        if str(row.get("organ_id", "")).strip()
+        and (
+            str(row.get("organ_id")) not in assigned_candidates
+            or assigned_candidates[str(row.get("organ_id"))] == str(cid)
         )
-        candidate_options = ["manual"] + sorted(
-            candidate_by_id,
-            key=lambda value: (
-                (0, int(value)) if value.isdigit() else (1, value)
+    }
+    nearest = trait_review.nearest_detached_organ_candidate(
+        organ_candidates,
+        masks[cid],
+        mm_per_px,
+        used_ids=[
+            candidate_id
+            for candidate_id, assigned_cid in assigned_candidates.items()
+            if assigned_cid != str(cid)
+        ],
+    )
+    candidate_options = ["manual"] + sorted(
+        candidate_by_id,
+        key=lambda value: (
+            (0, int(value)) if value.isdigit() else (1, value)
+        ),
+    )
+    default_candidate = (
+        str(nearest["candidate_id"])
+        if nearest
+        and str(nearest["candidate_id"]) in candidate_by_id
+        and str(
+            candidate_by_id[str(nearest["candidate_id"])].get(
+                "nearest_corolla", ""
+            )
+        ) == str(cid)
+        else "manual"
+    )
+
+    left, right = st.columns([3, 1])
+    with left:
+        selected_candidate = st.selectbox(
+            "検出候補",
+            candidate_options,
+            index=candidate_options.index(default_candidate),
+            format_func=lambda value: (
+                "手動線"
+                if value == "manual"
+                else (
+                    f'O{value}  候補C'
+                    f'{candidate_by_id[value].get("nearest_corolla", "")}'
+                )
             ),
+            key=f"detached_candidate_{stem}_{cid}_{editor_generation}",
         )
-        default_candidate = (
-            str(nearest["candidate_id"])
-            if nearest
-            and str(nearest["candidate_id"]) in candidate_by_id
-            and str(
-                candidate_by_id[str(nearest["candidate_id"])].get(
-                    "nearest_corolla", ""
-                )
-            ) == str(cid)
-            else "manual"
+        existing_candidate = next(
+            (
+                item
+                for item in cs.get("detached_organs", [])
+                if str(item.get("candidate_id", "")) == selected_candidate
+            ),
+            None,
+        )
+        candidate_row = candidate_by_id.get(selected_candidate)
+        candidate_line = (
+            trait_review.organ_candidate_line(candidate_row, mm_per_px)
+            if candidate_row
+            else None
+        )
+        initial_raw_line = (
+            existing_candidate.get("line")
+            if existing_candidate
+            else candidate_line
+            if candidate_line
+            else [cs["axis_base"], cs["axis_tip"]]
         )
 
-        left, right = st.columns([3, 1])
-        with left:
-            selected_candidate = st.selectbox(
-                "検出候補",
-                candidate_options,
-                index=candidate_options.index(default_candidate),
-                format_func=lambda value: (
-                    "手動線"
-                    if value == "manual"
-                    else (
-                        f'O{value}  候補C'
-                        f'{candidate_by_id[value].get("nearest_corolla", "")}'
-                    )
-                ),
-                key=(
-                    f"detached_candidate_{stem}_{cid}_{editor_generation}"
-                ),
-            )
-            existing_candidate = next(
-                (
-                    item
-                    for item in cs.get("detached_organs", [])
-                    if str(item.get("candidate_id", "")) == selected_candidate
-                ),
-                None,
-            )
-            candidate_row = candidate_by_id.get(selected_candidate)
-            candidate_line = (
-                trait_review.organ_candidate_line(candidate_row, mm_per_px)
-                if candidate_row
-                else None
-            )
-            initial_raw_line = (
-                existing_candidate.get("line")
-                if existing_candidate
-                else candidate_line
-                if candidate_line
-                else [cs["axis_base"], cs["axis_tip"]]
-            )
+        sheet_canvas = render_organ_sheet(
+            raw,
+            masks,
+            cid,
+            organ_candidates,
+            mm_per_px,
+            state,
+        )
+        sheet_height = max(
+            240,
+            int(round(raw.shape[0] * SHEET_DISPLAY_W / raw.shape[1])),
+        )
+        sheet_url = bgr_to_jpeg_data_url(
+            sheet_canvas, SHEET_DISPLAY_W, sheet_height
+        )
+        sheet_box = (0, 0, raw.shape[1], raw.shape[0])
+        editor_key = (
+            f"detached_organ_{selected_candidate}_{stem}_{cid}_"
+            f"{editor_generation}"
+        )
+        initial_line = raw_line_to_display(
+            initial_raw_line,
+            sheet_box,
+            SHEET_DISPLAY_W,
+            sheet_height,
+        )
+        draft_line = component_value(
+            st.session_state.get(editor_key), "line", initial_line
+        )
+        result = image_editor(
+            key=editor_key,
+            data={
+                "image_url": sheet_url,
+                "width": SHEET_DISPLAY_W,
+                "height": sheet_height,
+                "mode": "line",
+                "polygons": [],
+                "line": draft_line,
+                "line_colour": "#1565c0",
+                "line_labels": ["BASE", "TIP"],
+                "context_lines": [],
+            },
+            default={"line": draft_line},
+            on_line_change=lambda: None,
+            width="stretch",
+            height="content",
+        )
+        draft_line = component_value(result, "line", draft_line)
 
-            sheet_canvas = render_organ_sheet(
-                raw,
-                masks,
-                cid,
-                organ_candidates,
-                mm_per_px,
-                state,
-            )
-            sheet_height = max(
-                240,
-                int(round(raw.shape[0] * SHEET_DISPLAY_W / raw.shape[1])),
-            )
-            sheet_url = bgr_to_jpeg_data_url(
-                sheet_canvas, SHEET_DISPLAY_W, sheet_height
-            )
-            sheet_box = (0, 0, raw.shape[1], raw.shape[0])
-            editor_key = (
-                f"detached_organ_{selected_candidate}_{stem}_{cid}_"
-                f"{editor_generation}"
-            )
-            initial_line = raw_line_to_display(
-                initial_raw_line,
-                sheet_box,
-                SHEET_DISPLAY_W,
-                sheet_height,
-            )
-            draft_line = component_value(
-                st.session_state.get(editor_key), "line", initial_line
-            )
-            result = image_editor(
-                key=editor_key,
-                data={
-                    "image_url": sheet_url,
-                    "width": SHEET_DISPLAY_W,
-                    "height": sheet_height,
-                    "mode": "line",
-                    "polygons": [],
-                    "line": draft_line,
-                    "line_colour": "#1565c0",
-                    "line_labels": ["BASE", "TIP"],
-                    "context_lines": [],
-                },
-                default={"line": draft_line},
-                on_line_change=lambda: None,
-                width="stretch",
-                height="content",
-            )
-            draft_line = component_value(result, "line", draft_line)
-
-        with right:
-            selected_type_label = st.selectbox(
-                "器官",
-                list(organ_type_labels),
-                key=f"detached_type_{stem}_{cid}",
-            )
-            selected_identity_label = st.selectbox(
-                "同定",
-                list(identity_labels),
-                key=f"detached_identity_{stem}_{cid}",
-            )
-            detached_note = st.text_input(
-                "メモ",
-                key=f"detached_note_{stem}_{cid}",
-            )
-            raw_detached_line = display_line_to_raw(
-                draft_line,
-                sheet_box,
-                SHEET_DISPLAY_W,
-                sheet_height,
-                raw.shape,
-            )
-            st.metric(
-                "器官長",
-                f"{trait_review.line_length(raw_detached_line) * mm_per_px:.2f} mm",
-            )
-            if st.button(
-                "この花へ対応付け",
-                type="primary",
-                width="stretch",
-                key=f"save_detached_{stem}_{cid}",
-            ):
-                if trait_review.line_length(raw_detached_line) <= 1:
-                    st.warning("器官線が短すぎます。")
+    with right:
+        selected_type_label = st.selectbox(
+            "器官",
+            list(organ_type_labels),
+            key=f"detached_type_{stem}_{cid}",
+        )
+        selected_identity_label = st.selectbox(
+            "同定",
+            list(identity_labels),
+            key=f"detached_identity_{stem}_{cid}",
+        )
+        detached_note = st.text_input(
+            "メモ",
+            key=f"detached_note_{stem}_{cid}",
+        )
+        raw_detached_line = display_line_to_raw(
+            draft_line,
+            sheet_box,
+            SHEET_DISPLAY_W,
+            sheet_height,
+            raw.shape,
+        )
+        st.metric(
+            "器官長",
+            f"{trait_review.line_length(raw_detached_line) * mm_per_px:.2f} mm",
+        )
+        if st.button(
+            "この花へ対応付け",
+            type="primary",
+            width="stretch",
+            key=f"save_detached_{stem}_{cid}",
+        ):
+            if trait_review.line_length(raw_detached_line) <= 1:
+                st.warning("器官線が短すぎます。")
+            else:
+                record = {
+                    "line": raw_detached_line,
+                    "organ_type": organ_type_labels[selected_type_label],
+                    "identity_status": identity_labels[
+                        selected_identity_label
+                    ],
+                    "candidate_id": (
+                        "" if selected_candidate == "manual"
+                        else selected_candidate
+                    ),
+                    "note": detached_note,
+                }
+                if existing_candidate:
+                    existing_candidate.update(record)
                 else:
-                    record = {
-                        "line": raw_detached_line,
-                        "organ_type": organ_type_labels[selected_type_label],
-                        "identity_status": identity_labels[
-                            selected_identity_label
-                        ],
-                        "candidate_id": (
-                            "" if selected_candidate == "manual"
-                            else selected_candidate
-                        ),
-                        "note": detached_note,
-                    }
-                    if existing_candidate:
-                        existing_candidate.update(record)
-                    else:
-                        cs["detached_organs"].append(record)
-                    commit_change()
-
-        detached_saved = cs.get("detached_organs", [])
-        if detached_saved:
-            st.dataframe(
-                [
-                    {
-                        "番号": index + 1,
-                        "候補": item.get("candidate_id", "manual") or "manual",
-                        "器官": item.get("organ_type", "unknown"),
-                        "長さ mm": round(
-                            trait_review.line_length(item.get("line", []))
-                            * mm_per_px,
-                            3,
-                        ),
-                        "同定": item.get("identity_status", "uncertain"),
-                    }
-                    for index, item in enumerate(detached_saved)
-                ],
-                hide_index=True,
-                width="stretch",
-            )
-            remove_detached = st.selectbox(
-                "削除する外置き器官",
-                list(range(len(detached_saved))),
-                format_func=lambda index: (
-                    f'{index + 1}: '
-                    f'{detached_saved[index].get("candidate_id", "manual") or "manual"}'
-                ),
-                key=f"remove_detached_{stem}_{cid}",
-            )
-            if st.button(
-                "選択した外置き器官を削除",
-                key=f"delete_detached_{stem}_{cid}",
-            ):
-                detached_saved.pop(remove_detached)
+                    cs["detached_organs"].append(record)
                 commit_change()
+
+    detached_saved = cs.get("detached_organs", [])
+    if detached_saved:
+        st.dataframe(
+            [
+                {
+                    "番号": index + 1,
+                    "候補": item.get("candidate_id", "manual") or "manual",
+                    "器官": item.get("organ_type", "unknown"),
+                    "長さ mm": round(
+                        trait_review.line_length(item.get("line", []))
+                        * mm_per_px,
+                        3,
+                    ),
+                    "同定": item.get("identity_status", "uncertain"),
+                }
+                for index, item in enumerate(detached_saved)
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+        remove_detached = st.selectbox(
+            "削除する外置き器官",
+            list(range(len(detached_saved))),
+            format_func=lambda index: (
+                f'{index + 1}: '
+                f'{detached_saved[index].get("candidate_id", "manual") or "manual"}'
+            ),
+            key=f"remove_detached_{stem}_{cid}",
+        )
+        if st.button(
+            "選択した外置き器官を削除",
+            key=f"delete_detached_{stem}_{cid}",
+        ):
+            detached_saved.pop(remove_detached)
+            commit_change()
+
 
 elif stage == "確認":
     live_values = pollination_trait_values(
@@ -1653,15 +1442,20 @@ elif stage == "確認":
         "花冠長",
         f'{live_values.get("corolla_length_ruler_mm", 0):.2f} mm',
     )
+    standardized_throat = live_values.get("throat_span_standardized_mm", "")
     top_metrics[1].metric(
-        "開口幅",
-        f'{live_values.get("flat_throat_span_mm", 0):.2f} mm',
+        "開口幅（半花冠）",
+        (
+            f"{standardized_throat:.2f} mm"
+            if standardized_throat != ""
+            else "状態を選択"
+        ),
     )
     top_metrics[2].metric(
         "ガイド面積率",
         (
-            f'{analysis_values.get("guide_cov_pct", 0):.2f}%'
-            if analysis_values.get("guide_cov_pct", "") != ""
+            f'{analysis_values.get("guide_cov_incl_oxidized_pct", 0):.2f}%'
+            if analysis_values.get("guide_cov_incl_oxidized_pct", "") != ""
             else "判定保留"
         ),
     )
@@ -1698,23 +1492,17 @@ elif stage == "確認":
         )
 
     with right:
-        fold_labels = {
-            "展開": "open",
-            "半分折り": "folded_half",
-        }
+        fold_values = list(FOLD_STATE_LABELS.values())
+        current_fold = cs.get("fold_state", "unknown")
         selected_fold_label = st.radio(
             "花冠の状態",
-            list(fold_labels),
+            list(FOLD_STATE_LABELS),
             index=(
-                1 if cs.get("fold_state") == "folded_half" else 0
+                fold_values.index(current_fold)
+                if current_fold in fold_values
+                else fold_values.index("unknown")
             ),
-            horizontal=True,
             key=f"qc_fold_{stem}_{cid}",
-        )
-        visible_pistil = st.checkbox(
-            "中央に雌しべが見える",
-            value=bool(cs.get("pistil")),
-            key=f"qc_pistil_{stem}_{cid}",
         )
         exclude_corolla = st.checkbox(
             "この花冠を除外",
@@ -1737,11 +1525,10 @@ elif stage == "確認":
             width="stretch",
             key=f"save_qc_{stem}_{cid}",
         ):
-            new_fold = fold_labels[selected_fold_label]
+            new_fold = FOLD_STATE_LABELS[selected_fold_label]
             if new_fold != cs.get("fold_state"):
                 cs["fold_changed"] = True
             cs["fold_state"] = new_fold
-            cs["pistil"] = visible_pistil
             cs["exclude"] = exclude_corolla
             cs["reason"] = review_note
             cs["review_complete"] = review_complete

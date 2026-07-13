@@ -2,8 +2,9 @@
 
 Interactive per-sheet QC for the flattened *Campanula microdonta* corollas. Fix the
 things automation gets wrong: the **corolla mask**, **central axis**, measurement
-cross-sections, pigment regions, and reproductive-organ contamination. Derived
-trait values are recalculated from the reviewed image evidence.
+cross-sections, pigment regions, and detached reproductive organs. The focused
+output contains pollination-related traits that can be traced back to reviewed
+image evidence.
 
 Everything is shown in the **canonical ruler-at-top** frame that the pipeline uses.
 
@@ -30,36 +31,40 @@ python qc_single_sheet.py --image "shimahotarubukuro/oshima/oshima10~13.jpg" \
 
 ## Using it
 
-1. **Sidebar** — pick the sheet, then a corolla (C1…CN). Per-corolla flags live here
-   (Exclude +reason, Fold state open/folded_half, Visible pistil).
-2. **Axis workspace (click)** — pick *BASE* or *TIP* and click the point on the flower.
-   Put the base at the throat/top-centre and the tip on the true central-lobe tip.
-   *Reset axis to PRE-QC* restores the automatic axis.
-3. **Mask workspace** — drag white circular handles to move polygon vertices, drag
+1. **Sidebar** — pick the sheet, then a corolla (C1…CN).
+2. **Mask workspace** — drag white circular handles to move polygon vertices, drag
    diamond handles to move an edge, or grab the green outline to insert a new
    vertex. Brush mode remains available for local add/subtract corrections.
-4. **Measurements workspace** — review maximum span, throat/lobe boundary,
-   mid-tube width, basal-tube width, and visible lobe count directly on the flower.
-   Tube length, lobe length, mouth proxy, entrance area, and shape ratios update
-   from these reviewed guides.
-5. **Pigment workspace** — review purple guide, oxidized guide, and brown/degraded
-   regions with add/subtract brushes. Coverage, count, density, placement, and area
-   statistics are recalculated from the corrected regions.
-6. **Organs workspace** — adjust the seeded organ centre-line and set its width.
-   The seed comes from the detector or from a thin appendage in the flower mask. Use
-   *Outline + shape* for an organ incorrectly joined to the flower silhouette, or
-   *Pigment only* when it lies over a petal and should not create a hole in area.
-7. **All traits workspace** — audit every per-flower trait with its original value,
-   reviewed value, and source. Identifiers, coordinates, and sheet-level ruler
-   calibration stay protected; manual overrides remain available for traits that
-   cannot be reconstructed from the scan.
-8. **Save state** persists to `results/review_state/<sheet>.json` (resume later).
-9. **Export** writes `results/reviewed/<sheet>/app_review/` including:
+3. **Shape workspace** — drag both endpoints of the corolla axis, maximum span,
+   throat span, and basal-tube span. Put the axis base at the basal end and the tip
+   on the central-lobe tip. Put the throat line at the lobe-sinus height. Measure
+   axis-to-edge on an open corolla and the full visible width on a folded half.
+4. **Pigment workspace** — review purple guide, oxidized guide, and brown/degraded
+   regions. Final guide area, coverage, and presence use the union of purple and
+   oxidized guide regions.
+5. **Detached-organ workspace** — associate a detached pistil or stamen with the
+   current flower and review its centre-line length and identity confidence.
+6. **Confirmation workspace** — inspect the focused pollination-trait table, set
+   the fold state, exclusion, note, and review-complete flag.
+7. **Save state** persists to `results/review_state/<sheet>.json` (resume later).
+8. **Export** writes `results/reviewed/<sheet>/app_review/` including:
    `reviewed_axes.csv`, `human_review.csv`, `reviewed_exclusions.csv`,
    `reviewed_mask_corrections.csv`, `reviewed_measurement_guides.csv`,
-   `reviewed_organ_exclusions.csv`, `reviewed_region_corrections.csv`,
-   `reviewed_traits.csv`, `reviewed_trait_overrides.csv`, and
-   `axis_overrides_snippet.py`.
+   `reviewed_region_corrections.csv`, `reviewed_reproductive_organs.csv`,
+   `reviewed_pollination_traits.csv`, and `axis_overrides_snippet.py`.
+
+## Full-open and half-folded standardization
+
+The four linear traits use the same half-corolla unit in both states. For `open`,
+draw maximum, throat, and basal widths from the axis to one outer edge. For
+`folded_half`, draw each width across the visible half-corolla. Corolla length is
+measured directly in both states. No circumference or diameter conversion is used.
+
+Area traits use a full-corolla unit: `open` mask and guide areas are used as
+observed, while `folded_half` areas are doubled. Coverage, relative opening, and
+tube expansion ratios are not multiplied. For `unknown`, comparison values stay
+blank. `fold_state_reviewed`, `area_correction_factor`, and `area_scope` preserve
+the area correction in the export.
 
 Reviewed decisions are per corolla and never touch the others — the automatic PRE-QC
 result stays the default for anything you don't change.

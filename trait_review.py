@@ -43,24 +43,64 @@ REGION_TARGETS = {
 CORE_SHAPE_GUIDES = ("max_span", "throat_span", "basal_tube_span")
 
 CORE_POLLINATION_TRAITS = (
-    ("corolla_length_ruler_mm", "Corolla length", "mm", "Size"),
-    ("corolla_area_ruler_mm2", "Corolla area", "mm2", "Size"),
-    ("corolla_max_span_ruler_mm", "Maximum span", "mm", "Size"),
-    ("flat_throat_span_mm", "Flattened throat span", "mm", "Access"),
-    ("flat_throat_openness", "Relative throat openness", "ratio", "Access"),
-    ("flat_tube_taper_ratio", "Tube taper", "ratio", "Access"),
-    ("guide_area_mm2", "Guide area", "mm2", "Guide"),
-    ("guide_cov_pct", "Guide coverage", "%", "Guide"),
-    ("guide_present", "Guide detected", "0/1", "Guide"),
+    ("corolla_length_ruler_mm", "花冠長", "mm", "Size"),
+    (
+        "corolla_area_standardized_mm2",
+        "花冠面積（全花冠換算）",
+        "mm2",
+        "Size",
+    ),
+    (
+        "corolla_max_span_standardized_mm",
+        "最大幅（半花冠）",
+        "mm",
+        "Size",
+    ),
+    (
+        "throat_span_standardized_mm",
+        "開口幅（半花冠）",
+        "mm",
+        "Access",
+    ),
+    ("flat_throat_openness", "相対開口率", "ratio", "Access"),
+    (
+        "basal_tube_width_standardized_mm",
+        "筒基部幅（半花冠）",
+        "mm",
+        "Access",
+    ),
+    (
+        "flat_tube_taper_ratio",
+        "筒の広がり比（筒口 / 基部）",
+        "ratio",
+        "Access",
+    ),
+    (
+        "guide_area_incl_oxidized_standardized_mm2",
+        "ガイド面積（紫＋酸化、全花冠換算）",
+        "mm2",
+        "Guide",
+    ),
+    (
+        "guide_cov_incl_oxidized_pct",
+        "ガイド面積率（紫＋酸化）",
+        "%",
+        "Guide",
+    ),
+    (
+        "guide_present_incl_oxidized",
+        "ガイド検出（紫＋酸化）",
+        "0/1",
+        "Guide",
+    ),
 )
 
 GUIDE_ANALYSIS_FIELDS = (
-    "guide_area_mm2",
-    "guide_cov_pct",
-    "guide_present",
-    "n_spots",
     "guide_area_incl_oxidized_mm2",
+    "guide_area_incl_oxidized_standardized_mm2",
     "guide_cov_incl_oxidized_pct",
+    "guide_present_incl_oxidized",
+    "n_spots_incl_oxidized",
 )
 
 
@@ -75,7 +115,7 @@ def reviewed_guide_trait_values(values, presence_status: str):
     """Apply a manual presence decision to analysis-ready guide values."""
     output = dict(values)
     if presence_status == "present":
-        output["guide_present"] = 1
+        output["guide_present_incl_oxidized"] = 1
     elif presence_status == "absent":
         for field in GUIDE_ANALYSIS_FIELDS:
             output[field] = 0
@@ -83,6 +123,14 @@ def reviewed_guide_trait_values(values, presence_status: str):
         for field in GUIDE_ANALYSIS_FIELDS:
             output[field] = ""
     return output
+
+
+def area_standardization(fold_state: str):
+    if fold_state == "folded_half":
+        return 2.0, "full_area_estimated_from_half"
+    if fold_state in {"open", "opened_full"}:
+        return 1.0, "full_area_observed"
+    return None, "unresolved"
 
 
 def _axis(base_xy, tip_xy):
@@ -366,7 +414,26 @@ def _maximum_span(mask, base_xy, tip_xy) -> list[list[float]]:
     return _cross_section(mask, base_xy, tip_xy, best_position)
 
 
-def automatic_measurement_lines(mask, base_xy, tip_xy, original_row=None):
+def _half_span(line, base_xy, tip_xy) -> list[list[float]]:
+    first = np.asarray(line[0], dtype=float)
+    second = np.asarray(line[1], dtype=float)
+    base_point, _, _, normal, _ = _axis(base_xy, tip_xy)
+    first_offset = float((first - base_point) @ normal)
+    second_offset = float((second - base_point) @ normal)
+    denominator = second_offset - first_offset
+    fraction = (
+        float(np.clip(-first_offset / denominator, 0.0, 1.0))
+        if abs(denominator) > 1e-9
+        else 0.5
+    )
+    axis_point = first + fraction * (second - first)
+    outer_point = second if second_offset >= first_offset else first
+    return [axis_point.tolist(), outer_point.tolist()]
+
+
+def automatic_measurement_lines(
+    mask, base_xy, tip_xy, original_row=None, *, half_widths=False
+):
     original_row = original_row or {}
     _, _, _, _, axis_length = _axis(base_xy, tip_xy)
     original_length_mm = _safe_float(
@@ -376,17 +443,27 @@ def automatic_measurement_lines(mask, base_xy, tip_xy, original_row=None):
     lobe_length_mm = _safe_float(original_row.get("flat_lobe_length_mm"), 0.22 * original_length_mm)
     lobe_fraction = min(max(lobe_length_mm / max(original_length_mm, 1e-9), 0.08), 0.55)
     throat_position = axis_length * (1.0 - lobe_fraction)
-    return {
+    lines = {
         "max_span": _maximum_span(mask, base_xy, tip_xy),
         "throat_span": _cross_section(mask, base_xy, tip_xy, throat_position),
         "mid_tube_span": _cross_section(mask, base_xy, tip_xy, 0.50 * throat_position),
         "basal_tube_span": _cross_section(mask, base_xy, tip_xy, 0.15 * throat_position),
     }
+    if half_widths:
+        for key in CORE_SHAPE_GUIDES:
+            lines[key] = _half_span(lines[key], base_xy, tip_xy)
+    return lines
 
 
 def ensure_measurement_lines(cs, mask, original_row=None):
     lines = cs.setdefault("measurement_lines", {})
-    automatic = automatic_measurement_lines(mask, cs["axis_base"], cs["axis_tip"], original_row)
+    automatic = automatic_measurement_lines(
+        mask,
+        cs["axis_base"],
+        cs["axis_tip"],
+        original_row,
+        half_widths=cs.get("fold_state") in {"open", "opened_full"},
+    )
     for key, value in automatic.items():
         if key not in lines or len(lines[key]) != 2:
             lines[key] = value
@@ -426,9 +503,15 @@ def shape_trait_values(mask, cs, mm_per_px: float):
     tube_mm = tube_px * mm_per_px
     lobe_mm = lobe_px * mm_per_px
     area_mm2 = float((mask > 0).sum()) * mm_per_px * mm_per_px
-    fold_factor = 2.0 if cs.get("fold_state") == "folded_half" else 1.0
-    mouth_mm = throat_mm * fold_factor / math.pi
-    entrance_mm2 = math.pi * (mouth_mm / 2.0) ** 2
+    fold_state = cs.get("fold_state", "unknown")
+    area_factor, area_scope = area_standardization(fold_state)
+    widths_reviewable = fold_state in {"open", "opened_full", "folded_half"}
+    if fold_state == "folded_half":
+        fold_state_label = "folded_half"
+    elif fold_state in {"open", "opened_full"}:
+        fold_state_label = "opened_or_broad"
+    else:
+        fold_state_label = "unknown"
     solidity, aspect = _shape_descriptors(mask)
 
     values = {
@@ -438,6 +521,20 @@ def shape_trait_values(mask, cs, mm_per_px: float):
         "corolla_max_span_ruler_mm": round(width_mm, 3),
         "corolla_area_mm2": round(area_mm2, 3),
         "corolla_area_ruler_mm2": round(area_mm2, 3),
+        "corolla_area_standardized_mm2": (
+            round(area_mm2 * area_factor, 3)
+            if area_factor is not None
+            else ""
+        ),
+        "corolla_max_span_standardized_mm": (
+            round(width_mm, 3) if widths_reviewable else ""
+        ),
+        "throat_span_standardized_mm": (
+            round(throat_mm, 3) if widths_reviewable else ""
+        ),
+        "basal_tube_width_standardized_mm": (
+            round(basal_mm, 3) if widths_reviewable else ""
+        ),
         "wl_ratio": round(width_mm / max(length_mm, 1e-9), 4),
         "flat_lobe_length_mm": round(lobe_mm, 3),
         "flat_tube_length_mm": round(tube_mm, 3),
@@ -445,20 +542,15 @@ def shape_trait_values(mask, cs, mm_per_px: float):
         "flat_throat_span_mm": round(throat_mm, 3),
         "flat_mid_tube_width_mm": round(middle_mm, 3),
         "flat_basal_tube_width_mm": round(basal_mm, 3),
-        "prov_mouth_diam_mm": round(mouth_mm, 3),
-        "prov_mouth_diameter_ruler_mm": round(mouth_mm, 3),
-        "prov_entrance_area_mm2": round(entrance_mm2, 3),
-        "mouth_to_tube_length_ratio": round(mouth_mm / max(tube_mm, 1e-9), 4),
         "flat_tube_taper_ratio": round(throat_mm / max(basal_mm, 1e-9), 4),
         "flat_tube_slenderness": round(tube_mm / max(middle_mm, 1e-9), 4),
         "flat_incision_rel": round(lobe_mm / max(length_mm, 1e-9), 4),
         "flat_throat_openness": round(throat_mm / max(width_mm, 1e-9), 4),
         "solidity": round(solidity, 4),
         "aspect": round(aspect, 4),
-        "fold_state_auto": "folded_half" if cs.get("fold_state") == "folded_half" else "opened_or_broad",
-        "mouth_proxy_assumption": (
-            "2x_flat_span_over_pi" if cs.get("fold_state") == "folded_half" else "flat_span_over_pi"
-        ),
+        "fold_state_auto": fold_state_label,
+        "area_correction_factor": area_factor if area_factor is not None else "",
+        "area_scope": area_scope,
     }
     if cs.get("flat_n_lobes") is not None:
         values["flat_n_lobes"] = int(cs["flat_n_lobes"])
@@ -526,12 +618,16 @@ def colour_trait_values(raw, analysis_mask, box, cs, mm_per_px: float):
     brown = (masks["brown"] > 0) & corolla
     guide_bool = guide > 0
     oxidized_bool = oxidized > 0
+    inclusive_guide = guide_bool | oxidized_bool
     corolla_px = int(corolla.sum())
     guide_px = int(guide_bool.sum())
-    oxidized_px = int(oxidized_bool.sum())
+    inclusive_px = int(inclusive_guide.sum())
     area_mm2 = corolla_px * mm_per_px * mm_per_px
     guide_area_mm2 = guide_px * mm_per_px * mm_per_px
-    incl_area_mm2 = (guide_px + oxidized_px) * mm_per_px * mm_per_px
+    incl_area_mm2 = inclusive_px * mm_per_px * mm_per_px
+    area_factor, _ = area_standardization(
+        cs.get("fold_state", "unknown")
+    )
 
     ys, xs = np.where(guide_bool)
     base_point, _, unit, _, axis_px = _axis(cs["axis_base"], cs["axis_tip"])
@@ -582,7 +678,22 @@ def colour_trait_values(raw, analysis_mask, box, cs, mm_per_px: float):
         "brown_overlap_pct_of_spots": round(100.0 * brown_overlap / max(guide_px, 1), 3),
         "n_oxidized_recovered_spots": int(len(oxidized_areas)),
         "guide_area_incl_oxidized_mm2": round(incl_area_mm2, 3),
-        "guide_cov_incl_oxidized_pct": round(100.0 * (guide_px + oxidized_px) / max(corolla_px, 1), 3),
+        "guide_area_incl_oxidized_standardized_mm2": (
+            round(incl_area_mm2 * area_factor, 3)
+            if area_factor is not None
+            else ""
+        ),
+        "guide_cov_incl_oxidized_pct": round(
+            100.0 * inclusive_px / max(corolla_px, 1), 3
+        ),
+        "guide_present_incl_oxidized": int(
+            100.0 * inclusive_px / max(corolla_px, 1) >= 0.5
+        ),
+        "n_spots_incl_oxidized": int(
+            cv2.connectedComponents(
+                inclusive_guide.astype(np.uint8), connectivity=8
+            )[0] - 1
+        ),
         "guide_cov_tube_pct": round(100.0 * tube_guide / max(tube_area, 1), 3),
         "guide_cov_lobes_pct": round(100.0 * lobe_guide / max(lobe_area, 1), 3),
         "guide_centroid_rel": round(guide_centroid, 4),
