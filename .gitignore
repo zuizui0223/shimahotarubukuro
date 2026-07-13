@@ -9,6 +9,13 @@ shimahotarubukuro/
 # QC overlays embed the specimen scans — regenerate locally
 results/overlays/
 
+# Review-app runtime state & caches (regenerated locally)
+results/review_state/
+results/review_cache/
+results/reviewed/*/app_review/
+results_single/
+results_all_review/
+
 # Python
 __pycache__/
 *.pyc
