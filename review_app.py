@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import faulthandler
+import html
 import json
 import os
 import runpy
@@ -73,6 +74,66 @@ def save_resume_sheet(sheet: str) -> None:
     os.replace(temporary, RESUME_PATH)
 
 
+def _safe_dataframe(data=None, *args, **kwargs):
+    """Render small review tables without pandas/pyarrow conversion.
+
+    Streamlit's dataframe conversion can enter pandas' Arrow-backed string
+    constructor and crash the worker in native code. The review app only passes
+    short lists of dictionaries here, so a plain HTML table is safer.
+    """
+    del args, kwargs
+    if data is None:
+        st.caption("データなし")
+        return None
+
+    if isinstance(data, dict):
+        rows = [data]
+    elif isinstance(data, (list, tuple)):
+        rows = list(data)
+    else:
+        st.code(str(data))
+        return None
+
+    if not rows:
+        st.caption("データなし")
+        return None
+
+    if not all(isinstance(row, dict) for row in rows):
+        st.code("\n".join(str(row) for row in rows))
+        return None
+
+    headers: list[str] = []
+    for row in rows:
+        for key in row:
+            text = str(key)
+            if text not in headers:
+                headers.append(text)
+
+    head = "".join(
+        f"<th style='padding:.45rem .6rem;text-align:left;"
+        f"border-bottom:1px solid #d9d9d9'>{html.escape(header)}</th>"
+        for header in headers
+    )
+    body_rows = []
+    for row in rows:
+        cells = "".join(
+            f"<td style='padding:.42rem .6rem;border-bottom:1px solid #eeeeee'>"
+            f"{html.escape(str(row.get(header, '')))}</td>"
+            for header in headers
+        )
+        body_rows.append(f"<tr>{cells}</tr>")
+
+    st.markdown(
+        "<div style='overflow-x:auto'>"
+        "<table style='width:100%;border-collapse:collapse;font-size:.92rem'>"
+        f"<thead><tr>{head}</tr></thead>"
+        f"<tbody>{''.join(body_rows)}</tbody>"
+        "</table></div>",
+        unsafe_allow_html=True,
+    )
+    return None
+
+
 labels = sheet_labels()
 if not labels:
     st.error("shimahotarubukuro/ に原画像がありません。")
@@ -120,9 +181,12 @@ except Exception:
 print(f"[review_app bootstrap] cv2={cv2.__version__}", flush=True)
 
 _original_set_page_config = st.set_page_config
+_original_dataframe = st.dataframe
 st.set_page_config = lambda *args, **kwargs: None
+st.dataframe = _safe_dataframe
 try:
     print("[review_app bootstrap] starting review runtime", flush=True)
     runpy.run_path(str(RUNTIME_PATH), run_name="__main__")
 finally:
+    st.dataframe = _original_dataframe
     st.set_page_config = _original_set_page_config
