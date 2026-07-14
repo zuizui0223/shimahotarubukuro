@@ -42,12 +42,10 @@ def touches_border(mask: np.ndarray, margin: int = 5) -> bool:
     )
 
 
-def pca_axis(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Centroid and unit major-axis vector for a binary component."""
-    ys, xs = np.where(np.asarray(mask) > 0)
-    if len(xs) < 2:
+def _points_axis(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    if len(points) < 2:
         return np.array([0.0, 0.0]), np.array([0.0, 1.0])
-    points = np.column_stack((xs, ys)).astype(np.float64)
     centre = points.mean(axis=0)
     centred = points - centre
     covariance = np.cov(centred, rowvar=False)
@@ -61,18 +59,38 @@ def pca_axis(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return centre, axis
 
 
+def pca_axis(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Centroid and unit major-axis vector for a binary component."""
+    ys, xs = np.where(np.asarray(mask) > 0)
+    return _points_axis(np.column_stack((xs, ys)))
+
+
+def contour_axis(contour: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Fast major axis using only an already-computed contour."""
+    return _points_axis(np.asarray(contour).reshape(-1, 2))
+
+
 def projection_extents(mask: np.ndarray) -> tuple[float, float]:
     """Major-axis length and perpendicular span in pixels."""
     ys, xs = np.where(np.asarray(mask) > 0)
-    if len(xs) < 2:
-        return 0.0, 0.0
     points = np.column_stack((xs, ys)).astype(np.float64)
-    centre, axis = pca_axis(mask)
+    centre, axis = _points_axis(points)
+    if len(points) < 2:
+        return 0.0, 0.0
     perpendicular = np.array([-axis[1], axis[0]])
     centred = points - centre
-    major = centred @ axis
-    minor = centred @ perpendicular
-    return float(np.ptp(major)), float(np.ptp(minor))
+    return float(np.ptp(centred @ axis)), float(np.ptp(centred @ perpendicular))
+
+
+def contour_projection_extents(contour: np.ndarray) -> tuple[float, float]:
+    """Provisional extents from contour points without scanning the whole mask."""
+    points = np.asarray(contour, dtype=np.float64).reshape(-1, 2)
+    centre, axis = _points_axis(points)
+    if len(points) < 2:
+        return 0.0, 0.0
+    perpendicular = np.array([-axis[1], axis[0]])
+    centred = points - centre
+    return float(np.ptp(centred @ axis)), float(np.ptp(centred @ perpendicular))
 
 
 def corolla_confidence(
@@ -138,7 +156,11 @@ def corolla_confidence(
         score -= 0.12
         reasons.append("near_area_limit")
 
-    _, auto_width_px = projection_extents(mask)
+    contour = measured.get("contour")
+    if contour is not None:
+        _, auto_width_px = contour_projection_extents(contour)
+    else:
+        _, auto_width_px = projection_extents(mask)
     score = _clip01(score)
     label = _confidence_label(score)
     return {
@@ -367,16 +389,22 @@ def associate_organ(
 
     best: tuple[float, int, float, float] | None = None
     for cid, component in enumerate(corollas, 1):
-        mask = np.asarray(component["mask"], dtype=np.uint8)
-        distance = cv2.distanceTransform((mask == 0).astype(np.uint8), cv2.DIST_L2, 5)
-        h, w = mask.shape
-        endpoint_distances = []
-        for x, y in endpoints:
-            ix = min(max(int(round(x)), 0), w - 1)
-            iy = min(max(int(round(y)), 0), h - 1)
-            endpoint_distances.append(float(distance[iy, ix]))
+        measured = component.get("m") or {}
+        contour = measured.get("contour")
+        if contour is None:
+            mask = np.asarray(component["mask"], dtype=np.uint8)
+            contours, _ = cv2.findContours(
+                mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            if not contours:
+                continue
+            contour = max(contours, key=cv2.contourArea)
+        endpoint_distances = [
+            abs(cv2.pointPolygonTest(contour, (float(x), float(y)), True))
+            for x, y in endpoints
+        ]
         distance_mm = min(endpoint_distances) * mm_per_px
-        _, corolla_axis = pca_axis(mask)
+        _, corolla_axis = contour_axis(contour)
         angle = _angle_difference(organ_axis, corolla_axis)
         objective = distance_mm + 0.06 * angle
         if best is None or objective < best[0]:
