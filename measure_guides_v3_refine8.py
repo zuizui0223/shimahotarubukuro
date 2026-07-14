@@ -3,9 +3,8 @@
 
 The original splitter runs only above 55 mm length or 1350 mm2 area.  A clear
 pair such as Niijima C8 is slightly smaller (about 53 mm, 1014 mm2) but strongly
-concave/low-solidity.  This layer retains the original conservative validation
-and adds a trigger only when a component is both large enough to contain two
-flowers and substantially less convex than a normal single flattened corolla.
+concave/low-solidity.  This layer adds a trigger only when a component is large,
+concave, and has a genuinely narrow waist between the two k-means centres.
 """
 from __future__ import annotations
 
@@ -22,6 +21,7 @@ _ORIGINAL_TRY_SPLIT = v2.try_split
 _CONCAVE_AREA_MIN_MM2 = 850.0
 _CONCAVE_LENGTH_MIN_MM = 44.0
 _CONCAVE_SOLIDITY_MAX = 0.78
+_MIDPOINT_NECK_RATIO_MAX = 0.45
 _CHILD_AREA_RATIO_MIN = 0.22
 
 
@@ -34,6 +34,35 @@ def should_try_concave_split(
         and length_mm >= _CONCAVE_LENGTH_MIN_MM
         and solidity <= _CONCAVE_SOLIDITY_MAX
     )
+
+
+def midpoint_neck_ratio(points: np.ndarray, centres: np.ndarray) -> float:
+    """Cross-section occupancy at the midpoint relative to the component maximum.
+
+    A true touching pair has a thin connecting bridge, so the occupancy profile
+    drops sharply between the two centres.  A single broad/lobed flower remains
+    thick through that midpoint even when k-means can divide its pixels into two
+    balanced clusters.
+    """
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    centres = np.asarray(centres, dtype=np.float64).reshape(2, 2)
+    axis = centres[1] - centres[0]
+    norm = float(np.linalg.norm(axis))
+    if norm <= 1e-9 or len(pts) < 2:
+        return 1.0
+    axis /= norm
+    midpoint = (centres[0] + centres[1]) / 2.0
+    along = (pts - midpoint) @ axis
+    if float(along.max() - along.min()) <= 1e-9:
+        return 1.0
+    edges = np.linspace(float(along.min()), float(along.max()), 101)
+    counts, _ = np.histogram(along, bins=edges)
+    if not len(counts) or int(counts.max()) <= 0:
+        return 1.0
+    midpoint_bin = int(np.clip(np.searchsorted(edges, 0.0) - 1, 0, len(counts) - 1))
+    lower = max(0, midpoint_bin - 1)
+    upper = min(len(counts), midpoint_bin + 2)
+    return float(np.mean(counts[lower:upper]) / float(counts.max()))
 
 
 def _validated_kmeans_split(mask: np.ndarray):
@@ -58,6 +87,8 @@ def _validated_kmeans_split(mask: np.ndarray):
     )
     if np.linalg.norm(centres[0] - centres[1]) < max(80.0, 0.22 * measured["length_px"]):
         return [q], "split_centres_too_close"
+    if midpoint_neck_ratio(points, centres) > _MIDPOINT_NECK_RATIO_MAX:
+        return [q], "split_rejected_no_midpoint_waist"
 
     children: list[np.ndarray] = []
     for cluster in (0, 1):
