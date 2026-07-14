@@ -96,7 +96,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python measure_guides_v3_refine10.py \
+          python measure_guides_v3_refine11.py \
             --data-root _shimask_trial \
             --out-dir results_shimask \
             2>&1 | tee results_shimask-run.txt
