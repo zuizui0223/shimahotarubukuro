@@ -3,14 +3,22 @@ name: QC v2 all-sheet pre-review
 on:
   push:
     branches:
-      - feat/all-sheets-auto-qc-review
+      - main
+    paths:
+      - "shimahotarubukuro/**/*.jpg"
+      - "shimahotarubukuro/**/*.jpeg"
+      - "measure_guides*.py"
+      - "qc_single_sheet.py"
+      - "run_all_sheets_review_qc.py"
+      - "requirements*.txt"
+      - ".github/workflows/qc-v2.yml"
   pull_request:
     branches:
       - main
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   detect:
@@ -58,6 +66,45 @@ jobs:
             --out-dir results_all_review \
             2>&1 | tee results_all_review/all-sheet-run.txt
 
+      - name: Prepare current review inputs for Streamlit
+        id: review_inputs
+        if: steps.detection.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf results/review_overlays
+          mkdir -p results/review_overlays
+          while IFS= read -r sheet_dir; do
+            stem="$(basename "$sheet_dir")"
+            destination="results/review_overlays/${stem//~/-}"
+            mkdir -p "$destination"
+            cp "$sheet_dir"/overlays/*.png "$destination/"
+            cp "$sheet_dir"/traits.csv "$destination/traits.csv"
+          done < <(find results_all_review/sheets -mindepth 2 -maxdepth 2 -type d | sort)
+          expected="$(wc -l < results_all_review/raw_inventory.txt)"
+          overlays="$(find results/review_overlays -type f -name '*.png' | wc -l)"
+          traits="$(find results/review_overlays -type f -name 'traits.csv' | wc -l)"
+          printf 'review_overlays=%s review_traits=%s expected=%s\n' \
+            "$overlays" "$traits" "$expected" | tee results_all_review/review_input_count.txt
+          test "$overlays" -eq "$expected"
+          test "$traits" -eq "$expected"
+
+      - name: Commit current review inputs for Streamlit
+        if: steps.review_inputs.outcome == 'success' && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/review_overlays
+          if git diff --cached --quiet; then
+            echo "Review inputs are already current."
+          else
+            git commit -m "Update all-sheet review inputs"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
       - name: Record source commit and review status
         if: always()
         run: |
@@ -78,6 +125,8 @@ jobs:
         env:
           REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
           DETECTION_OUTCOME: ${{ steps.detection.outcome }}
+          REVIEW_INPUT_OUTCOME: ${{ steps.review_inputs.outcome }}
         run: |
           test "$REGRESSION_OUTCOME" = success
           test "$DETECTION_OUTCOME" = success
+          test "$REVIEW_INPUT_OUTCOME" = success
