@@ -5,6 +5,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import cv2
+import numpy as np
+from PIL import Image, ImageOps
+
 import measure_guides as base
 import measure_guides_v2 as v2
 import measure_guides_review as review
@@ -13,12 +17,42 @@ import measure_guides_review_organs as reviewed_organs
 import measure_guides_review_spots as reviewed_spots
 import measure_guides_review_traits as visitor_traits
 
+OVERLAY_ALIGNMENT_MIN = 0.90
+
+
+def overlay_alignment_score(image_path: Path, overlay_path: Path) -> float:
+    """Correlation of dark image content; catches stale 90/180-degree rotations."""
+    raw_rgb = np.asarray(
+        ImageOps.exif_transpose(Image.open(image_path)).convert("RGB")
+    )
+    raw = cv2.cvtColor(raw_rgb, cv2.COLOR_RGB2GRAY)
+    overlay = cv2.imdecode(
+        np.fromfile(overlay_path, dtype=np.uint8), cv2.IMREAD_GRAYSCALE
+    )
+    if overlay is None:
+        raise RuntimeError(f"Could not read overlay: {overlay_path}")
+    raw = cv2.resize(
+        raw,
+        (overlay.shape[1], overlay.shape[0]),
+        interpolation=cv2.INTER_AREA,
+    )
+    raw = cv2.resize(raw, (256, 256), interpolation=cv2.INTER_AREA)
+    overlay = cv2.resize(overlay, (256, 256), interpolation=cv2.INTER_AREA)
+    raw_signal = (255.0 - raw.astype(np.float32)).ravel()
+    overlay_signal = (255.0 - overlay.astype(np.float32)).ravel()
+    return float(np.corrcoef(raw_signal, overlay_signal)[0, 1])
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image", type=Path, required=True)
     parser.add_argument("--folder", required=True, help="island folder key, e.g. shikinejima")
     parser.add_argument("--out-dir", type=Path, default=Path("results_single"))
+    parser.add_argument(
+        "--overlay-only",
+        action="store_true",
+        help="Create only the corolla overlay needed by the review app.",
+    )
     args = parser.parse_args()
 
     if not args.image.exists():
@@ -29,7 +63,11 @@ def main() -> None:
     island, _ = base.ISLANDS.get(folder_key, (folder_key, ""))
 
     review.install_reviewed_overrides()
-    v2.organs = reviewed_organs.organs_reviewed
+    v2.organs = (
+        (lambda *_args, **_kwargs: [])
+        if args.overlay_only
+        else reviewed_organs.organs_reviewed
+    )
     rows, organs = v2.process_sheet(
         str(args.image),
         folder_key,
@@ -39,6 +77,21 @@ def main() -> None:
     )
     if not rows:
         raise SystemExit("No corollas detected")
+    overlay_path = (
+        args.out_dir / "overlays" / f"{island}_{args.image.stem}.png"
+    )
+    alignment = overlay_alignment_score(args.image, overlay_path)
+    if not np.isfinite(alignment) or alignment < OVERLAY_ALIGNMENT_MIN:
+        raise SystemExit(
+            f"Raw/overlay orientation mismatch: alignment={alignment:.3f} "
+            f"(required >= {OVERLAY_ALIGNMENT_MIN:.2f})"
+        )
+    if args.overlay_only:
+        print(
+            f"corollas={len(rows)} alignment={alignment:.3f} "
+            f"-> {args.out_dir / 'overlays'}"
+        )
+        return
 
     spot_summaries, spot_rows = reviewed_spots.write_spot_qc(
         args.image,

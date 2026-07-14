@@ -11,6 +11,8 @@ Run:
 """
 from __future__ import annotations
 import os, json, csv, glob
+import subprocess
+import sys
 import numpy as np, cv2
 import streamlit as st
 
@@ -63,14 +65,16 @@ def committed_traits(stem: str):
     return rows or None
 
 
-@st.cache_data(show_spinner=False)
 def committed_trait_table(stem: str):
-    path = os.path.join(REVIEW_DIR, sheet_dash(stem), "traits.csv")
-    if not os.path.exists(path):
-        return [], []
-    with open(path, newline="", encoding="utf-8-sig") as fh:
-        reader = csv.DictReader(fh)
-        return list(reader.fieldnames or []), list(reader)
+    for path in (
+        os.path.join("results", "review_overlays", sheet_dash(stem), "traits.csv"),
+        os.path.join(REVIEW_DIR, sheet_dash(stem), "traits.csv"),
+    ):
+        if os.path.exists(path):
+            with open(path, newline="", encoding="utf-8-sig") as fh:
+                reader = csv.DictReader(fh)
+                return list(reader.fieldnames or []), list(reader)
+    return [], []
 
 
 def trait_rows_by_corolla(rows):
@@ -97,36 +101,51 @@ def find_overlay(folder: str, stem: str):
     return None
 
 
-def _load_raw_matching(path, ov, cen):
-    """Load the raw scan in the SAME frame as the accepted overlay. `load_bgr`'s
-    per-sheet SHEET_ROTATION can disagree with the committed frame, so orientation
-    is derived from the overlay aspect and the committed centroids being in-bounds."""
+def prepare_review_overlay(folder: str, stem: str, image_path: str):
+    """Generate the lightweight mask overlay when a sheet is opened first time."""
+    out_dir = os.path.join("results", "review_cache", sheet_dash(stem))
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "qc_single_sheet.py",
+            "--image",
+            image_path,
+            "--folder",
+            folder,
+            "--out-dir",
+            out_dir,
+            "--overlay-only",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip()
+        raise RuntimeError(detail or "レビュー用オーバーレイの生成に失敗しました。")
+    return find_overlay(folder, stem)
+
+
+def _load_canonical_raw(path):
+    """Load the stored ruler-at-top scan without legacy per-sheet rotation."""
     from PIL import Image, ImageOps
     im = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
-    raw0 = cv2.cvtColor(np.array(im), cv2.COLOR_RGB2BGR)
-    oh, ow = ov.shape[:2]
-    target = ow / oh
-    cand = []
-    for rot in (None, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_180):
-        raw = raw0 if rot is None else cv2.rotate(raw0, rot)
-        rh, rw = raw.shape[:2]
-        if abs((rw / rh) - target) > 0.02:
-            continue
-        inb = bool(cen) and all(0 <= cx < rw and 0 <= cy < rh for cx, cy in cen.values())
-        cand.append((0 if inb else 1, raw))
-    cand.sort(key=lambda t: t[0])
-    return cand[0][1] if cand else raw0
+    return cv2.cvtColor(np.array(im), cv2.COLOR_RGB2BGR)
 
 
 @st.cache_data(show_spinner="Loading sheet + PRE-QC masks/axes…")
-def load_sheet(folder: str, stem: str, path: str, overlay_path: str):
+def load_sheet(
+    folder: str,
+    stem: str,
+    path: str,
+    overlay_path: str,
+    overlay_version: float,
+):
     """Masks come from the accepted reviewed overlay outlines (canonical), assigned
     to committed corolla ids by point-sampling each id's centroid inside the filled
     outlines. Split pairs that share one outline are divided at their mid-x."""
     ov = cv2.imdecode(np.fromfile(overlay_path, np.uint8), cv2.IMREAD_COLOR)
-    _rows = committed_traits(stem)
-    _cen = {int(t["corolla_id"]): (float(t["cx"]), float(t["cy"])) for t in _rows} if _rows else {}
-    raw = _load_raw_matching(path, ov, _cen)
+    raw = _load_canonical_raw(path)
     rh, rw = raw.shape[:2]
     oh, ow = ov.shape[:2]
     sx, sy = rw / ow, rh / oh
@@ -671,14 +690,23 @@ folder, stem, path = sheets[sheet_labels.index(selected_sheet)]
 
 overlay_path = find_overlay(folder, stem)
 if overlay_path is None:
-    st.error(f"{folder}/{stem} のレビュー用オーバーレイがありません。")
-    st.code(
-        f'python qc_single_sheet.py --image "{path}" '
-        f'--folder {folder} --out-dir results/review_cache/{sheet_dash(stem)}'
-    )
+    with st.spinner(f"{folder}/{stem} のレビュー画面を準備しています…"):
+        try:
+            overlay_path = prepare_review_overlay(folder, stem, path)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            st.error(f"{folder}/{stem} を準備できませんでした: {exc}")
+            st.stop()
+if overlay_path is None:
+    st.error(f"{folder}/{stem} のレビュー用オーバーレイを作成できませんでした。")
     st.stop()
 
-raw, masks, cen = load_sheet(folder, stem, path, overlay_path)
+raw, masks, cen = load_sheet(
+    folder,
+    stem,
+    path,
+    overlay_path,
+    os.path.getmtime(overlay_path),
+)
 trait_fields, trait_rows = committed_trait_table(stem)
 trait_by_cid = trait_rows_by_corolla(trait_rows)
 

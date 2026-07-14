@@ -70,40 +70,15 @@ ISLANDS = {
 }
 
 
-# Canonical orientation: every sheet is normalised so the ruler sits at the TOP
-# (ruler bottom -> 180 deg; ruler on the left -> 90 deg clockwise). Ruler position
-# is fixed per scan, so it is recorded here by file stem rather than detected —
-# specimen edges make automatic top/bottom detection unreliable. Sheets already
-# ruler-at-top are absent (no rotation). Keyed by the lower-cased filename stem.
-SHEET_ROTATION = {
-    "oshima1":     cv2.ROTATE_180,
-    "oshima1(2)":  cv2.ROTATE_180,
-    "oshima4":     cv2.ROTATE_180,
-    "oshima5":     cv2.ROTATE_180,
-    "oshima7":     cv2.ROTATE_180,
-    "oshima8~9":   cv2.ROTATE_180,
-    "oshima13~15": cv2.ROTATE_180,
-    "toshima3~6":  cv2.ROTATE_180,
-    "oshima6":     cv2.ROTATE_90_CLOCKWISE,   # ruler on the left edge
-    "oshima8":     cv2.ROTATE_90_CLOCKWISE,   # ruler on the left edge
-    "oshima10~13": cv2.ROTATE_90_CLOCKWISE,   # ruler on the left edge (landscape)
-}
-
-
 def canonical_rotation(path):
-    """cv2 rotate code that brings this sheet's ruler to the top, or None."""
-    stem = os.path.splitext(os.path.basename(str(path)))[0].lower()
-    return SHEET_ROTATION.get(stem)
+    """Raw scans are already stored in canonical ruler-at-top orientation."""
+    return None
 
 
 def load_bgr(path):
-    """Load a JPEG with its EXIF orientation applied, then rotate to the canonical
-    ruler-at-top orientation so every sheet is processed the same way up."""
+    """Load a canonical ruler-at-top scan with its EXIF orientation applied."""
     im = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
     img = cv2.cvtColor(np.array(im), cv2.COLOR_RGB2BGR)
-    rotate = canonical_rotation(path)
-    if rotate is not None:
-        img = cv2.rotate(img, rotate)
     return img
 
 

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+import tempfile
 import unittest
 
 import cv2
 import numpy as np
 
 import measure_guides_v2 as v2
+import qc_single_sheet as single_qc
 
 
 class MeasureGuidesV2Tests(unittest.TestCase):
@@ -21,16 +24,40 @@ class MeasureGuidesV2Tests(unittest.TestCase):
         self.assertGreaterEqual(top, 262)
         self.assertLessEqual(top, 330)
 
-    def test_canonical_rotation_brings_ruler_to_top(self) -> None:
-        # Ruler position is fixed per scan and recorded by file stem. Bottom-ruler
-        # sheets get 180 deg, left-ruler sheets 90 deg clockwise; ruler-at-top
-        # sheets (e.g. shikine) and unknown files are left unrotated.
-        self.assertEqual(v2.base.canonical_rotation("oshima/oshima7.jpg"), cv2.ROTATE_180)
-        self.assertEqual(
-            v2.base.canonical_rotation("x/oshima10~13.jpg"), cv2.ROTATE_90_CLOCKWISE
-        )
+    def test_canonical_raw_scans_are_not_rotated_again(self) -> None:
+        # Every tracked raw scan was replaced with a ruler-at-top image. Applying
+        # the former per-sheet rotation table would invert the review masks.
+        self.assertIsNone(v2.base.canonical_rotation("oshima/oshima7.jpg"))
+        self.assertIsNone(v2.base.canonical_rotation("x/oshima10~13.jpg"))
         self.assertIsNone(v2.base.canonical_rotation("shikinejima/shikine1~4.jpg"))
         self.assertIsNone(v2.base.canonical_rotation("whatever/kozu1.jpg"))
+
+    def test_overlay_alignment_rejects_an_inverted_sheet(self) -> None:
+        raw = np.full((500, 360, 3), 245, dtype=np.uint8)
+        cv2.rectangle(raw, (20, 25), (335, 70), (30, 30, 30), -1)
+        cv2.ellipse(raw, (105, 205), (45, 90), 0, 0, 360, (80, 120, 175), -1)
+        cv2.ellipse(raw, (260, 355), (60, 105), 0, 0, 360, (130, 85, 165), -1)
+        aligned = raw.copy()
+        cv2.rectangle(aligned, (55, 110), (155, 300), (0, 220, 0), 3)
+        inverted = cv2.rotate(aligned, cv2.ROTATE_180)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            raw_path = root / "raw.jpg"
+            aligned_path = root / "aligned.png"
+            inverted_path = root / "inverted.png"
+            cv2.imwrite(str(raw_path), raw)
+            cv2.imwrite(str(aligned_path), aligned)
+            cv2.imwrite(str(inverted_path), inverted)
+
+            self.assertGreater(
+                single_qc.overlay_alignment_score(raw_path, aligned_path),
+                single_qc.OVERLAY_ALIGNMENT_MIN,
+            )
+            self.assertLess(
+                single_qc.overlay_alignment_score(raw_path, inverted_path),
+                single_qc.OVERLAY_ALIGNMENT_MIN,
+            )
 
     def test_specimen_top_is_minimal_without_a_top_ruler(self) -> None:
         # No ruler at the top (it would be at the bottom): specimen_top must NOT

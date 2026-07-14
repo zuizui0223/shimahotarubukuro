@@ -15,19 +15,26 @@ pip install -r requirements.txt -r requirements-app.txt
 streamlit run review_app.py
 ```
 
-## Prerequisite: PRE-QC per sheet
+## PRE-QC per sheet
 
-The app reads the accepted per-corolla outlines from a **canonical reviewed overlay**
-and the committed corolla ids from `results/reviewed/<sheet>/traits.csv`. Extract a
-sheet first if it has no overlay yet:
+The app reads per-corolla outlines and the matching current `traits.csv` from
+`results/review_overlays/<sheet>/`. All raw scans in `shimahotarubukuro/` are
+stored in canonical ruler-at-top orientation and are never rotated again. When a
+sheet has no published input yet, the app creates a temporary review overlay on
+first open and caches it under `results/review_cache/<sheet>/`.
+
+The existing `QC v2 all-sheet pre-review` GitHub Actions workflow runs full PRE-QC
+for every scan, rejects raw/overlay orientation mismatches, verifies the overlay
+and trait-table counts against the raw inventory, and commits both files to
+`results/review_overlays/<sheet>/` for the deployed Streamlit app. The on-demand
+cache is only a fallback for new or not-yet-published sheets.
+
+To prepare one explicitly from the command line:
 
 ```bash
 python qc_single_sheet.py --image "shimahotarubukuro/oshima/oshima10~13.jpg" \
-    --folder oshima --out-dir results/review_cache/oshima10-13
+    --folder oshima --out-dir results/review_cache/oshima10-13 --overlay-only
 ```
-
-(The app auto-finds overlays under `results/review_cache/…`, `results_single/…`, or
-`results_all_review/…`. If none exists it prints the exact command to run.)
 
 ## Using it
 
@@ -42,10 +49,9 @@ python qc_single_sheet.py --image "shimahotarubukuro/oshima/oshima10~13.jpg" \
 4. **Pigment workspace** — review purple guide, oxidized guide, and brown/degraded
    regions. Final guide area, coverage, and presence use the union of purple and
    oxidized guide regions.
-5. **Stamen/pistil workspace** — auto-detect sheet-level organ candidates, assign
-   independent O numbers, then review each centre-line length, organ type, and
-   identity confidence. C-to-O correspondence remains unconfirmed at this stage;
-   undetected organs can be added with a new O number.
+5. **Stamen/pistil workspace** — add independent O numbers manually, place each
+   BASE/TIP centre line, then review its length, organ type, and identity confidence.
+   C-to-O correspondence remains unconfirmed at this stage.
 6. **Confirmation workspace** — inspect the focused pollination-trait table, set
    the fold state, exclusion, note, and review-complete flag.
 7. **Save state** persists to `results/review_state/<sheet>.json` (resume later).
@@ -80,18 +86,16 @@ and uses **opencv-python-headless** (plain `opencv-python` fails on Cloud with a
 
 Two caveats on Cloud:
 
-- **Masks need a committed overlay per sheet.** The app reads the canonical reviewed
-  overlay from `results/review_overlays/<sheet>/`. Only `oshima10-13` is committed
-  there; commit the others (copy each `results_single/<sheet>/overlays/*.png` into
-  `results/review_overlays/<sheet>/`) to review them on Cloud.
+- **A newly added sheet takes a few seconds on first open until the workflow has
+  published its overlay.** The app creates a temporary review overlay on demand.
 - **State is ephemeral on Cloud** — *Save state* / *Export* write files that are lost
   on restart/redeploy. For real reviewing, **run locally** (`streamlit run
   review_app.py`) so your `results/review_state/` persists.
 
 ## Notes
 
-- Orientation is derived from the overlay + committed centroids (robust to the
-  per-sheet `SHEET_ROTATION`), so masks/axes always line up with the raw scan.
+- Raw scans and review inputs remain in their stored ruler-at-top orientation.
+  PRE-QC fails when raw/overlay image correlation is below the orientation gate.
 - Mask and pigment edits store polygons (not raster screenshots). Measurement and
   organ corrections store calibrated image coordinates, so every reviewed number
   remains traceable to visible evidence.
