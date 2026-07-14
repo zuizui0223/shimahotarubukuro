@@ -1,8 +1,7 @@
-# Core pipeline + review app. Keep native image packages pinned: broad >= ranges
-# pulled NumPy 2.5 / OpenCV 5 immediately after their July 2026 releases and the
-# Streamlit worker terminated inside native code with SIGSEGV.
-numpy==2.4.2
-opencv-python-headless==4.13.0.92
+# Core pipeline + review app. Keep native image packages on the mature 2025
+# wheels; the July 2026 NumPy/OpenCV releases caused native SIGSEGV on Community Cloud.
+numpy==2.2.6
+opencv-python-headless==4.11.0.86
 pillow>=10.0
 openpyxl>=3.1
 streamlit==1.57.0
