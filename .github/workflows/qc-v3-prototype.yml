@@ -48,7 +48,8 @@ jobs:
             tests/test_measure_guides_v3_refine4.py \
             tests/test_measure_guides_v3_refine5.py \
             tests/test_measure_guides_v3_refine6.py \
-            tests/test_measure_guides_v3_refine7.py
+            tests/test_measure_guides_v3_refine7.py \
+            tests/test_measure_guides_v3_refine8.py
 
       - name: Prepare five-island validation input
         shell: bash
@@ -68,11 +69,11 @@ jobs:
           cp 'shimahotarubukuro/kozushima/kozu1.jpg' '_v3_trial/kozushima/'
           find _v3_trial -type f -name '*.jpg' -exec cp {} results_v3/input/ \;
 
-      - name: Run refined v3 on five islands
+      - name: Run concavity-splitting v3 on five islands
         shell: bash
         run: |
           set -euo pipefail
-          python measure_guides_v3_refine7.py \
+          python measure_guides_v3_refine8.py \
             --data-root _v3_trial \
             --out-dir results_v3 \
             2>&1 | tee results_v3-run.txt
@@ -89,7 +90,6 @@ jobs:
           printf 'overlay_files=%s\n' "$(find results_v3/overlays -type f -name '*.png' | wc -l)" | tee -a results_v3/SUMMARY.txt
           python - <<'PY'
           import csv
-          from collections import Counter, defaultdict
           from pathlib import Path
 
           root = Path('results_v3')
@@ -105,6 +105,7 @@ jobs:
                   'island': island,
                   'sheet': sheet,
                   'corollas': len(t),
+                  'auto_split_corollas': sum(r['split_status'] == 'auto_split' for r in t),
                   'high_confidence_masks': sum(r['mask_confidence_label'] == 'high' for r in t),
                   'organs': len(o),
                   'qc_items': len(q),
