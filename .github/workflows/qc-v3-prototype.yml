@@ -8,9 +8,11 @@ on:
       - "measure_guides_v3*.py"
       - "measure_guides_v2.py"
       - "measure_guides.py"
+      - "evaluate_shimask_labels.py"
       - "tests/test_measure_guides_v3*.py"
       - "shimahotarubukuro/**/*.jpg"
       - "shimahotarubukuro/**/*.jpeg"
+      - "shimask/**"
       - "requirements.txt"
       - ".github/workflows/qc-v3-prototype.yml"
   workflow_dispatch:
@@ -51,6 +53,16 @@ jobs:
             tests/test_measure_guides_v3_refine7.py \
             tests/test_measure_guides_v3_refine8.py \
             tests/test_measure_guides_v3_refine9.py
+
+      - name: Inspect shimask reviewed labels
+        shell: bash
+        run: |
+          set -euo pipefail
+          python evaluate_shimask_labels.py \
+            --labels shimask \
+            --out-dir results_v3/shimask_ground_truth
+          cat results_v3/shimask_ground_truth/FILES.txt
+          cat results_v3/shimask_ground_truth/summary.csv
 
       - name: Prepare five-island validation input
         shell: bash
