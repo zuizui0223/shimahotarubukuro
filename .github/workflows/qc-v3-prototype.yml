@@ -46,8 +46,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p _v3_trial/oshima
+          mkdir -p _v3_trial/oshima results_v3/input
           cp 'shimahotarubukuro/oshima/oshima10~13.jpg' '_v3_trial/oshima/'
+          cp 'shimahotarubukuro/oshima/oshima10~13.jpg' 'results_v3/input/'
 
       - name: Run v3 on oshima10-13
         shell: bash
