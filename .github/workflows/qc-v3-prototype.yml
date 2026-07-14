@@ -50,15 +50,25 @@ jobs:
             tests/test_measure_guides_v3_refine6.py \
             tests/test_measure_guides_v3_refine7.py
 
-      - name: Prepare oshima10-13 trial input
+      - name: Prepare five-island validation input
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p _v3_trial/oshima results_v3/input
+          mkdir -p \
+            _v3_trial/oshima \
+            _v3_trial/toshima \
+            _v3_trial/niijima \
+            _v3_trial/shikinejima \
+            _v3_trial/kozushima \
+            results_v3/input
           cp 'shimahotarubukuro/oshima/oshima10~13.jpg' '_v3_trial/oshima/'
-          cp 'shimahotarubukuro/oshima/oshima10~13.jpg' 'results_v3/input/'
+          cp 'shimahotarubukuro/toshima/toshima2~3.jpg' '_v3_trial/toshima/'
+          cp 'shimahotarubukuro/niijima/niijima1~2.jpg' '_v3_trial/niijima/'
+          cp 'shimahotarubukuro/shikinejima/shikine1~4.jpg' '_v3_trial/shikinejima/'
+          cp 'shimahotarubukuro/kozushima/kozu1.jpg' '_v3_trial/kozushima/'
+          find _v3_trial -type f -name '*.jpg' -exec cp {} results_v3/input/ \;
 
-      - name: Run paper-tail refined v3 on oshima10-13
+      - name: Run refined v3 on five islands
         shell: bash
         run: |
           set -euo pipefail
@@ -77,11 +87,39 @@ jobs:
           printf 'cleanup_rows=%s\n' "$(( $(wc -l < results_v3/mask_cleanup.csv) - 1 ))" | tee -a results_v3/SUMMARY.txt
           printf 'mask_files=%s\n' "$(find results_v3/masks -type f -name 'C*.png' | wc -l)" | tee -a results_v3/SUMMARY.txt
           printf 'overlay_files=%s\n' "$(find results_v3/overlays -type f -name '*.png' | wc -l)" | tee -a results_v3/SUMMARY.txt
+          python - <<'PY'
+          import csv
+          from collections import Counter, defaultdict
+          from pathlib import Path
+
+          root = Path('results_v3')
+          traits = list(csv.DictReader((root / 'traits_v3.csv').open(encoding='utf-8-sig')))
+          organs = list(csv.DictReader((root / 'organs_v3.csv').open(encoding='utf-8-sig')))
+          qc = list(csv.DictReader((root / 'qc_required.csv').open(encoding='utf-8-sig')))
+          rows = []
+          for island, sheet in sorted({(r['island'], r['sheet']) for r in traits}):
+              t = [r for r in traits if r['island'] == island and r['sheet'] == sheet]
+              o = [r for r in organs if r['island'] == island and r['sheet'] == sheet]
+              q = [r for r in qc if r['island'] == island and r['sheet'] == sheet]
+              rows.append({
+                  'island': island,
+                  'sheet': sheet,
+                  'corollas': len(t),
+                  'high_confidence_masks': sum(r['mask_confidence_label'] == 'high' for r in t),
+                  'organs': len(o),
+                  'qc_items': len(q),
+              })
+          with (root / 'PER_SHEET_SUMMARY.csv').open('w', newline='', encoding='utf-8-sig') as fh:
+              writer = csv.DictWriter(fh, fieldnames=list(rows[0]))
+              writer.writeheader()
+              writer.writerows(rows)
+          print(rows)
+          PY
 
       - name: Upload v3 prototype results
         uses: actions/upload-artifact@v4
         with:
-          name: shimahotarubukuro-v3-oshima10-13
+          name: shimahotarubukuro-v3-five-island-validation
           path: |
             results_v3/
             results_v3-run.txt
