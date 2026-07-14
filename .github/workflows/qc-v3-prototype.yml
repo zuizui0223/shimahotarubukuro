@@ -1,0 +1,68 @@
+name: Automatic extraction v3 prototype
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "measure_guides_v3*.py"
+      - "measure_guides_v2.py"
+      - "measure_guides.py"
+      - "tests/test_measure_guides_v3.py"
+      - "shimahotarubukuro/**/*.jpg"
+      - "shimahotarubukuro/**/*.jpeg"
+      - "requirements.txt"
+      - ".github/workflows/qc-v3-prototype.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prototype:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Run v3 synthetic tests
+        run: python -m unittest -v tests/test_measure_guides_v3.py
+
+      - name: Run v3 on every scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          python measure_guides_v3.py \
+            --data-root shimahotarubukuro \
+            --out-dir results_v3 \
+            2>&1 | tee results_v3-run.txt
+
+      - name: Summarize extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'trait_rows=%s\n' "$(( $(wc -l < results_v3/traits_v3.csv) - 1 ))" | tee results_v3/SUMMARY.txt
+          printf 'organ_rows=%s\n' "$(( $(wc -l < results_v3/organs_v3.csv) - 1 ))" | tee -a results_v3/SUMMARY.txt
+          printf 'qc_rows=%s\n' "$(( $(wc -l < results_v3/qc_required.csv) - 1 ))" | tee -a results_v3/SUMMARY.txt
+          printf 'mask_files=%s\n' "$(find results_v3/masks -type f -name 'C*.png' | wc -l)" | tee -a results_v3/SUMMARY.txt
+          printf 'overlay_files=%s\n' "$(find results_v3/overlays -type f -name '*.png' | wc -l)" | tee -a results_v3/SUMMARY.txt
+
+      - name: Upload v3 prototype results
+        uses: actions/upload-artifact@v4
+        with:
+          name: shimahotarubukuro-v3-prototype
+          path: |
+            results_v3/
+            results_v3-run.txt
+          retention-days: 7
+          if-no-files-found: error
