@@ -72,10 +72,23 @@ def organ_candidates(
         area_mm2 = float(stats[component_id, cv2.CC_STAT_AREA]) * float(base.MM2_PX)
         if not 0.25 <= area_mm2 <= 120.0:
             continue
-        mask = (labels == component_id).astype(np.uint8)
+        left = int(stats[component_id, cv2.CC_STAT_LEFT])
+        upper = int(stats[component_id, cv2.CC_STAT_TOP])
+        component_width = int(stats[component_id, cv2.CC_STAT_WIDTH])
+        component_height = int(stats[component_id, cv2.CC_STAT_HEIGHT])
+        padding = 3
+        x0 = max(0, left - padding)
+        y0 = max(0, upper - padding)
+        x1 = min(labels.shape[1], left + component_width + padding)
+        y1 = min(labels.shape[0], upper + component_height + padding)
+        mask = (labels[y0:y1, x0:x1] == component_id).astype(np.uint8)
         features = component_features(mask)
         if not features:
             continue
+        features["cx"] = round(float(features["cx"]) + x0, 2)
+        features["cy"] = round(float(features["cy"]) + y0, 2)
+        features["endpoints"] = features["endpoints"] + np.array([x0, y0])
+        features["branches"] = features["branches"] + np.array([x0, y0])
         organ_type, confidence, reasons = classify_organ(features)
         features.update(
             organ_type_auto=organ_type,
