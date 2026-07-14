@@ -11,18 +11,20 @@ import measure_guides_v3_refine8 as refine8
 
 class ConcaveTouchingSplitTests(unittest.TestCase):
     def test_moderate_touching_pair_is_split(self) -> None:
-        # Two overlapping corollas sized like Niijima C8: below the old
-        # 55 mm / 1350 mm2 thresholds but with a pronounced waist.
+        # Two corollas sized like Niijima C8: below the old 55 mm / 1350 mm2
+        # thresholds, separated enough to make a strong waist, and joined only
+        # by a narrow preparation artefact.
         mask = np.zeros((900, 1200), np.uint8)
-        cv2.ellipse(mask, (430, 470), (135, 185), 0, 0, 360, 1, -1)
-        cv2.ellipse(mask, (710, 470), (135, 185), 0, 0, 360, 1, -1)
-        cv2.rectangle(mask, (562, 450), (578, 490), 1, -1)
+        cv2.ellipse(mask, (420, 470), (135, 185), 0, 0, 360, 1, -1)
+        cv2.ellipse(mask, (770, 470), (135, 185), 0, 0, 360, 1, -1)
+        cv2.rectangle(mask, (552, 458), (638, 482), 1, -1)
 
         measured = refine8.v2.metrics(mask)
         area_mm2 = float(measured["area_px"]) * float(base.MM2_PX)
         length_mm = float(measured["length_px"]) * float(base.MM_PX)
         self.assertLess(area_mm2, refine8.v2.SPLIT_AREA_MM2)
         self.assertLess(length_mm, refine8.v2.SPLIT_LEN_MM)
+        self.assertLess(float(measured["solidity"]), refine8._CONCAVE_SOLIDITY_MAX)
         self.assertTrue(
             refine8.should_try_concave_split(
                 area_mm2=area_mm2,
