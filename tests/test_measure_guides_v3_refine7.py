@@ -30,8 +30,13 @@ class PaperTailRefinementTests(unittest.TestCase):
 
     def test_short_unknown_cleanup_piece_is_noise(self) -> None:
         label, confidence, reason = refine7.classify_style_candidate(
-            {"rect_length_mm": 5.7, "median_chroma": 9.5, "aspect": 1.8,
-             "median_width_mm": 3.0}
+            {
+                "rect_length_mm": 5.7,
+                "median_chroma": 9.5,
+                "mean_b": 8.0,
+                "aspect": 1.8,
+                "median_width_mm": 3.0,
+            }
         )
         self.assertEqual(label, "fragment_or_paper")
         self.assertGreaterEqual(confidence, 0.9)
@@ -39,8 +44,13 @@ class PaperTailRefinementTests(unittest.TestCase):
 
     def test_long_style_candidate_is_preserved(self) -> None:
         label, _, _ = refine7.classify_style_candidate(
-            {"rect_length_mm": 18.0, "median_chroma": 10.0, "aspect": 5.0,
-             "median_width_mm": 1.2}
+            {
+                "rect_length_mm": 18.0,
+                "median_chroma": 10.0,
+                "mean_b": 8.0,
+                "aspect": 5.0,
+                "median_width_mm": 1.2,
+            }
         )
         self.assertEqual(label, "style_or_pistil_candidate")
 
