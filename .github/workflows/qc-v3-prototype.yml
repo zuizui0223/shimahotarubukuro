@@ -25,7 +25,7 @@ permissions:
 jobs:
   prototype:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -42,12 +42,19 @@ jobs:
       - name: Run v3 synthetic tests
         run: python -m unittest -v tests/test_measure_guides_v3.py
 
-      - name: Run v3 on every scan
+      - name: Prepare oshima10-13 trial input
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _v3_trial/oshima
+          cp 'shimahotarubukuro/oshima/oshima10~13.jpg' '_v3_trial/oshima/'
+
+      - name: Run v3 on oshima10-13
         shell: bash
         run: |
           set -euo pipefail
           python measure_guides_v3.py \
-            --data-root shimahotarubukuro \
+            --data-root _v3_trial \
             --out-dir results_v3 \
             2>&1 | tee results_v3-run.txt
 
@@ -64,7 +71,7 @@ jobs:
       - name: Upload v3 prototype results
         uses: actions/upload-artifact@v4
         with:
-          name: shimahotarubukuro-v3-prototype
+          name: shimahotarubukuro-v3-oshima10-13
           path: |
             results_v3/
             results_v3-run.txt
