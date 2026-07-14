@@ -52,7 +52,8 @@ jobs:
             tests/test_measure_guides_v3_refine6.py \
             tests/test_measure_guides_v3_refine7.py \
             tests/test_measure_guides_v3_refine8.py \
-            tests/test_measure_guides_v3_refine9.py
+            tests/test_measure_guides_v3_refine9.py \
+            tests/test_measure_guides_v3_refine10.py
 
       - name: Inspect shimask reviewed labels
         shell: bash
@@ -95,7 +96,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python measure_guides_v3_refine9.py \
+          python measure_guides_v3_refine10.py \
             --data-root _shimask_trial \
             --out-dir results_shimask \
             2>&1 | tee results_shimask-run.txt
