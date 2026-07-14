@@ -8,7 +8,7 @@ on:
       - "measure_guides_v3*.py"
       - "measure_guides_v2.py"
       - "measure_guides.py"
-      - "evaluate_shimask_labels.py"
+      - "evaluate_shimask*.py"
       - "tests/test_measure_guides_v3*.py"
       - "shimahotarubukuro/**/*.jpg"
       - "shimahotarubukuro/**/*.jpeg"
@@ -62,80 +62,64 @@ jobs:
             --labels shimask \
             --out-dir results_v3/shimask_ground_truth
           cat results_v3/shimask_ground_truth/FILES.txt
-          cat results_v3/shimask_ground_truth/summary.csv
 
-      - name: Prepare five-island validation input
+      - name: Prepare all shimask-matched raw scans
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p \
-            _v3_trial/oshima \
-            _v3_trial/toshima \
-            _v3_trial/niijima \
-            _v3_trial/shikinejima \
-            _v3_trial/kozushima \
-            results_v3/input
-          cp 'shimahotarubukuro/oshima/oshima10~13.jpg' '_v3_trial/oshima/'
-          cp 'shimahotarubukuro/toshima/toshima2~3.jpg' '_v3_trial/toshima/'
-          cp 'shimahotarubukuro/niijima/niijima1~2.jpg' '_v3_trial/niijima/'
-          cp 'shimahotarubukuro/shikinejima/shikine1~4.jpg' '_v3_trial/shikinejima/'
-          cp 'shimahotarubukuro/kozushima/kozu1.jpg' '_v3_trial/kozushima/'
-          find _v3_trial -type f -name '*.jpg' -exec cp {} results_v3/input/ \;
+          python - <<'PY'
+          import shutil
+          from pathlib import Path
+          from evaluate_v3_against_shimask import find_raw
+          from evaluate_shimask_labels import IMAGE_SUFFIXES
 
-      - name: Run fragment-filtered v3 on five islands
+          label_root = Path('shimask')
+          raw_root = Path('shimahotarubukuro')
+          trial = Path('_shimask_trial')
+          mappings = []
+          for label in sorted(p for p in label_root.rglob('*') if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES):
+              raw = find_raw(label, raw_root)
+              destination = trial / raw.parent.name / raw.name
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              if not destination.exists():
+                  shutil.copy2(raw, destination)
+              mappings.append((label.as_posix(), raw.as_posix()))
+          Path('shimask_mapping.txt').write_text(
+              '\n'.join(f'{label}\t{raw}' for label, raw in mappings) + '\n',
+              encoding='utf-8',
+          )
+          print('\n'.join(f'{label} -> {raw}' for label, raw in mappings))
+          PY
+
+      - name: Run v3 on all reviewed sheets
         shell: bash
         run: |
           set -euo pipefail
           python measure_guides_v3_refine9.py \
-            --data-root _v3_trial \
-            --out-dir results_v3 \
-            2>&1 | tee results_v3-run.txt
+            --data-root _shimask_trial \
+            --out-dir results_shimask \
+            2>&1 | tee results_shimask-run.txt
 
-      - name: Summarize extraction
+      - name: Score v3 against shimask
         shell: bash
         run: |
           set -euo pipefail
-          printf 'trait_rows=%s\n' "$(( $(wc -l < results_v3/traits_v3.csv) - 1 ))" | tee results_v3/SUMMARY.txt
-          printf 'organ_rows=%s\n' "$(( $(wc -l < results_v3/organs_v3.csv) - 1 ))" | tee -a results_v3/SUMMARY.txt
-          printf 'qc_rows=%s\n' "$(( $(wc -l < results_v3/qc_required.csv) - 1 ))" | tee -a results_v3/SUMMARY.txt
-          printf 'cleanup_rows=%s\n' "$(( $(wc -l < results_v3/mask_cleanup.csv) - 1 ))" | tee -a results_v3/SUMMARY.txt
-          printf 'mask_files=%s\n' "$(find results_v3/masks -type f -name 'C*.png' | wc -l)" | tee -a results_v3/SUMMARY.txt
-          printf 'overlay_files=%s\n' "$(find results_v3/overlays -type f -name '*.png' | wc -l)" | tee -a results_v3/SUMMARY.txt
-          python - <<'PY'
-          import csv
-          from pathlib import Path
-
-          root = Path('results_v3')
-          traits = list(csv.DictReader((root / 'traits_v3.csv').open(encoding='utf-8-sig')))
-          organs = list(csv.DictReader((root / 'organs_v3.csv').open(encoding='utf-8-sig')))
-          qc = list(csv.DictReader((root / 'qc_required.csv').open(encoding='utf-8-sig')))
-          rows = []
-          for island, sheet in sorted({(r['island'], r['sheet']) for r in traits}):
-              t = [r for r in traits if r['island'] == island and r['sheet'] == sheet]
-              o = [r for r in organs if r['island'] == island and r['sheet'] == sheet]
-              q = [r for r in qc if r['island'] == island and r['sheet'] == sheet]
-              rows.append({
-                  'island': island,
-                  'sheet': sheet,
-                  'corollas': len(t),
-                  'auto_split_corollas': sum(r['split_status'] == 'auto_split' for r in t),
-                  'high_confidence_masks': sum(r['mask_confidence_label'] == 'high' for r in t),
-                  'organs': len(o),
-                  'qc_items': len(q),
-              })
-          with (root / 'PER_SHEET_SUMMARY.csv').open('w', newline='', encoding='utf-8-sig') as fh:
-              writer = csv.DictWriter(fh, fieldnames=list(rows[0]))
-              writer.writeheader()
-              writer.writerows(rows)
-          print(rows)
-          PY
+          python evaluate_v3_against_shimask.py \
+            --labels shimask \
+            --raw-root shimahotarubukuro \
+            --predictions results_shimask \
+            --out-dir results_v3/shimask_evaluation
+          cat results_v3/shimask_evaluation/SUMMARY.txt
+          cat results_v3/shimask_evaluation/metrics.csv
 
       - name: Upload v3 prototype results
         uses: actions/upload-artifact@v4
         with:
-          name: shimahotarubukuro-v3-five-island-validation
+          name: shimahotarubukuro-v3-shimask-evaluation
           path: |
             results_v3/
-            results_v3-run.txt
+            results_shimask/
+            results_shimask-run.txt
+            shimask_mapping.txt
           retention-days: 7
           if-no-files-found: error
