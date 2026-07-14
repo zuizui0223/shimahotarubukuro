@@ -46,7 +46,8 @@ jobs:
             tests/test_measure_guides_v3_refine.py \
             tests/test_measure_guides_v3_refine2.py \
             tests/test_measure_guides_v3_refine4.py \
-            tests/test_measure_guides_v3_refine5.py
+            tests/test_measure_guides_v3_refine5.py \
+            tests/test_measure_guides_v3_refine6.py
 
       - name: Prepare oshima10-13 trial input
         shell: bash
@@ -56,11 +57,11 @@ jobs:
           cp 'shimahotarubukuro/oshima/oshima10~13.jpg' '_v3_trial/oshima/'
           cp 'shimahotarubukuro/oshima/oshima10~13.jpg' 'results_v3/input/'
 
-      - name: Run merged-candidate refined v3 on oshima10-13
+      - name: Run guide-supported refined v3 on oshima10-13
         shell: bash
         run: |
           set -euo pipefail
-          python measure_guides_v3_refine5.py \
+          python measure_guides_v3_refine6.py \
             --data-root _v3_trial \
             --out-dir results_v3 \
             2>&1 | tee results_v3-run.txt
