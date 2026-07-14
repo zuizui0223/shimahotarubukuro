@@ -97,9 +97,12 @@ def roi_candidates(image, corolla_union, corollas, top, channels):
 
 
 def external_candidates(image, corolla_union, corollas, top, channels):
-    previous = refine10.external_candidates(image, corolla_union, corollas, top, channels)
+    # Keep the established colour-supported detector, but skip refine10's old
+    # full-resolution faint-line pass.  The new half-resolution ROI detector
+    # replaces that expensive path.
+    colour_rows = refine10._ORIGINAL_EXTERNAL(image, corolla_union, corollas, top, channels)
     local = roi_candidates(image, corolla_union, corollas, top, channels)
-    return refine._deduplicate([*previous, *local])
+    return refine._deduplicate([*colour_rows, *local])
 
 
 refine.external_candidates = external_candidates
