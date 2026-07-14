@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Recover faint reproductive organs with per-corolla ROI black-hat filtering.
+"""Recover faint reproductive organs with efficient directional black-hat filtering.
 
-This stage keeps all previous v3 detections, but replaces the global faint-line
-search with a local search around each corolla.  Reviewed shimask images are used
-only for scoring; runtime inputs remain raw scans.
+Reviewed shimask images are used only for scoring; runtime inputs remain raw scans.
+The expensive directional response is computed at half resolution and mapped back
+before the existing full-resolution geometry and association checks.
 """
 from __future__ import annotations
 
@@ -15,11 +15,23 @@ import measure_guides_v3_refine as refine
 import measure_guides_v3_refine10 as refine10
 from measure_guides_v3_core import associate_organ
 
+_DETECTION_SCALE = 0.5
+
 
 def _roi_line_mask(image: np.ndarray, excluded: np.ndarray) -> np.ndarray:
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    """Detect faint lines cheaply at half resolution, return a full-size mask."""
+    height, width = image.shape[:2]
+    small = cv2.resize(
+        image,
+        (max(1, int(round(width * _DETECTION_SCALE))), max(1, int(round(height * _DETECTION_SCALE)))),
+        interpolation=cv2.INTER_AREA,
+    )
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
     response = np.zeros_like(gray)
-    length = max(15, int(round(4.0 / float(base.MM_PX))))
+    mm_per_small_px = float(base.MM_PX) / _DETECTION_SCALE
+    length = max(9, int(round(4.0 / mm_per_small_px)))
+    if length % 2 == 0:
+        length += 1
     for kernel in (
         cv2.getStructuringElement(cv2.MORPH_RECT, (3, length)),
         cv2.getStructuringElement(cv2.MORPH_RECT, (length, 3)),
@@ -27,9 +39,10 @@ def _roi_line_mask(image: np.ndarray, excluded: np.ndarray) -> np.ndarray:
         np.fliplr(np.eye(length, dtype=np.uint8)),
     ):
         response = np.maximum(response, cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, kernel))
-    mask = (response >= 3).astype(np.uint8)
+    small_mask = (response >= 2).astype(np.uint8)
+    small_mask = cv2.morphologyEx(small_mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    mask = cv2.resize(small_mask, (width, height), interpolation=cv2.INTER_NEAREST)
     mask[excluded > 0] = 0
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
     return mask
 
 
@@ -53,6 +66,8 @@ def roi_candidates(image, corolla_union, corollas, top, channels):
             continue
         row.update(association)
         cid = int(row["nearest_corolla"])
+        if not (0 < cid <= len(corollas)):
+            continue
         flower = corollas[cid - 1]
         dx = float(row["cx"]) - float(flower.get("cx", 0.0))
         dy = abs(float(row["cy"]) - float(flower.get("cy", 0.0)))
