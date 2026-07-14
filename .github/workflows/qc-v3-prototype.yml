@@ -43,7 +43,8 @@ jobs:
         run: |
           python -m unittest -v \
             tests/test_measure_guides_v3.py \
-            tests/test_measure_guides_v3_refine.py
+            tests/test_measure_guides_v3_refine.py \
+            tests/test_measure_guides_v3_refine2.py
 
       - name: Prepare oshima10-13 trial input
         shell: bash
@@ -53,11 +54,11 @@ jobs:
           cp 'shimahotarubukuro/oshima/oshima10~13.jpg' '_v3_trial/oshima/'
           cp 'shimahotarubukuro/oshima/oshima10~13.jpg' 'results_v3/input/'
 
-      - name: Run refined v3 on oshima10-13
+      - name: Run multiscale refined v3 on oshima10-13
         shell: bash
         run: |
           set -euo pipefail
-          python measure_guides_v3_refine.py \
+          python measure_guides_v3_refine3.py \
             --data-root _v3_trial \
             --out-dir results_v3 \
             2>&1 | tee results_v3-run.txt
