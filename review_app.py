@@ -6,8 +6,8 @@ import faulthandler
 import html
 import json
 import os
-import runpy
 import sys
+import tempfile
 from pathlib import Path
 
 for _name in (
@@ -57,21 +57,47 @@ def read_resume() -> dict:
     return {}
 
 
-def save_resume_sheet(sheet: str) -> None:
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    value = read_resume()
-    value["sheet"] = sheet
-    temporary = Path(f"{RESUME_PATH}.tmp.{os.getpid()}")
-    temporary.write_text(
-        json.dumps(value, ensure_ascii=False, indent=1),
-        encoding="utf-8",
+def _atomic_text_write(path: Path, text: str) -> None:
+    """Atomically replace a text file using a unique temporary file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+        text=True,
     )
-    if RESUME_PATH.exists():
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            try:
+                os.fsync(handle.fileno())
+            except OSError:
+                pass
+        if path.exists():
+            try:
+                backup = Path(f"{path}.bak")
+                backup.write_bytes(path.read_bytes())
+            except OSError:
+                pass
+        os.replace(temporary, path)
+    finally:
         try:
-            Path(f"{RESUME_PATH}.bak").write_bytes(RESUME_PATH.read_bytes())
-        except OSError:
+            temporary.unlink()
+        except FileNotFoundError:
             pass
-    os.replace(temporary, RESUME_PATH)
+
+
+def save_resume_sheet(sheet: str) -> None:
+    value = read_resume()
+    if value.get("sheet") == sheet:
+        return
+    value["sheet"] = sheet
+    _atomic_text_write(
+        RESUME_PATH,
+        json.dumps(value, ensure_ascii=False, indent=1),
+    )
 
 
 def _safe_dataframe(data=None, *args, **kwargs):
@@ -134,6 +160,88 @@ def _safe_dataframe(data=None, *args, **kwargs):
     return None
 
 
+def _runtime_source_with_safe_autosave() -> str:
+    """Patch the generated runtime's fixed-PID temp file before execution."""
+    source = RUNTIME_PATH.read_text(encoding="utf-8")
+    old_atomic = r'''def _atomic_json_write(path, payload):
+    import shutil
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temporary = f"{path}.tmp.{os.getpid()}"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=1)
+        handle.flush()
+        try:
+            os.fsync(handle.fileno())
+        except OSError:
+            pass
+    if os.path.exists(path):
+        try:
+            shutil.copy2(path, f"{path}.bak")
+        except OSError:
+            pass
+    os.replace(temporary, path)
+'''
+    new_atomic = r'''def _atomic_json_write(path, payload):
+    import shutil
+    import tempfile
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{os.path.basename(path)}.",
+        suffix=".tmp",
+        dir=directory,
+        text=True,
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=1)
+            handle.flush()
+            try:
+                os.fsync(handle.fileno())
+            except OSError:
+                pass
+        if os.path.exists(path):
+            try:
+                shutil.copy2(path, f"{path}.bak")
+            except OSError:
+                pass
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+'''
+    old_resume = r'''def save_resume(**updates):
+    resume = load_resume()
+    for key, value in updates.items():
+        if value is None:
+            resume.pop(key, None)
+        else:
+            resume[key] = value
+    _atomic_json_write(resume_path(), resume)
+    return resume
+'''
+    new_resume = r'''def save_resume(**updates):
+    resume = load_resume()
+    before = dict(resume)
+    for key, value in updates.items():
+        if value is None:
+            resume.pop(key, None)
+        else:
+            resume[key] = value
+    if resume != before:
+        _atomic_json_write(resume_path(), resume)
+    return resume
+'''
+    if source.count(old_atomic) != 1:
+        raise RuntimeError("review runtime patch failed: atomic writer marker changed")
+    if source.count(old_resume) != 1:
+        raise RuntimeError("review runtime patch failed: resume writer marker changed")
+    source = source.replace(old_atomic, new_atomic, 1)
+    return source.replace(old_resume, new_resume, 1)
+
+
 labels = sheet_labels()
 if not labels:
     st.error("shimahotarubukuro/ に原画像がありません。")
@@ -186,7 +294,17 @@ st.set_page_config = lambda *args, **kwargs: None
 st.dataframe = _safe_dataframe
 try:
     print("[review_app bootstrap] starting review runtime", flush=True)
-    runpy.run_path(str(RUNTIME_PATH), run_name="__main__")
+    runtime_namespace = {
+        "__name__": "__main__",
+        "__file__": str(RUNTIME_PATH),
+        "__package__": None,
+    }
+    runtime_source = _runtime_source_with_safe_autosave()
+    exec(
+        compile(runtime_source, str(RUNTIME_PATH), "exec"),
+        runtime_namespace,
+        runtime_namespace,
+    )
 finally:
     st.dataframe = _original_dataframe
     st.set_page_config = _original_set_page_config
