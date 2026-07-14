@@ -24,10 +24,10 @@ class MultiscaleRefinementTests(unittest.TestCase):
         cv2.ellipse(mask, (250, 415), (62, 70), 0, 0, 360, 1, -1)
         cv2.rectangle(mask, (210, 350), (290, 410), 1, -1)
 
-        # C7-like side style/ovary: broad enough to evade the old aspect>=4
-        # rule, but linked to the corolla by a narrow neck.
-        cv2.rectangle(mask, (365, 238), (390, 262), 1, -1)
-        cv2.ellipse(mask, (420, 250), (42, 78), 0, 0, 360, 1, -1)
+        # C7-like side style/ovary: only about 4-5 mm wide and linked through
+        # a narrow neck. It is broad enough to evade the former aspect>=4 rule.
+        cv2.rectangle(mask, (368, 244), (388, 256), 1, -1)
+        cv2.ellipse(mask, (410, 250), (24, 58), 0, 0, 360, 1, -1)
 
         image[mask > 0] = (155, 175, 215)
         self._channels(image)
@@ -35,7 +35,7 @@ class MultiscaleRefinementTests(unittest.TestCase):
         cleaned, removed = refine.detach_thin_appendages(mask)
 
         self.assertTrue(removed)
-        self.assertEqual(int(cleaned[250, 420]), 0, "side appendage should be removed")
+        self.assertEqual(int(cleaned[250, 410]), 0, "side appendage should be removed")
         self.assertEqual(int(cleaned[420, 250]), 1, "genuine broad lobe should remain")
         self.assertEqual(int(cleaned[260, 250]), 1, "corolla body should remain")
 
