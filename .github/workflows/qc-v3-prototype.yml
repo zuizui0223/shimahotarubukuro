@@ -8,7 +8,7 @@ on:
       - "measure_guides_v3*.py"
       - "measure_guides_v2.py"
       - "measure_guides.py"
-      - "evaluate_shimask*.py"
+      - "evaluate_*shimask*.py"
       - "tests/test_measure_guides_v3*.py"
       - "shimahotarubukuro/**/*.jpg"
       - "shimahotarubukuro/**/*.jpeg"
