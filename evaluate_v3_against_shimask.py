@@ -20,6 +20,11 @@ import measure_guides as base
 from evaluate_shimask_labels import IMAGE_SUFFIXES, label_masks, load_bgr, write_csv
 
 
+LABEL_SOURCE_ALIASES = {
+    "shikine1": "shikine1~4",
+}
+
+
 def normalise_stem(value: str) -> str:
     text = unicodedata.normalize("NFKC", value).lower()
     text = text.replace("niijiama", "niijima")
@@ -29,6 +34,7 @@ def normalise_stem(value: str) -> str:
 
 def find_raw(label_path: Path, raw_root: Path) -> Path:
     target = normalise_stem(label_path.stem)
+    target = normalise_stem(LABEL_SOURCE_ALIASES.get(target, target))
     candidates = [
         path for path in raw_root.rglob("*")
         if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
