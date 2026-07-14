@@ -1517,7 +1517,7 @@ elif stage == "確認":
     }
     core_rows = []
     for field, label, unit, category in trait_review.CORE_POLLINATION_TRAITS:
-        value = analysis_values.get(field, "")
+        value = stringify_trait_value(analysis_values.get(field, ""))
         core_rows.append({
             "区分": category_labels[category],
             "形質": label,
