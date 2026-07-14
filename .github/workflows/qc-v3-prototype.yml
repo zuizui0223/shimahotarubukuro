@@ -49,7 +49,8 @@ jobs:
             tests/test_measure_guides_v3_refine5.py \
             tests/test_measure_guides_v3_refine6.py \
             tests/test_measure_guides_v3_refine7.py \
-            tests/test_measure_guides_v3_refine8.py
+            tests/test_measure_guides_v3_refine8.py \
+            tests/test_measure_guides_v3_refine9.py
 
       - name: Prepare five-island validation input
         shell: bash
@@ -69,11 +70,11 @@ jobs:
           cp 'shimahotarubukuro/kozushima/kozu1.jpg' '_v3_trial/kozushima/'
           find _v3_trial -type f -name '*.jpg' -exec cp {} results_v3/input/ \;
 
-      - name: Run concavity-splitting v3 on five islands
+      - name: Run fragment-filtered v3 on five islands
         shell: bash
         run: |
           set -euo pipefail
-          python measure_guides_v3_refine8.py \
+          python measure_guides_v3_refine9.py \
             --data-root _v3_trial \
             --out-dir results_v3 \
             2>&1 | tee results_v3-run.txt
