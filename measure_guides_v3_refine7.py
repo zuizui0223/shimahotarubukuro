@@ -27,10 +27,12 @@ _TAIL_CHROMA_MAX = 8.0
 
 
 def classify_style_candidate(features: dict) -> tuple[str, float, str]:
-    """Downgrade tiny ambiguous pieces created by mask cleanup to noise."""
+    """Downgrade ambiguous cleanup pieces and neutral paper to noise."""
     label, confidence, reason = _ORIGINAL_CLASSIFY_STYLE(features)
     length = float(features.get("rect_length_mm", 0.0))
     chroma = float(features.get("median_chroma", 0.0))
+    if label == "reproductive_organ_unknown" and chroma < 7.0:
+        return "fragment_or_paper", 0.95, "low_chroma_paper_cleanup"
     if label == "reproductive_organ_unknown" and length < 6.5:
         return "fragment_or_paper", 0.92, "short_ambiguous_cleanup_fragment"
     if label == "style_or_pistil_candidate" and length < 5.0 and chroma < 8.0:
