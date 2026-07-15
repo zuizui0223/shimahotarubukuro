@@ -57,11 +57,11 @@ jobs:
             tests/test_measure_guides_v3_refine10.py \
             tests/test_measure_guides_v3_refine13.py
 
-      - name: Benchmark edge erosion distances
+      - name: Benchmark stronger edge erosion distances
         shell: bash
         run: |
           set -euo pipefail
-          for spec in "03 0.3" "04 0.4" "05 0.5" "06 0.6"; do
+          for spec in "06 0.6" "07 0.7" "08 0.8" "09 0.9" "10 1.0"; do
             set -- $spec
             tag=$1
             erosion=$2
@@ -79,7 +79,7 @@ jobs:
             cat "results_v3/eval_${tag}/SUMMARY.txt"
           done
 
-      - name: Compare erosion benchmarks
+      - name: Compare erosion benchmarks with area guard
         shell: bash
         run: |
           set -euo pipefail
@@ -87,8 +87,10 @@ jobs:
           from pathlib import Path
           import csv
 
+          specs = [('06', 0.6), ('07', 0.7), ('08', 0.8), ('09', 0.9), ('10', 1.0)]
           rows = []
-          for tag, erosion in [('03', 0.3), ('04', 0.4), ('05', 0.5), ('06', 0.6)]:
+          areas = {}
+          for tag, erosion in specs:
               summary = {}
               for line in Path(f'results_v3/eval_{tag}/SUMMARY.txt').read_text().splitlines():
                   if '=' in line:
@@ -97,6 +99,9 @@ jobs:
                           summary[key] = float(value)
                       except ValueError:
                           pass
+              with Path(f'results_{tag}/traits_v3.csv').open(encoding='utf-8-sig') as handle:
+                  vals = [float(r['corolla_area_mm2']) for r in csv.DictReader(handle) if r.get('corolla_area_mm2')]
+              areas[tag] = sum(vals) / len(vals)
               recall = summary['mean_red_boundary_recall']
               precision = summary['mean_pred_boundary_precision']
               f1 = 2 * recall * precision / max(recall + precision, 1e-12)
@@ -107,13 +112,20 @@ jobs:
                   'boundary_f1': f1,
                   'organ_recall': summary['mean_organ_recall_10mm'],
                   'organ_precision': summary['mean_organ_precision_10mm'],
+                  'mean_corolla_area_mm2': areas[tag],
               })
-          rows.sort(key=lambda row: row['boundary_f1'], reverse=True)
+          baseline = areas['06']
+          for row in rows:
+              row['area_change_pct_vs_06'] = 100.0 * (row['mean_corolla_area_mm2'] - baseline) / baseline
+              row['passes_area_guard'] = abs(row['area_change_pct_vs_06']) <= 8.0
+          eligible = [r for r in rows if r['passes_area_guard']]
+          eligible.sort(key=lambda r: r['boundary_f1'], reverse=True)
+          rows.sort(key=lambda r: r['erosion_mm'])
           with Path('results_v3/erosion_benchmark.csv').open('w', newline='', encoding='utf-8') as handle:
               writer = csv.DictWriter(handle, fieldnames=rows[0].keys())
               writer.writeheader(); writer.writerows(rows)
           print(*rows, sep='\n')
-          print('BEST', rows[0])
+          print('BEST_ELIGIBLE', eligible[0])
           PY
 
       - name: Upload v3 prototype results
@@ -122,13 +134,15 @@ jobs:
           name: shimahotarubukuro-v3-erosion-benchmark
           path: |
             results_v3/
-            results_03/
-            results_04/
-            results_05/
             results_06/
-            results_03-run.txt
-            results_04-run.txt
-            results_05-run.txt
+            results_07/
+            results_08/
+            results_09/
+            results_10/
             results_06-run.txt
+            results_07-run.txt
+            results_08-run.txt
+            results_09-run.txt
+            results_10-run.txt
           retention-days: 7
           if-no-files-found: error
