@@ -53,62 +53,30 @@ jobs:
             tests/test_measure_guides_v3_refine7.py \
             tests/test_measure_guides_v3_refine8.py \
             tests/test_measure_guides_v3_refine9.py \
-            tests/test_measure_guides_v3_refine10.py
+            tests/test_measure_guides_v3_refine10.py \
+            tests/test_measure_guides_v3_refine13.py
 
-      - name: Prepare focused shimask trial
+      - name: Run v3 on all reviewed sheets
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import shutil
-          from pathlib import Path
-          from evaluate_v3_against_shimask import find_raw
-
-          selected = {'kozu1.jpg', 'kozu2.jpg', 'oshima1(2).jpg', 'oshima4.jpg'}
-          label_root = Path('shimask')
-          focus_labels = Path('shimask_focus')
-          raw_root = Path('shimahotarubukuro')
-          trial = Path('_shimask_trial')
-          mappings = []
-          for label in sorted(label_root.rglob('*.jpg')):
-              if label.name not in selected:
-                  continue
-              raw = find_raw(label, raw_root)
-              label_dest = focus_labels / label.name
-              label_dest.parent.mkdir(parents=True, exist_ok=True)
-              shutil.copy2(label, label_dest)
-              raw_dest = trial / raw.parent.name / raw.name
-              raw_dest.parent.mkdir(parents=True, exist_ok=True)
-              shutil.copy2(raw, raw_dest)
-              mappings.append((label_dest.as_posix(), raw.as_posix()))
-          if len(mappings) != len(selected):
-              raise RuntimeError(f'Expected {len(selected)} focused labels, found {len(mappings)}')
-          Path('shimask_mapping.txt').write_text(
-              '\n'.join(f'{label}\t{raw}' for label, raw in mappings) + '\n',
-              encoding='utf-8',
-          )
-          print('\n'.join(f'{label} -> {raw}' for label, raw in mappings))
-          PY
-
-      - name: Run v3 on focused reviewed sheets
-        shell: bash
-        run: |
-          set -euo pipefail
-          python measure_guides_v3_refine12.py \
-            --data-root _shimask_trial \
+          python measure_guides_v3_refine13.py \
+            --data-root shimahotarubukuro \
             --out-dir results_shimask \
             2>&1 | tee results_shimask-run.txt
 
-      - name: Score focused v3 against shimask
+      - name: Score v3 against the full shimask ground truth
         shell: bash
         run: |
           set -euo pipefail
           python evaluate_v3_against_shimask.py \
-            --labels shimask_focus \
+            --labels shimask \
             --raw-root shimahotarubukuro \
             --predictions results_shimask \
             --out-dir results_v3/shimask_evaluation
+          echo "===== shimask evaluation summary ====="
           cat results_v3/shimask_evaluation/SUMMARY.txt
+          echo "===== per-sheet metrics ====="
           cat results_v3/shimask_evaluation/metrics.csv
 
       - name: Upload v3 prototype results
@@ -119,6 +87,5 @@ jobs:
             results_v3/
             results_shimask/
             results_shimask-run.txt
-            shimask_mapping.txt
           retention-days: 7
           if-no-files-found: error
