@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "measure_guides_v3*.py"
+      - "run_refine14_with_erosion.py"
       - "measure_guides_v2.py"
       - "measure_guides.py"
       - "evaluate_*shimask*.py"
@@ -56,68 +57,78 @@ jobs:
             tests/test_measure_guides_v3_refine10.py \
             tests/test_measure_guides_v3_refine13.py
 
-      - name: Run v3 on all reviewed sheets
+      - name: Benchmark edge erosion distances
         shell: bash
         run: |
           set -euo pipefail
-          python measure_guides_v3_refine15.py \
-            --data-root shimahotarubukuro \
-            --out-dir results_shimask \
-            2>&1 | tee results_shimask-run.txt
+          for spec in "03 0.3" "04 0.4" "05 0.5" "06 0.6"; do
+            set -- $spec
+            tag=$1
+            erosion=$2
+            python run_refine14_with_erosion.py \
+              --erosion-mm "$erosion" \
+              --data-root shimahotarubukuro \
+              --out-dir "results_${tag}" \
+              2>&1 | tee "results_${tag}-run.txt"
+            python evaluate_v3_against_shimask.py \
+              --labels shimask \
+              --raw-root shimahotarubukuro \
+              --predictions "results_${tag}" \
+              --out-dir "results_v3/eval_${tag}"
+            echo "===== erosion ${erosion} mm ====="
+            cat "results_v3/eval_${tag}/SUMMARY.txt"
+          done
 
-      - name: Validate reproductive trait columns
+      - name: Compare erosion benchmarks
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import csv
           from pathlib import Path
+          import csv
 
-          trait_required = {
-              'auto_max_width_mm', 'basal_width_mm', 'tube_width_mid_mm',
-              'throat_width_mm', 'opening_width_mm', 'tube_length_mm',
-              'lobe_length_mm', 'lobe_count_auto', 'width_length_ratio',
-              'edge_recovery_area_pct',
-          }
-          organ_required = {
-              'organ_instance_id', 'organ_sample_index', 'organ_sample_count',
-              'organ_len_mm', 'organ_width_mm', 'organ_type_auto',
-              'organ_identity_status',
-          }
-          with Path('results_shimask/traits_v3.csv').open(encoding='utf-8-sig') as handle:
-              fields = set(csv.DictReader(handle).fieldnames or [])
-          missing = trait_required - fields
-          if missing:
-              raise SystemExit(f'missing trait columns: {sorted(missing)}')
-          with Path('results_shimask/organs_v3.csv').open(encoding='utf-8-sig') as handle:
-              fields = set(csv.DictReader(handle).fieldnames or [])
-          missing = organ_required - fields
-          if missing:
-              raise SystemExit(f'missing organ columns: {sorted(missing)}')
-          print('reproductive trait columns validated')
+          rows = []
+          for tag, erosion in [('03', 0.3), ('04', 0.4), ('05', 0.5), ('06', 0.6)]:
+              summary = {}
+              for line in Path(f'results_v3/eval_{tag}/SUMMARY.txt').read_text().splitlines():
+                  if '=' in line:
+                      key, value = line.split('=', 1)
+                      try:
+                          summary[key] = float(value)
+                      except ValueError:
+                          pass
+              recall = summary['mean_red_boundary_recall']
+              precision = summary['mean_pred_boundary_precision']
+              f1 = 2 * recall * precision / max(recall + precision, 1e-12)
+              rows.append({
+                  'erosion_mm': erosion,
+                  'boundary_recall': recall,
+                  'boundary_precision': precision,
+                  'boundary_f1': f1,
+                  'organ_recall': summary['mean_organ_recall_10mm'],
+                  'organ_precision': summary['mean_organ_precision_10mm'],
+              })
+          rows.sort(key=lambda row: row['boundary_f1'], reverse=True)
+          with Path('results_v3/erosion_benchmark.csv').open('w', newline='', encoding='utf-8') as handle:
+              writer = csv.DictWriter(handle, fieldnames=rows[0].keys())
+              writer.writeheader(); writer.writerows(rows)
+          print(*rows, sep='\n')
+          print('BEST', rows[0])
           PY
-
-      - name: Score v3 against the full shimask ground truth
-        shell: bash
-        run: |
-          set -euo pipefail
-          python evaluate_v3_against_shimask.py \
-            --labels shimask \
-            --raw-root shimahotarubukuro \
-            --predictions results_shimask \
-            --out-dir results_v3/shimask_evaluation
-          echo "===== shimask evaluation summary ====="
-          cat results_v3/shimask_evaluation/SUMMARY.txt
-          echo "===== per-sheet metrics ====="
-          cat results_v3/shimask_evaluation/metrics.csv
 
       - name: Upload v3 prototype results
         uses: actions/upload-artifact@v4
         with:
-          name: shimahotarubukuro-v3-shimask-evaluation
+          name: shimahotarubukuro-v3-erosion-benchmark
           path: |
             results_v3/
-            results_shimask/
-            results_shimask-run.txt
+            results_03/
+            results_04/
+            results_05/
+            results_06/
+            results_03-run.txt
+            results_04-run.txt
+            results_05-run.txt
+            results_06-run.txt
           retention-days: 7
           if-no-files-found: error
