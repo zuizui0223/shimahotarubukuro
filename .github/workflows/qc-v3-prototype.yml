@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python measure_guides_v3_refine20.py \
+          python measure_guides_v3_refine19.py \
             --data-root shimahotarubukuro \
             --out-dir results_shimask \
             2>&1 | tee results_shimask-run.txt
@@ -100,7 +100,6 @@ jobs:
               'throat_width_mm', 'opening_width_mm', 'tube_length_mm',
               'lobe_length_mm', 'lobe_count_auto', 'width_length_ratio',
               'lobe_area_mm2', 'tube_area_mm2', 'corolla_perimeter_mm',
-              'boundary_model', 'boundary_evidence_score',
           }
           organ_required = {
               'organ_instance_id', 'organ_sample_index', 'organ_sample_count',
