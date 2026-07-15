@@ -8,6 +8,7 @@ on:
       - "measure_guides_v3*.py"
       - "generate_v3_rescue.py"
       - "apply_v3_rescue.py"
+      - "export_shimask_ground_truth.py"
       - "evaluate_*shimask*.py"
       - "shimask_annotation_diff.py"
       - "tests/test_shimask_annotation_diff.py"
@@ -61,6 +62,18 @@ jobs:
             tests/test_measure_guides_v3_refine18.py \
             tests/test_measure_guides_v3_refine19.py \
             tests/test_shimask_annotation_diff.py
+
+      - name: Export canonical shimask measurements
+        shell: bash
+        run: |
+          set -euo pipefail
+          python export_shimask_ground_truth.py \
+            --labels shimask \
+            --raw-root shimahotarubukuro \
+            --out-dir results_v3/shimask_ground_truth_measurements \
+            2>&1 | tee results_v3/shimask-ground-truth-summary.txt
+          test -f results_v3/shimask_ground_truth_measurements/ground_truth_corollas.csv
+          test -f results_v3/shimask_ground_truth_measurements/ground_truth_organs.csv
 
       - name: Run accepted v3 extraction
         shell: bash
