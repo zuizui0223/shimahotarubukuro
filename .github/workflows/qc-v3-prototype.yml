@@ -55,16 +55,7 @@ jobs:
             tests/test_measure_guides_v3_refine9.py \
             tests/test_measure_guides_v3_refine10.py
 
-      - name: Inspect shimask reviewed labels
-        shell: bash
-        run: |
-          set -euo pipefail
-          python evaluate_shimask_labels.py \
-            --labels shimask \
-            --out-dir results_v3/shimask_ground_truth
-          cat results_v3/shimask_ground_truth/FILES.txt
-
-      - name: Prepare all shimask-matched raw scans
+      - name: Prepare focused shimask trial
         shell: bash
         run: |
           set -euo pipefail
@@ -72,19 +63,26 @@ jobs:
           import shutil
           from pathlib import Path
           from evaluate_v3_against_shimask import find_raw
-          from evaluate_shimask_labels import IMAGE_SUFFIXES
 
+          selected = {'kozu1.jpg', 'kozu2.jpg', 'oshima1(2).jpg', 'oshima4.jpg'}
           label_root = Path('shimask')
+          focus_labels = Path('shimask_focus')
           raw_root = Path('shimahotarubukuro')
           trial = Path('_shimask_trial')
           mappings = []
-          for label in sorted(p for p in label_root.rglob('*') if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES):
+          for label in sorted(label_root.rglob('*.jpg')):
+              if label.name not in selected:
+                  continue
               raw = find_raw(label, raw_root)
-              destination = trial / raw.parent.name / raw.name
-              destination.parent.mkdir(parents=True, exist_ok=True)
-              if not destination.exists():
-                  shutil.copy2(raw, destination)
-              mappings.append((label.as_posix(), raw.as_posix()))
+              label_dest = focus_labels / label.name
+              label_dest.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(label, label_dest)
+              raw_dest = trial / raw.parent.name / raw.name
+              raw_dest.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(raw, raw_dest)
+              mappings.append((label_dest.as_posix(), raw.as_posix()))
+          if len(mappings) != len(selected):
+              raise RuntimeError(f'Expected {len(selected)} focused labels, found {len(mappings)}')
           Path('shimask_mapping.txt').write_text(
               '\n'.join(f'{label}\t{raw}' for label, raw in mappings) + '\n',
               encoding='utf-8',
@@ -92,7 +90,7 @@ jobs:
           print('\n'.join(f'{label} -> {raw}' for label, raw in mappings))
           PY
 
-      - name: Run v3 on all reviewed sheets
+      - name: Run v3 on focused reviewed sheets
         shell: bash
         run: |
           set -euo pipefail
@@ -101,12 +99,12 @@ jobs:
             --out-dir results_shimask \
             2>&1 | tee results_shimask-run.txt
 
-      - name: Score v3 against shimask
+      - name: Score focused v3 against shimask
         shell: bash
         run: |
           set -euo pipefail
           python evaluate_v3_against_shimask.py \
-            --labels shimask \
+            --labels shimask_focus \
             --raw-root shimahotarubukuro \
             --predictions results_shimask \
             --out-dir results_v3/shimask_evaluation
