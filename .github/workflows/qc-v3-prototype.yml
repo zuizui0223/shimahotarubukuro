@@ -11,6 +11,7 @@ on:
       - "export_shimask_ground_truth.py"
       - "evaluate_*shimask*.py"
       - "shimask_annotation_diff.py"
+      - "tests/test_evaluate_v3_against_shimask_v2.py"
       - "tests/test_shimask_annotation_diff.py"
       - "measure_guides_v2.py"
       - "measure_guides.py"
@@ -61,6 +62,7 @@ jobs:
             tests/test_measure_guides_v3_refine13.py \
             tests/test_measure_guides_v3_refine18.py \
             tests/test_measure_guides_v3_refine19.py \
+            tests/test_evaluate_v3_against_shimask_v2.py \
             tests/test_shimask_annotation_diff.py
 
       - name: Export canonical shimask measurements
