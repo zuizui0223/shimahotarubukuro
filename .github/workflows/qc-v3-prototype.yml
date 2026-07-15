@@ -6,11 +6,11 @@ on:
       - main
     paths:
       - "measure_guides_v3*.py"
-      - "run_refine14_with_erosion.py"
+      - "evaluate_*shimask*.py"
+      - "shimask_annotation_diff.py"
+      - "tests/test_shimask_annotation_diff.py"
       - "measure_guides_v2.py"
       - "measure_guides.py"
-      - "evaluate_*shimask*.py"
-      - "tests/test_measure_guides_v3*.py"
       - "shimahotarubukuro/**/*.jpg"
       - "shimahotarubukuro/**/*.jpeg"
       - "shimask/**"
@@ -26,23 +26,9 @@ permissions:
   contents: read
 
 jobs:
-  benchmark:
+  prototype:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - tag: "06"
-            erosion: "0.6"
-          - tag: "07"
-            erosion: "0.7"
-          - tag: "08"
-            erosion: "0.8"
-          - tag: "09"
-            erosion: "0.9"
-          - tag: "10"
-            erosion: "1.0"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -56,7 +42,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
 
-      - name: Run v3 synthetic tests
+      - name: Run synthetic tests
         run: |
           python -m unittest -v \
             tests/test_measure_guides_v3.py \
@@ -69,101 +55,67 @@ jobs:
             tests/test_measure_guides_v3_refine8.py \
             tests/test_measure_guides_v3_refine9.py \
             tests/test_measure_guides_v3_refine10.py \
-            tests/test_measure_guides_v3_refine13.py
+            tests/test_measure_guides_v3_refine13.py \
+            tests/test_shimask_annotation_diff.py
 
-      - name: Run erosion benchmark
+      - name: Run accepted v3 extraction
         shell: bash
         run: |
           set -euo pipefail
-          python run_refine14_with_erosion.py \
-            --erosion-mm "${{ matrix.erosion }}" \
+          python measure_guides_v3_refine17.py \
             --data-root shimahotarubukuro \
-            --out-dir "results_${{ matrix.tag }}" \
-            2>&1 | tee "results_${{ matrix.tag }}-run.txt"
-          python evaluate_v3_against_shimask.py \
-            --labels shimask \
-            --raw-root shimahotarubukuro \
-            --predictions "results_${{ matrix.tag }}" \
-            --out-dir "results_v3/eval_${{ matrix.tag }}"
-          cat "results_v3/eval_${{ matrix.tag }}/SUMMARY.txt"
+            --out-dir results_shimask \
+            2>&1 | tee results_shimask-run.txt
 
-      - name: Upload condition result
-        uses: actions/upload-artifact@v4
-        with:
-          name: erosion-${{ matrix.tag }}
-          path: |
-            results_${{ matrix.tag }}/
-            results_v3/eval_${{ matrix.tag }}/
-            results_${{ matrix.tag }}-run.txt
-          retention-days: 7
-          if-no-files-found: error
-
-  compare:
-    needs: benchmark
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all condition results
-        uses: actions/download-artifact@v4
-        with:
-          pattern: erosion-*
-          path: combined
-          merge-multiple: true
-
-      - name: Compare erosion benchmarks with area guard
+      - name: Validate reproductive trait columns
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          from pathlib import Path
           import csv
-
-          specs = [('06', 0.6), ('07', 0.7), ('08', 0.8), ('09', 0.9), ('10', 1.0)]
-          root = Path('combined')
-          rows = []
-          areas = {}
-          for tag, erosion in specs:
-              summary = {}
-              for line in (root / f'results_v3/eval_{tag}/SUMMARY.txt').read_text().splitlines():
-                  if '=' in line:
-                      key, value = line.split('=', 1)
-                      try:
-                          summary[key] = float(value)
-                      except ValueError:
-                          pass
-              with (root / f'results_{tag}/traits_v3.csv').open(encoding='utf-8-sig') as handle:
-                  vals = [float(r['corolla_area_mm2']) for r in csv.DictReader(handle) if r.get('corolla_area_mm2')]
-              areas[tag] = sum(vals) / len(vals)
-              recall = summary['mean_red_boundary_recall']
-              precision = summary['mean_pred_boundary_precision']
-              f1 = 2 * recall * precision / max(recall + precision, 1e-12)
-              rows.append({
-                  'erosion_mm': erosion,
-                  'boundary_recall': recall,
-                  'boundary_precision': precision,
-                  'boundary_f1': f1,
-                  'organ_recall': summary['mean_organ_recall_10mm'],
-                  'organ_precision': summary['mean_organ_precision_10mm'],
-                  'mean_corolla_area_mm2': areas[tag],
-              })
-          baseline = areas['06']
-          for row in rows:
-              row['area_change_pct_vs_06'] = 100.0 * (row['mean_corolla_area_mm2'] - baseline) / baseline
-              row['passes_area_guard'] = abs(row['area_change_pct_vs_06']) <= 8.0
-          eligible = sorted((r for r in rows if r['passes_area_guard']), key=lambda r: r['boundary_f1'], reverse=True)
-          rows.sort(key=lambda r: r['erosion_mm'])
-          out = root / 'results_v3/erosion_benchmark.csv'
-          out.parent.mkdir(parents=True, exist_ok=True)
-          with out.open('w', newline='', encoding='utf-8') as handle:
-              writer = csv.DictWriter(handle, fieldnames=rows[0].keys())
-              writer.writeheader(); writer.writerows(rows)
-          print(*rows, sep='\n')
-          print('BEST_ELIGIBLE', eligible[0])
+          from pathlib import Path
+          trait_required = {
+              'auto_max_width_mm', 'basal_width_mm', 'tube_width_mid_mm',
+              'throat_width_mm', 'opening_width_mm', 'tube_length_mm',
+              'lobe_length_mm', 'lobe_count_auto', 'width_length_ratio',
+          }
+          organ_required = {
+              'organ_instance_id', 'organ_sample_index', 'organ_sample_count',
+              'organ_len_mm', 'organ_width_mm', 'organ_type_auto',
+              'organ_identity_status',
+          }
+          with Path('results_shimask/traits_v3.csv').open(encoding='utf-8-sig') as handle:
+              fields = set(csv.DictReader(handle).fieldnames or [])
+          missing = trait_required - fields
+          if missing:
+              raise SystemExit(f'missing trait columns: {sorted(missing)}')
+          with Path('results_shimask/organs_v3.csv').open(encoding='utf-8-sig') as handle:
+              fields = set(csv.DictReader(handle).fieldnames or [])
+          missing = organ_required - fields
+          if missing:
+              raise SystemExit(f'missing organ columns: {sorted(missing)}')
+          print('reproductive trait columns validated')
           PY
 
-      - name: Upload combined benchmark
+      - name: Score against annotation-only shimask ground truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          python evaluate_v3_against_shimask_v2.py \
+            --labels shimask \
+            --raw-root shimahotarubukuro \
+            --predictions results_shimask \
+            --out-dir results_v3/shimask_evaluation
+          cat results_v3/shimask_evaluation/SUMMARY.txt
+          cat results_v3/shimask_evaluation/metrics.csv
+
+      - name: Upload v3 results
         uses: actions/upload-artifact@v4
         with:
-          name: shimahotarubukuro-v3-erosion-benchmark
-          path: combined/
+          name: shimahotarubukuro-v3-shimask-evaluation
+          path: |
+            results_v3/
+            results_shimask/
+            results_shimask-run.txt
           retention-days: 7
           if-no-files-found: error
