@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - "measure_guides_v3*.py"
+      - "generate_v3_rescue.py"
+      - "apply_v3_rescue.py"
       - "evaluate_*shimask*.py"
       - "shimask_annotation_diff.py"
       - "tests/test_shimask_annotation_diff.py"
@@ -99,6 +101,19 @@ jobs:
               raise SystemExit(f'missing organ columns: {sorted(missing)}')
           print('reproductive trait columns validated')
           PY
+
+      - name: Generate fallback rescue package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python generate_v3_rescue.py \
+            --data-root shimahotarubukuro \
+            --results results_shimask \
+            --out-dir results_v3/rescue \
+            2>&1 | tee results_v3/rescue-summary.txt
+          test -f results_v3/rescue/manual_rescue_template.csv
+          test -f results_v3/rescue/mask_rescue_template.csv
+          cat results_v3/rescue-summary.txt
 
       - name: Score against annotation-only shimask ground truth
         shell: bash
