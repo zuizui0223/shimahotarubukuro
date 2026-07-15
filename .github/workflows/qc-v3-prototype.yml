@@ -67,6 +67,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p results_v3
           python export_shimask_ground_truth.py \
             --labels shimask \
             --raw-root shimahotarubukuro \
