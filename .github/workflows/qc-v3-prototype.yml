@@ -60,10 +60,41 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python measure_guides_v3_refine13.py \
+          python measure_guides_v3_refine14.py \
             --data-root shimahotarubukuro \
             --out-dir results_shimask \
             2>&1 | tee results_shimask-run.txt
+
+      - name: Validate reproductive trait columns
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv
+          from pathlib import Path
+
+          trait_required = {
+              'auto_max_width_mm', 'basal_width_mm', 'tube_width_mid_mm',
+              'throat_width_mm', 'opening_width_mm', 'tube_length_mm',
+              'lobe_length_mm', 'lobe_count_auto', 'width_length_ratio',
+          }
+          organ_required = {
+              'organ_instance_id', 'organ_sample_index', 'organ_sample_count',
+              'organ_len_mm', 'organ_width_mm', 'organ_type_auto',
+              'organ_identity_status',
+          }
+          with Path('results_shimask/traits_v3.csv').open(encoding='utf-8-sig') as handle:
+              fields = set(csv.DictReader(handle).fieldnames or [])
+          missing = trait_required - fields
+          if missing:
+              raise SystemExit(f'missing trait columns: {sorted(missing)}')
+          with Path('results_shimask/organs_v3.csv').open(encoding='utf-8-sig') as handle:
+              fields = set(csv.DictReader(handle).fieldnames or [])
+          missing = organ_required - fields
+          if missing:
+              raise SystemExit(f'missing organ columns: {sorted(missing)}')
+          print('reproductive trait columns validated')
+          PY
 
       - name: Score v3 against the full shimask ground truth
         shell: bash
