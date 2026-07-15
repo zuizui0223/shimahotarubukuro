@@ -1,22 +1,39 @@
 # Automatic-first v3 validation
 
-## Full shimask evaluation (`measure_guides_v3_refine13.py`)
+## Current accepted pipeline (`measure_guides_v3_refine19.py`)
 
-Scored against every reviewed shimask sheet (red = corolla boundary GT, green =
-reproductive-organ GT). shimask is used only for scoring, never at runtime. The
-detector runs on the raw scans in about six seconds per sheet, so the CI job
-now evaluates all 20 reviewed sheets rather than a four-sheet focus subset.
+Scored against every reviewed shimask sheet with the **corrected annotation-only
+ground truth** (`evaluate_v3_against_shimask_v2.py` + `shimask_annotation_diff.py`):
+only the hand-drawn red/green review strokes count, not the flower's natural
+nectar-guide colour. The earlier colour-threshold GT wrongly counted natural red
+inside each corolla (e.g. oshima4: 78.7 k GT-red px -> 27.9 k after the fix), so
+boundary recall had been under-reported. shimask is used only for scoring.
 
-| Metric (mean over 20 sheets) | Previous (`refine12`, colour + Hough) | `refine13` |
+| Metric (mean over 20 sheets, corrected GT) | `refine17` (fixed 0.7 mm erosion) | `refine19` (GrabCut snap) |
 |---|---:|---:|
-| Corolla boundary recall | 0.41 | **0.55** |
-| Corolla boundary precision | 0.72 | **0.86** |
-| Organ recall @10 mm | ~0.02 | **0.87** |
-| Organ precision @10 mm | ~0.50 | **0.85** |
+| Corolla boundary recall | 0.761 | **0.778** |
+| Corolla boundary precision | 0.848 | **0.875** |
+| Organ recall @10 mm | 0.938 | 0.938 |
+| Organ precision @10 mm | 0.848 | 0.848 |
 
-Organ recall is 0.71-1.00 on every sheet. Kozushima, previously 0/10, is now
-kozu1 10/10 and kozu2 9/12. The 167 s-per-sheet full-resolution Hough fallback
-was removed; it matched almost no reviewed organs.
+Boundary: after correcting the evaluator, the edge treatment was re-optimised on
+the true target. A fixed 0.7 mm erosion (F1 0.802) beat pixel-level tissue
+snapping and per-corolla adaptive erosion, but a **GrabCut colour-model boundary
+snap wins** (F1 0.824), improving 17/20 sheets with the largest gains on the worst
+sheets (kozu2 +0.11, kozu1 +0.07, shikine +0.07). Organ detection is unchanged
+because it runs on the un-eroded corolla union, independent of the edge method.
+
+Traits (`refine14` + `refine18`): corolla length, max width (CW), throat/opening
+width (CE proxy), basal & mid-tube widths, tube & lobe length, lobe count, and
+lobe/tube areas + perimeter — flattened-scan proxies, each status-flagged. Organs
+carry per-instance IDs and conservative type candidates.
+
+## Earlier evaluation (old colour-threshold GT — under-reported boundary recall)
+
+Historical `refine13` numbers were scored against the pre-fix evaluator that
+counted natural flower colour as boundary GT, so its boundary recall (0.55) was
+an artefact. Organ recall ~0.02 -> 0.87 (Kozushima 0/10 -> 10/10 & 9/12) and the
+removal of the 167 s-per-sheet Hough fallback remain valid.
 
 ### What changed
 

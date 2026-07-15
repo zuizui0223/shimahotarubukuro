@@ -56,13 +56,15 @@ jobs:
             tests/test_measure_guides_v3_refine9.py \
             tests/test_measure_guides_v3_refine10.py \
             tests/test_measure_guides_v3_refine13.py \
+            tests/test_measure_guides_v3_refine18.py \
+            tests/test_measure_guides_v3_refine19.py \
             tests/test_shimask_annotation_diff.py
 
       - name: Run accepted v3 extraction
         shell: bash
         run: |
           set -euo pipefail
-          python measure_guides_v3_refine17.py \
+          python measure_guides_v3_refine19.py \
             --data-root shimahotarubukuro \
             --out-dir results_shimask \
             2>&1 | tee results_shimask-run.txt
@@ -78,6 +80,7 @@ jobs:
               'auto_max_width_mm', 'basal_width_mm', 'tube_width_mid_mm',
               'throat_width_mm', 'opening_width_mm', 'tube_length_mm',
               'lobe_length_mm', 'lobe_count_auto', 'width_length_ratio',
+              'lobe_area_mm2', 'tube_area_mm2', 'corolla_perimeter_mm',
           }
           organ_required = {
               'organ_instance_id', 'organ_sample_index', 'organ_sample_count',
