@@ -25,6 +25,28 @@ from evaluate_v3_against_shimask import (
 from shimask_annotation_diff import annotation_masks
 
 
+def organ_instances(rows: list[dict]) -> list[list[tuple[float, float]]]:
+    """Group axis sample points that belong to the same detected organ.
+
+    ``organs_v3.csv`` can contain several rows per biological candidate so that
+    a long curved organ is represented at multiple points. Those rows must count
+    as one prediction during precision/recall evaluation.
+    """
+    grouped: dict[str, list[tuple[float, float]]] = {}
+    for index, row in enumerate(rows):
+        if row.get("cx") in (None, "") or row.get("cy") in (None, ""):
+            continue
+        instance_id = row.get("organ_instance_id")
+        if instance_id in (None, ""):
+            instance_id = row.get("organ_id")
+        if instance_id in (None, ""):
+            instance_id = f"row-{index}"
+        grouped.setdefault(str(instance_id), []).append(
+            (float(row["cx"]), float(row["cy"]))
+        )
+    return list(grouped.values())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--labels", default="shimask")
@@ -72,29 +94,37 @@ def main() -> None:
         boundary_precision = overlap_with_tolerance(pred_boundary, red, tolerance)
 
         gt_centres = green_centres(green)
-        pred_centres = [
-            (float(row["cx"]), float(row["cy"]))
-            for row in organ_rows
-            if row.get("cx") not in (None, "") and row.get("cy") not in (None, "")
-        ]
+        pred_instances = organ_instances(organ_rows)
+        pred_sample_points = [point for instance in pred_instances for point in instance]
         match_radius = 10.0 / float(base.MM_PX)
         matched_gt = sum(
-            any(math.hypot(gx - px, gy - py) <= match_radius for px, py in pred_centres)
+            any(
+                math.hypot(gx - px, gy - py) <= match_radius
+                for instance in pred_instances
+                for px, py in instance
+            )
             for gx, gy in gt_centres
         )
-        matched_pred = sum(
-            any(math.hypot(gx - px, gy - py) <= match_radius for gx, gy in gt_centres)
-            for px, py in pred_centres
+        matched_instances = sum(
+            any(
+                math.hypot(gx - px, gy - py) <= match_radius
+                for px, py in instance
+                for gx, gy in gt_centres
+            )
+            for instance in pred_instances
         )
         organ_recall = matched_gt / len(gt_centres) if gt_centres else float("nan")
-        organ_precision = matched_pred / len(pred_centres) if pred_centres else float("nan")
+        organ_precision = (
+            matched_instances / len(pred_instances) if pred_instances else float("nan")
+        )
 
         metrics.append({
             "label_file": label_path.relative_to(labels_root).as_posix(),
             "raw_file": raw_path.relative_to(raw_root).as_posix(),
             "sheet": sheet,
             "corolla_count": len(trait_rows),
-            "organ_candidates": len(pred_centres),
+            "organ_candidates": len(pred_instances),
+            "organ_sample_points": len(pred_sample_points),
             "gt_green_objects": len(gt_centres),
             "gt_red_pixels": int(red.sum()),
             "gt_green_pixels": int(green.sum()),
@@ -115,8 +145,9 @@ def main() -> None:
         green_contours, _ = cv2.findContours(green, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cv2.drawContours(overlay, red_contours, -1, (0, 0, 255), 3)
         cv2.drawContours(overlay, green_contours, -1, (0, 255, 0), 3)
-        for x, y in pred_centres:
-            cv2.circle(overlay, (int(round(x)), int(round(y))), 12, (255, 0, 255), -1)
+        for instance in pred_instances:
+            for x, y in instance:
+                cv2.circle(overlay, (int(round(x)), int(round(y))), 12, (255, 0, 255), -1)
         preview_scale = min(1.0, 1800.0 / max(overlay.shape[:2]))
         preview = cv2.resize(overlay, None, fx=preview_scale, fy=preview_scale, interpolation=cv2.INTER_AREA)
         cv2.imencode(".jpg", preview, [cv2.IMWRITE_JPEG_QUALITY, 92])[1].tofile(
