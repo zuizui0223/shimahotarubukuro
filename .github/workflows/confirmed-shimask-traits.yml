@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "analyze_confirmed_single_sheet.py"
+      - "analyze_confirmed_oshima1.py"
       - "measure_confirmed_shimask_traits.py"
       - "measure_guides_review_traits.py"
       - "measure_guides_review_spots.py"
@@ -58,7 +59,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python analyze_confirmed_single_sheet.py \
+          python analyze_confirmed_oshima1.py \
             --raw shimahotarubukuro/oshima/oshima1.jpg \
             --shimask shimask/oshima1.jpg \
             --folder oshima \
