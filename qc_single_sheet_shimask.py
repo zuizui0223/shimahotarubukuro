@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
-"""PR25 driver: run the EXISTING reviewed QC pipeline with the corolla mask and the
-organs taken from the human shimask strokes instead of the automatic detector.
+"""Run the existing reviewed QC pipeline with human-confirmed shimask inputs.
 
-Design: input swap only. We monkey-patch the two seams through which every
-downstream consumer obtains its inputs --
-    * ``measure_guides_v2.corollas``              -> red-outline corolla components
-    * ``measure_guides_review_organs.organs_reviewed`` -> green-stroke organ rows
--- and then call ``qc_single_sheet.main`` completely unchanged. Guide extraction
-(``measure_guides_review_spots.py``) and trait measurement
-(``measure_guides_review_traits.py``) are NOT touched, imported, or reimplemented;
-they run exactly as before, only on the human red mask.
+Only the input seams are swapped:
+- raw-vs-shimask red difference -> confirmed corolla masks
+- raw-vs-shimask green difference -> confirmed reproductive-organ rows
+
+The established nectar-guide and floral-trait modules remain unchanged.
 """
 from __future__ import annotations
 
@@ -40,28 +36,28 @@ def main() -> None:
     raw = base.load_bgr(str(args.image))
     annotated = base.load_bgr(str(args.shimask))
 
-    # Build the human inputs once for this sheet.
     red_components = shimask_input.red_corolla_components(raw, annotated)
     green_organs = shimask_input.green_organ_rows(raw, annotated)
     if not red_components:
-        raise SystemExit("No red corolla outlines found in shimask")
+        raise SystemExit("No red corolla outlines found in raw-vs-shimask difference")
 
-    # ---- the entire change: swap the two input seams ----
     v2.corollas = lambda filled, auto_split=True, _c=red_components: [dict(c) for c in _c]
     reviewed_organs.organs_reviewed = (
         lambda img, corolla_mask, top, _r=green_organs: [dict(r) for r in _r]
     )
 
-    # Confirmation image (1): raw + red + green only, no guides.
     island, _ = base.ISLANDS.get(args.folder.lower(), (args.folder, ""))
     shimask_input.write_annotation_overlay(
-        raw, annotated,
+        raw,
+        annotated,
         args.out_dir / "annotation_overlays" / f"{island}_{args.image.stem}_annotation.png",
     )
+    shimask_input.write_stroke_colour_stats(
+        raw,
+        annotated,
+        args.out_dir / "annotation_colour_stats.csv",
+    )
 
-    # Run the existing reviewed driver verbatim; it now consumes the human inputs.
-    # Confirmation images (2) spot_overlay and (3) trait_overlay are produced by
-    # the unchanged review_spots / review_traits code inside this call.
     sys.argv = [
         "qc_single_sheet.py",
         "--image", str(args.image),
@@ -69,7 +65,10 @@ def main() -> None:
         "--out-dir", str(args.out_dir),
     ]
     qc_single_sheet.main()
-    print(f"shimask-input QC done: corollas={len(red_components)} organs={len(green_organs)} -> {args.out_dir}")
+    print(
+        f"shimask-input QC done: corollas={len(red_components)} "
+        f"organs={len(green_organs)} -> {args.out_dir}"
+    )
 
 
 if __name__ == "__main__":
