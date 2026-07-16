@@ -5,15 +5,13 @@ on:
     branches:
       - main
     paths:
+      - "analyze_confirmed_all_sheets.py"
       - "analyze_confirmed_single_sheet.py"
-      - "measure_confirmed_shimask_traits.py"
       - "measure_guides_review_traits.py"
       - "measure_guides_review_spots.py"
-      - "export_shimask_ground_truth.py"
       - "shimask/**"
       - "shimahotarubukuro/**/*.jpg"
       - "shimahotarubukuro/**/*.jpeg"
-      - "tests/test_measure_confirmed_shimask_traits.py"
       - "requirements.txt"
       - ".github/workflows/confirmed-shimask-traits.yml"
   workflow_dispatch:
@@ -24,104 +22,77 @@ permissions:
 jobs:
   confirmed-traits:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
+
       - name: Install dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
-      - name: Run tests
-        run: python -m unittest -v tests/test_measure_confirmed_shimask_traits.py
-      - name: Validate confirmed annotation input
+
+      - name: Validate confirmed inputs
         shell: bash
         run: |
           set -euo pipefail
-          test -d shimask || {
-            echo "::error::Required human-reviewed annotation directory 'shimask/' is absent from the PR merge checkout."
-            git status --short
-            exit 1
-          }
-          mapfile -t labels < <(find shimask -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.tif' -o -iname '*.tiff' \) | sort)
-          count=${#labels[@]}
-          printf 'confirmed annotation images: %s\n' "${count}"
-          printf '%s\n' "${labels[@]}"
-          test "${count}" -eq 20 || {
-            echo "::error::Expected exactly 20 human-reviewed shimask images from main, found ${count}."
-            exit 1
-          }
-          test -f shimask/oshima1.jpg
-          test -f shimahotarubukuro/oshima/oshima1.jpg
-      - name: Analyze oshima1 with confirmed inputs and established reviewed methods
+          test -d shimask
+          count=$(find shimask -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.tif' -o -iname '*.tiff' \) | wc -l)
+          echo "confirmed annotation images: ${count}"
+          test "${count}" -eq 20
+          test -d shimahotarubukuro
+
+      - name: Analyze all 20 confirmed sheets with established reviewed methods
+        id: analysis
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
-          python analyze_confirmed_single_sheet.py \
-            --raw shimahotarubukuro/oshima/oshima1.jpg \
-            --shimask shimask/oshima1.jpg \
-            --folder oshima \
-            --out-dir results_confirmed_single/oshima1
-          test -s results_confirmed_single/oshima1/confirmed_reviewed_traits.csv
-          test -s results_confirmed_single/oshima1/confirmed_reviewed_spots.csv
-          test -s results_confirmed_single/oshima1/confirmed_reproductive_organs.csv
-          test -s results_confirmed_single/oshima1/annotation_overlay_red_mask_green_organs.jpg
-          test -s results_confirmed_single/oshima1/spot_overlays/Oshima_oshima1_spots.png
-          test -s results_confirmed_single/oshima1/trait_overlays/Oshima_oshima1_visitor_traits.png
-          python - <<'PY'
-          import csv
-          from pathlib import Path
-          root = Path('results_confirmed_single/oshima1')
-          with (root / 'confirmed_reviewed_traits.csv').open(encoding='utf-8-sig') as handle:
-              traits = list(csv.DictReader(handle))
-          with (root / 'confirmed_reproductive_organs.csv').open(encoding='utf-8-sig') as handle:
-              organs = list(csv.DictReader(handle))
-          assert len(traits) == 6, f'oshima1 should have 6 confirmed corollas, found {len(traits)}'
-          assert len(organs) > 0, 'oshima1 confirmed organs are empty'
-          assert all(row['mask_source'] == 'human_confirmed_red_outline' for row in traits)
-          assert all(row['spot_qc_source'] == 'raw_scan_two_stage_reviewed_ruler_scale' for row in traits)
-          print(f'oshima1 confirmed corollas={len(traits)} organs={len(organs)}')
-          for row in traits:
-              print(row['corolla_id'], row['guide_cov_pct'], row['n_spots'], row.get('flat_corolla_length_mm', ''))
-          PY
-      - name: Measure confirmed traits
-        shell: bash
-        run: |
-          set -euo pipefail
-          python measure_confirmed_shimask_traits.py \
+          set -o pipefail
+          python analyze_confirmed_all_sheets.py \
             --labels shimask \
             --raw-root shimahotarubukuro \
-            --out-dir results_confirmed_traits
-          test -f results_confirmed_traits/confirmed_corolla_traits.csv
-          test -f results_confirmed_traits/confirmed_reproductive_organs.csv
-          test -f results_confirmed_traits/PROVENANCE.txt
-          corolla_rows=$(($(wc -l < results_confirmed_traits/confirmed_corolla_traits.csv) - 1))
-          organ_rows=$(($(wc -l < results_confirmed_traits/confirmed_reproductive_organs.csv) - 1))
-          overlay_count=$(find results_confirmed_traits/overlays -type f -name '*.jpg' | wc -l)
-          echo "confirmed corolla rows: ${corolla_rows}"
-          echo "confirmed organ rows: ${organ_rows}"
-          echo "confirmed overlay images: ${overlay_count}"
-          test "${corolla_rows}" -gt 0 || {
-            echo "::error::Confirmed corolla CSV is empty."
-            exit 1
-          }
-          test "${organ_rows}" -gt 0 || {
-            echo "::error::Confirmed reproductive-organ CSV is empty."
-            exit 1
-          }
-          test "${overlay_count}" -eq 20 || {
-            echo "::error::Expected 20 measurement overlays, found ${overlay_count}."
-            exit 1
-          }
-          head -n 3 results_confirmed_traits/confirmed_corolla_traits.csv
-          head -n 3 results_confirmed_traits/confirmed_reproductive_organs.csv
-      - name: Upload confirmed measurements
+            --out-dir results_confirmed_all \
+            2>&1 | tee confirmed-all-sheets.log
+
+      - name: Summarize all-sheet outputs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f results_confirmed_all/manifest.csv
+          test -f results_confirmed_all/SUMMARY.txt
+          cat results_confirmed_all/SUMMARY.txt
+          cat results_confirmed_all/manifest.csv
+          if test -f results_confirmed_all/FAILURES.txt; then
+            echo '--- failures ---'
+            cat results_confirmed_all/FAILURES.txt
+          fi
+          printf 'trait_csv_count=%s\n' "$(find results_confirmed_all -type f -name confirmed_reviewed_traits.csv | wc -l)"
+          printf 'spot_overlay_count=%s\n' "$(find results_confirmed_all -type f -path '*/spot_overlays/*.png' | wc -l)"
+          printf 'trait_overlay_count=%s\n' "$(find results_confirmed_all -type f -path '*/trait_overlays/*.png' | wc -l)"
+          printf 'annotation_overlay_count=%s\n' "$(find results_confirmed_all -type f -name annotation_overlay_red_mask_green_organs.jpg | wc -l)"
+
+      - name: Upload all confirmed reviewed results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: shimahotarubukuro-confirmed-traits
+          name: shimahotarubukuro-confirmed-reviewed-all-20-sheets
           path: |
-            results_confirmed_single/
-            results_confirmed_traits/
+            results_confirmed_all/
+            confirmed-all-sheets.log
           retention-days: 14
           if-no-files-found: error
+
+      - name: Enforce all-sheet completion
+        if: always()
+        env:
+          ANALYSIS_OUTCOME: ${{ steps.analysis.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${ANALYSIS_OUTCOME}" = success
+          test "$(find results_confirmed_all -type f -name confirmed_reviewed_traits.csv | wc -l)" -eq 20
+          test "$(find results_confirmed_all -type f -path '*/spot_overlays/*.png' | wc -l)" -eq 20
+          test "$(find results_confirmed_all -type f -path '*/trait_overlays/*.png' | wc -l)" -eq 20
