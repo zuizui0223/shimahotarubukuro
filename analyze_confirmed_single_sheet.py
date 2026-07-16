@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Run the established reviewed pipeline on one sheet with confirmed annotations.
-
-Only the two previously unreliable inputs are replaced:
-- red shimask outlines -> confirmed corolla masks
-- green shimask traces -> confirmed reproductive-organ measurements
-
-The established nectar-guide detector, ruler calibration, spot summaries, and
-flat floral-trait measurements are reused without changing their algorithms.
-"""
+"""Measure one reviewed sheet directly from red and green annotations."""
 from __future__ import annotations
 
 import argparse
@@ -20,11 +12,14 @@ import numpy as np
 
 import measure_guides as base
 import measure_guides_v2 as v2
-import measure_guides_review_spots as reviewed_spots
-import measure_guides_review_traits as reviewed_traits
 from evaluate_shimask_labels import load_bgr
-from export_shimask_ground_truth import close_and_fill_boundaries
-from measure_confirmed_shimask_traits import _confirmed_organs
+from measure_confirmed_shimask_traits import (
+    _confirmed_organs,
+    confirmed_corolla_masks,
+    simple_corolla_metrics,
+)
+from measure_guides_review_spots import spot_candidate_masks
+from measure_guides_review_traits import calibrate_ruler
 from shimask_annotation_diff import annotation_masks
 
 
@@ -43,46 +38,10 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
-def _confirmed_components(red: np.ndarray, raw_shape: tuple[int, ...]) -> list[dict]:
-    height, width = raw_shape[:2]
-    resized = cv2.resize(red.astype(np.uint8), (width, height), interpolation=cv2.INTER_NEAREST)
-    masks = close_and_fill_boundaries(resized)
-    components: list[dict] = []
-    for source_id, mask in enumerate(masks, start=1):
-        binary = (mask > 0).astype(np.uint8)
-        metrics = v2.metrics(binary)
-        if metrics is None or int(binary.sum()) < 500:
-            continue
-        moments = cv2.moments(binary)
-        if moments["m00"] <= 0:
-            continue
-        components.append(
-            {
-                "mask": binary.astype(bool),
-                "source_component_id": source_id,
-                "split_piece": 1,
-                "split_status": "human_confirmed_red_outline",
-                "cx": moments["m10"] / moments["m00"],
-                "cy": moments["m01"] / moments["m00"],
-                "m": metrics,
-            }
-        )
-    components.sort(key=lambda row: (int(float(row["cy"])) // 170, float(row["cx"])))
-    if not components:
-        raise RuntimeError("No confirmed corolla masks were recovered from red outlines")
-    return components
-
-
-def _annotation_overlay(raw: np.ndarray, red: np.ndarray, green: np.ndarray) -> np.ndarray:
-    height, width = raw.shape[:2]
-    red_full = cv2.resize(red.astype(np.uint8), (width, height), interpolation=cv2.INTER_NEAREST) > 0
-    green_full = cv2.resize(green.astype(np.uint8), (width, height), interpolation=cv2.INTER_NEAREST) > 0
-    overlay = raw.copy()
-    # Preserve the annotation semantics exactly: red=confirmed corolla outline,
-    # green=confirmed reproductive-organ trace. Nectar guides remain raw pixels.
-    overlay[red_full] = (0, 0, 255)
-    overlay[green_full] = (0, 255, 0)
-    return overlay
+def _lab_channels(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+    _light, a, b = cv2.split(lab)
+    return a - 128.0, b - 128.0
 
 
 def main() -> None:
@@ -95,93 +54,85 @@ def main() -> None:
 
     raw = load_bgr(args.raw)
     annotated = load_bgr(args.shimask)
-    red, green = annotation_masks(annotated, raw)
-    components = _confirmed_components(red, raw.shape)
+    red_small, green_small = annotation_masks(annotated, raw)
+    red = cv2.resize(red_small.astype(np.uint8), (raw.shape[1], raw.shape[0]), interpolation=cv2.INTER_NEAREST)
+    green = cv2.resize(green_small.astype(np.uint8), (raw.shape[1], raw.shape[0]), interpolation=cv2.INTER_NEAREST)
 
-    union = np.zeros(raw.shape[:2], np.uint8)
-    for component in components:
-        union[component["mask"]] = 255
-    _, a_channel, b_channel = base.channels(raw)
+    masks = confirmed_corolla_masks(red)
+    if not masks:
+        raise RuntimeError("No closed red corolla outlines were recovered")
 
-    original_foreground = v2.foreground_v2
-    original_corollas = v2.corollas
-
-    def confirmed_foreground(_image: np.ndarray, _top: int):
-        return union.copy(), a_channel.copy(), b_channel.copy()
-
-    def confirmed_corollas(_filled: np.ndarray, auto_split: bool = True):
-        del auto_split
-        return components
-
-    v2.foreground_v2 = confirmed_foreground
-    v2.corollas = confirmed_corollas
-    try:
-        spot_summaries, spot_rows = reviewed_spots.write_spot_qc(
-            args.raw, args.folder, args.out_dir, auto_split=False
-        )
-        trait_summaries, scale_info = reviewed_traits.write_flower_trait_qc(
-            args.raw,
-            args.folder,
-            args.out_dir,
-            spot_segmenter=reviewed_spots.reviewed_spot_segment,
-            auto_split=False,
-        )
-    finally:
-        v2.foreground_v2 = original_foreground
-        v2.corollas = original_corollas
-
-    if len(spot_summaries) != len(components) or len(trait_summaries) != len(components):
-        raise RuntimeError(
-            f"Confirmed-mask output mismatch: masks={len(components)} "
-            f"spots={len(spot_summaries)} traits={len(trait_summaries)}"
-        )
-
-    combined_traits: list[dict] = []
-    for corolla_id in range(1, len(components) + 1):
-        combined_traits.append(
-            {
-                "island": base.ISLANDS.get(args.folder.lower(), (args.folder, ""))[0],
-                "sheet": args.raw.stem,
-                "corolla_id": corolla_id,
-                "mask_source": "human_confirmed_red_outline",
-                **spot_summaries[corolla_id],
-                **trait_summaries[corolla_id],
-            }
-        )
-
+    scale_info = calibrate_ruler(raw, v2.specimen_top(raw))
     mm_per_px = float(scale_info["mm_per_px"])
-    green_full = cv2.resize(
-        green.astype(np.uint8), (raw.shape[1], raw.shape[0]), interpolation=cv2.INTER_NEAREST
-    )
-    organ_rows = _confirmed_organs(
-        green_full,
-        mm_per_px,
-        args.raw.stem,
-        base.ISLANDS.get(args.folder.lower(), (args.folder, ""))[0],
-    )
+    island = base.ISLANDS.get(args.folder.lower(), (args.folder, ""))[0]
+    a_channel, b_channel = _lab_channels(raw)
 
-    _write_csv(args.out_dir / "confirmed_reviewed_traits.csv", combined_traits)
+    trait_rows: list[dict] = []
+    spot_rows: list[dict] = []
+    overlay = raw.copy()
+
+    for corolla_id, mask in enumerate(masks, start=1):
+        corolla = mask.astype(bool)
+        strong, weak, guide = spot_candidate_masks(a_channel, b_channel, corolla)
+        guide = guide.astype(bool) & corolla
+        guide_px = int(guide.sum())
+        area_px = int(corolla.sum())
+        metrics = simple_corolla_metrics(mask, mm_per_px)
+        trait_rows.append({
+            "island": island,
+            "sheet": args.raw.stem,
+            "corolla_id": corolla_id,
+            "mask_source": "human_confirmed_red_outline",
+            **scale_info,
+            **metrics,
+            "guide_area_px": guide_px,
+            "guide_area_mm2": round(guide_px * mm_per_px * mm_per_px, 3),
+            "guide_cov_pct": round(100.0 * guide_px / max(area_px, 1), 3),
+            "guide_present": int(guide_px > 0),
+            "strong_guide_px": int((strong.astype(bool) & corolla).sum()),
+            "weak_guide_px": int((weak.astype(bool) & corolla).sum()),
+            "provenance": "shimask_human_review_plus_raw_scan_colour",
+        })
+        spot_rows.append({
+            "island": island,
+            "sheet": args.raw.stem,
+            "corolla_id": corolla_id,
+            "guide_area_px": guide_px,
+            "guide_area_mm2": round(guide_px * mm_per_px * mm_per_px, 3),
+            "guide_cov_pct": round(100.0 * guide_px / max(area_px, 1), 3),
+            "guide_present": int(guide_px > 0),
+        })
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        if contours:
+            cv2.drawContours(overlay, [max(contours, key=cv2.contourArea)], -1, (0, 0, 255), 4)
+        overlay[guide] = (255, 0, 255)
+
+    organ_rows = _confirmed_organs(green, mm_per_px, args.raw.stem, island)
+    if not organ_rows:
+        raise RuntimeError("No green reproductive-organ traces were recovered")
+    overlay[green > 0] = (0, 255, 0)
+
+    _write_csv(args.out_dir / "confirmed_reviewed_traits.csv", trait_rows)
     _write_csv(args.out_dir / "confirmed_reviewed_spots.csv", spot_rows)
     _write_csv(args.out_dir / "confirmed_reproductive_organs.csv", organ_rows)
     _write_csv(args.out_dir / "scale_calibration.csv", [scale_info])
 
-    annotation = _annotation_overlay(raw, red, green)
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    ok, encoded = cv2.imencode(".jpg", annotation, [cv2.IMWRITE_JPEG_QUALITY, 94])
+    ok, encoded = cv2.imencode(".jpg", overlay, [cv2.IMWRITE_JPEG_QUALITY, 94])
     if not ok:
         raise RuntimeError("Could not encode annotation overlay")
     encoded.tofile(str(args.out_dir / "annotation_overlay_red_mask_green_organs.jpg"))
 
     (args.out_dir / "PROVENANCE.txt").write_text(
-        "corolla_mask=human_confirmed_red_outline\n"
-        "reproductive_organs=human_confirmed_green_traces\n"
-        "nectar_guide_detector=measure_guides_review_spots.py unchanged\n"
-        "trait_measurement=measure_guides_review_traits.py unchanged\n",
+        "red_closed_outline=filled_directly_as_corolla_mask\n"
+        "green_trace=skeletonized_and_measured_directly_without_morphological_closing\n"
+        "inferred_lobes_tube_throat_mouth=not_measured\n"
+        "raw_scan=ruler_calibration_and_nectar_guide_colour_only\n",
         encoding="utf-8",
     )
     print(
-        f"confirmed_corollas={len(components)} confirmed_organs={len(organ_rows)} "
-        f"spots={len(spot_rows)} scale={mm_per_px} -> {args.out_dir}"
+        f"confirmed_corollas={len(trait_rows)} confirmed_organs={len(organ_rows)} "
+        f"scale={mm_per_px} -> {args.out_dir}"
     )
 
 
