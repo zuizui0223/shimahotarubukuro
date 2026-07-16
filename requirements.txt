@@ -2,6 +2,7 @@
 # wheels; the July 2026 NumPy/OpenCV releases caused native SIGSEGV on Community Cloud.
 numpy==2.2.6
 opencv-python-headless==4.11.0.86
+scikit-image>=0.25,<0.27
 pillow>=10.0
 openpyxl>=3.1
 streamlit==1.57.0
