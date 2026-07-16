@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """Extract the common red/green annotation-marker colours measured from shimask.
 
-The colour bounds come from raw-vs-shimask differences on the 19 aligned sheets:
-red cores consistently had R=255 with low G/B, and green cores had G near 255.
-Natural purple nectar guides are rejected because red and blue are similar rather
-than strongly red-dominant.
+The red bounds come from raw-vs-shimask differences across the reviewed sheets.
+Measured red core across all sheets: mode RGB=(227, 13, 11), median
+RGB=(216, 18, 27). Natural purple nectar guides are rejected by requiring red
+to exceed blue strongly; purple has similar red and blue values.
 """
 from __future__ import annotations
 
@@ -27,29 +27,30 @@ def _clean(mask: np.ndarray) -> np.ndarray:
 def stroke_masks(raw: np.ndarray, annotated: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Return red and green marker strokes directly from measured common RGB.
 
-    ``raw`` is accepted for API compatibility but is not needed after the marker
-    colours were measured from the aligned raw-vs-shimask pairs.
+    ``raw`` is accepted for API compatibility. Marker colours were measured from
+    raw-vs-shimask differences, then applied directly to every shimask image.
     """
     if annotated.ndim != 3:
         raise ValueError("annotated must be a BGR colour image")
     b, g, r = cv2.split(annotated.astype(np.int16))
 
-    # Measured red marker core: R mode 255 on all 19 aligned sheets; G/B modes
-    # stayed low. Strong R-vs-B separation explicitly excludes purple guides.
+    # Empirical red-marker core over all reviewed sheets:
+    # mode=(227,13,11), median=(216,18,27). Keep JPEG-darkened edge pixels while
+    # excluding purple guides by requiring a large R-B separation.
     red = (
-        (r >= 235)
-        & (r - g >= 120)
-        & (r - b >= 110)
-        & (g <= 115)
-        & (b <= 125)
+        (r >= 170)
+        & (g <= 80)
+        & (b <= 90)
+        & (r - g >= 125)
+        & (r - b >= 105)
     )
 
-    # Measured green marker core: G near 255 and strongly dominant over R/B.
+    # Green annotation is similarly highly saturated and green-dominant.
     green = (
-        (g >= 220)
-        & (g - r >= 90)
-        & (g - b >= 90)
-        & (r <= 145)
-        & (b <= 145)
+        (g >= 170)
+        & (r <= 110)
+        & (b <= 110)
+        & (g - r >= 100)
+        & (g - b >= 100)
     )
     return _clean(red), _clean(green)
