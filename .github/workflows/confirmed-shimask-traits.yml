@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths:
+      - "analyze_confirmed_single_sheet.py"
       - "measure_confirmed_shimask_traits.py"
       - "measure_guides_review_traits.py"
       - "measure_guides_review_spots.py"
@@ -51,6 +52,39 @@ jobs:
             echo "::error::Expected exactly 20 human-reviewed shimask images from main, found ${count}."
             exit 1
           }
+          test -f shimask/oshima1.jpg
+          test -f shimahotarubukuro/oshima/oshima1.jpg
+      - name: Analyze oshima1 with confirmed inputs and established reviewed methods
+        shell: bash
+        run: |
+          set -euo pipefail
+          python analyze_confirmed_single_sheet.py \
+            --raw shimahotarubukuro/oshima/oshima1.jpg \
+            --shimask shimask/oshima1.jpg \
+            --folder oshima \
+            --out-dir results_confirmed_single/oshima1
+          test -s results_confirmed_single/oshima1/confirmed_reviewed_traits.csv
+          test -s results_confirmed_single/oshima1/confirmed_reviewed_spots.csv
+          test -s results_confirmed_single/oshima1/confirmed_reproductive_organs.csv
+          test -s results_confirmed_single/oshima1/annotation_overlay_red_mask_green_organs.jpg
+          test -s results_confirmed_single/oshima1/spot_overlays/Oshima_oshima1_spots.png
+          test -s results_confirmed_single/oshima1/trait_overlays/Oshima_oshima1_visitor_traits.png
+          python - <<'PY'
+          import csv
+          from pathlib import Path
+          root = Path('results_confirmed_single/oshima1')
+          with (root / 'confirmed_reviewed_traits.csv').open(encoding='utf-8-sig') as handle:
+              traits = list(csv.DictReader(handle))
+          with (root / 'confirmed_reproductive_organs.csv').open(encoding='utf-8-sig') as handle:
+              organs = list(csv.DictReader(handle))
+          assert len(traits) == 4, f'oshima1 should have 4 confirmed corollas, found {len(traits)}'
+          assert len(organs) > 0, 'oshima1 confirmed organs are empty'
+          assert all(row['mask_source'] == 'human_confirmed_red_outline' for row in traits)
+          assert all(row['spot_qc_source'] == 'raw_scan_two_stage_reviewed_ruler_scale' for row in traits)
+          print(f'oshima1 confirmed corollas={len(traits)} organs={len(organs)}')
+          for row in traits:
+              print(row['corolla_id'], row['guide_cov_pct'], row['n_spots'], row.get('flat_corolla_length_mm', ''))
+          PY
       - name: Measure confirmed traits
         shell: bash
         run: |
@@ -86,6 +120,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: shimahotarubukuro-confirmed-traits
-          path: results_confirmed_traits/
+          path: |
+            results_confirmed_single/
+            results_confirmed_traits/
           retention-days: 14
           if-no-files-found: error
