@@ -33,8 +33,18 @@ RIDGE_DUPLICATE_MM = 6.0
 def _candidate_components(union: np.ndarray, top: int, channels) -> tuple[np.ndarray, np.ndarray]:
     light, _a, b, _local_a, _local_b, local_dark, _chroma = channels
     band = refine13._search_band(union, top)
-    darkness = np.clip((255.0 - light) / 255.0, 0.0, 1.0)
-    response = sato(darkness, sigmas=RIDGE_SIGMAS, black_ridges=False)
+    ys, xs = np.where(band > 0)
+    response = np.zeros_like(light, np.float32)
+    if len(xs) < 50:
+        return np.zeros_like(union, np.uint8), response
+
+    pad = 8
+    x0, x1 = max(0, int(xs.min()) - pad), min(light.shape[1], int(xs.max()) + pad + 1)
+    y0, y1 = max(0, int(ys.min()) - pad), min(light.shape[0], int(ys.max()) + pad + 1)
+    darkness = np.clip((255.0 - light[y0:y1, x0:x1]) / 255.0, 0.0, 1.0)
+    roi_response = sato(darkness, sigmas=RIDGE_SIGMAS, black_ridges=False)
+    response[y0:y1, x0:x1] = roi_response.astype(np.float32)
+
     values = response[band > 0]
     if values.size < 50 or float(values.max()) <= 0:
         return np.zeros_like(union, np.uint8), response
@@ -55,6 +65,8 @@ def _candidate_components(union: np.ndarray, top: int, channels) -> tuple[np.nda
 def _nearest_corolla(px: float, py: float, contours: list[np.ndarray]) -> tuple[int, float]:
     nearest, dmin = 0, 1e9
     for cid, contour in enumerate(contours, 1):
+        if contour.size == 0:
+            continue
         distance = -cv2.pointPolygonTest(contour, (px, py), True) * MM_PX
         if distance < dmin:
             nearest, dmin = cid, distance
@@ -124,7 +136,11 @@ def detect_organs(union: np.ndarray, corollas: list[dict], top: int, channels) -
         key = (int(row['nearest_corolla']), row['organ_len_mm'], row['organ_width_mm'], row['ridge_score'])
         grouped.setdefault(key, []).append(row)
     for records in grouped.values():
-        if any(any(math.hypot(float(r['cx']) - ex, float(r['cy']) - ey) * MM_PX <= RIDGE_DUPLICATE_MM for ex, ey in existing_points) for r in records):
+        duplicate = any(
+            any(math.hypot(float(r['cx']) - ex, float(r['cy']) - ey) * MM_PX <= RIDGE_DUPLICATE_MM for ex, ey in existing_points)
+            for r in records
+        )
+        if duplicate:
             continue
         for row in records:
             row['organ_instance_id'] = next_instance
