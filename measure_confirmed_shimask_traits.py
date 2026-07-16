@@ -20,8 +20,8 @@ import measure_guides as base
 import measure_guides_v2 as v2
 from evaluate_shimask_labels import IMAGE_SUFFIXES, load_bgr
 from evaluate_v3_against_shimask_v2 import find_raw
-from export_shimask_ground_truth import close_and_fill_boundaries, skeleton_length_px, skeletonize
-from measure_guides_review_spots import reviewed_spot_segment, spot_candidate_masks
+from export_shimask_ground_truth import close_and_fill_boundaries, skeletonize
+from measure_guides_review_spots import spot_candidate_masks
 from measure_guides_review_traits import calibrate_ruler, measure_flat_traits
 from shimask_annotation_diff import annotation_masks
 
@@ -45,6 +45,24 @@ def _lab_channels(image: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray
     return light, a - 128.0, b - 128.0
 
 
+def _skeleton_trace_length_px(skeleton: np.ndarray) -> float:
+    """Sum each undirected 8-neighbour skeleton edge exactly once.
+
+    The older shared helper divided this edge sum by two even though right,
+    down, and diagonal comparisons already count every undirected edge once.
+    That halved confirmed organ lengths. This local implementation preserves
+    the reviewed trace geometry without changing the legacy evaluation export.
+    """
+    q = np.asarray(skeleton) > 0
+    if not q.any():
+        return 0.0
+    horizontal = int(np.sum(q[:, 1:] & q[:, :-1]))
+    vertical = int(np.sum(q[1:, :] & q[:-1, :]))
+    diag1 = int(np.sum(q[1:, 1:] & q[:-1, :-1]))
+    diag2 = int(np.sum(q[1:, :-1] & q[:-1, 1:]))
+    return float(horizontal + vertical + (diag1 + diag2) * np.sqrt(2.0))
+
+
 def _confirmed_organs(green: np.ndarray, mm_per_px: float, sheet: str, island: str) -> list[dict]:
     cleaned = cv2.morphologyEx((green > 0).astype(np.uint8), cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
     n, labels, stats, centroids = cv2.connectedComponentsWithStats(cleaned, 8)
@@ -56,7 +74,7 @@ def _confirmed_organs(green: np.ndarray, mm_per_px: float, sheet: str, island: s
             continue
         component = (labels == label).astype(np.uint8)
         skel = skeletonize(component)
-        length_px = skeleton_length_px(skel)
+        length_px = _skeleton_trace_length_px(skel)
         if length_px < 5:
             continue
         organ_id += 1
@@ -91,7 +109,7 @@ def measure_sheet(label_path: Path, labels_root: Path, raw_root: Path, overlay_d
     top = v2.specimen_top(raw)
     scale = calibrate_ruler(raw, top)
     mm_per_px = float(scale["mm_per_px"])
-    light, a_channel, b_channel = _lab_channels(raw)
+    _light, a_channel, b_channel = _lab_channels(raw)
 
     corolla_rows: list[dict] = []
     overlay = raw.copy()
