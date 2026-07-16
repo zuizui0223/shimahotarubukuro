@@ -1,0 +1,40 @@
+name: Package shimask local inputs
+
+on:
+  push:
+    branches: [agent/pr25-shimask-input]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Collect exact raw and shimask pairs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import shutil
+          from run_all_shimask_confirmed import find_raw, IMAGE_SUFFIXES
+
+          labels = sorted(p for p in Path('shimask').iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES)
+          if len(labels) != 20:
+              raise SystemExit(f'Expected 20 shimask images, got {len(labels)}')
+          out = Path('local_inputs')
+          for label in labels:
+              folder, raw = find_raw(label.stem, Path('shimahotarubukuro'))
+              dst = out / label.stem
+              dst.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(label, dst / ('shimask' + label.suffix.lower()))
+              shutil.copy2(raw, dst / ('raw' + raw.suffix.lower()))
+              (dst / 'mapping.txt').write_text(f'sheet={label.stem}\nfolder={folder}\nraw={raw}\nshimask={label}\n', encoding='utf-8')
+          print('pairs', len(labels))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shimask-local-input-pairs
+          path: local_inputs
+          retention-days: 7
