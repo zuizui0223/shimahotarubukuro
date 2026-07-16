@@ -1,0 +1,35 @@
+name: Measure shimask red RGB
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "measure_shimask_red_rgb.py"
+      - ".github/workflows/measure-shimask-red-rgb.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  measure-red-rgb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install OpenCV and NumPy
+        run: python -m pip install numpy opencv-python-headless
+      - name: Measure actual annotation red RGB
+        run: |
+          python measure_shimask_red_rgb.py --labels shimask --out-dir results_shimask_red_rgb
+          cat results_shimask_red_rgb/RED_RGB_REPORT.txt
+      - name: Upload RGB measurements
+        uses: actions/upload-artifact@v4
+        with:
+          name: shimask-red-rgb-measurements
+          path: results_shimask_red_rgb/
+          retention-days: 14
+          if-no-files-found: error
