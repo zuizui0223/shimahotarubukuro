@@ -35,11 +35,27 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+      - name: Package exact raw and shimask pairs for local tuning
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import shutil
+          from run_all_shimask_confirmed import find_raw, IMAGE_SUFFIXES
+          labels = sorted(p for p in Path('shimask').iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES)
+          if len(labels) != 20:
+              raise SystemExit(f'Expected 20 shimask images, got {len(labels)}')
+          out = Path('local_inputs')
+          for label in labels:
+              folder, raw = find_raw(label.stem, Path('shimahotarubukuro'))
+              dst = out / label.stem
+              dst.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(label, dst / ('shimask' + label.suffix.lower()))
+              shutil.copy2(raw, dst / ('raw' + raw.suffix.lower()))
+              (dst / 'mapping.txt').write_text(f'sheet={label.stem}\nfolder={folder}\nraw={raw}\nshimask={label}\n', encoding='utf-8')
+          PY
       - name: Measure actual red annotation RGB
         run: |
-          python measure_shimask_red_rgb.py \
-            --labels shimask \
-            --out-dir results_shimask_red_rgb
+          python measure_shimask_red_rgb.py --labels shimask --out-dir results_shimask_red_rgb
           cat results_shimask_red_rgb/RED_RGB_REPORT.txt
       - name: Run shimask input tests
         run: python -m unittest -v tests/test_shimask_input.py
@@ -57,11 +73,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p results_shimask_all
-          python run_all_shimask_confirmed.py \
-            --labels shimask \
-            --raw-root shimahotarubukuro \
-            --out-dir results_shimask_all \
-            2>&1 | tee results_shimask_all/all-sheet-run.txt
+          python run_all_shimask_confirmed.py --labels shimask --raw-root shimahotarubukuro --out-dir results_shimask_all 2>&1 | tee results_shimask_all/all-sheet-run.txt
       - name: Validate manifest and completed outputs
         id: validation
         if: always()
@@ -75,15 +87,12 @@ jobs:
           python - <<'PY'
           import csv
           from pathlib import Path
-
           root = Path('results_shimask_all')
           with (root / 'manifest.csv').open(encoding='utf-8-sig') as handle:
               rows = list(csv.DictReader(handle))
-          assert len(rows) == 20, f'expected 20 manifest rows, found {len(rows)}'
+          assert len(rows) == 20
           failed = [row for row in rows if row['status'] != 'success']
-          for row in rows:
-              print(row['sheet'], row['status'], 'traits=' + row['n_traits'], 'organs=' + row['n_organs'], row['error'])
-          assert not failed, f"{len(failed)} sheet(s) failed: {[row['sheet'] for row in failed]}"
+          assert not failed, [row['sheet'] for row in failed]
           assert all(int(row['n_traits']) > 0 for row in rows)
           assert all(int(row['n_spot_summaries']) > 0 for row in rows)
           PY
@@ -93,6 +102,7 @@ jobs:
         with:
           name: shimask-input-all-20-sheets-review
           path: |
+            local_inputs/
             results_shimask_all/
             results_shimask_red_rgb/
           retention-days: 14
