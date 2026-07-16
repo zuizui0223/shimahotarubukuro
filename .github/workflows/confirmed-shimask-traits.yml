@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - "analyze_confirmed_single_sheet.py"
-      - "analyze_confirmed_oshima1.py"
       - "measure_confirmed_shimask_traits.py"
       - "measure_guides_review_traits.py"
       - "measure_guides_review_spots.py"
@@ -59,7 +58,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python analyze_confirmed_oshima1.py \
+          python analyze_confirmed_single_sheet.py \
             --raw shimahotarubukuro/oshima/oshima1.jpg \
             --shimask shimask/oshima1.jpg \
             --folder oshima \
@@ -78,7 +77,7 @@ jobs:
               traits = list(csv.DictReader(handle))
           with (root / 'confirmed_reproductive_organs.csv').open(encoding='utf-8-sig') as handle:
               organs = list(csv.DictReader(handle))
-          assert len(traits) == 4, f'oshima1 should have 4 confirmed corollas, found {len(traits)}'
+          assert len(traits) == 6, f'oshima1 should have 6 confirmed corollas, found {len(traits)}'
           assert len(organs) > 0, 'oshima1 confirmed organs are empty'
           assert all(row['mask_source'] == 'human_confirmed_red_outline' for row in traits)
           assert all(row['spot_qc_source'] == 'raw_scan_two_stage_reviewed_ruler_scale' for row in traits)
