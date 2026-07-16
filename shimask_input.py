@@ -5,11 +5,16 @@ Only the two input seams are implemented here:
 - red outline -> v2-compatible corolla components
 - green trace -> reviewed-organ rows
 
+The annotation strokes are recovered from the pixel difference between the raw
+scan and the reviewed shimask image. Natural purple nectar guides occur in both
+images and therefore are not eligible annotation pixels.
+
 Nectar-guide extraction and floral-trait measurement remain in the established
 review modules and are not reimplemented here.
 """
 from __future__ import annotations
 
+import csv
 import math
 from pathlib import Path
 
@@ -19,15 +24,95 @@ import numpy as np
 import measure_guides as base
 import measure_guides_v2 as v2
 
+# JPEG recompression and resizing can alter unchanged pixels by a few levels.
+# A hand-drawn stroke changes several channels by far more than this.
+DIFF_CHANNEL_MIN = 18
+DIFF_TOTAL_MIN = 42
+ANNOTATION_DOMINANCE_MIN = 28
 
-def stroke_masks(annotated: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Return red and green hand-drawn stroke masks at annotation resolution."""
-    if annotated.ndim != 3:
-        raise ValueError("annotated must be a BGR colour image")
-    b, g, r = cv2.split(annotated.astype(np.int16))
-    red = ((r - np.maximum(g, b) >= 50) & (r >= 110)).astype(np.uint8)
-    green = ((g - np.maximum(r, b) >= 45) & (g >= 90)).astype(np.uint8)
-    return red, green
+
+def _raw_at_annotation_resolution(raw: np.ndarray, annotated: np.ndarray) -> np.ndarray:
+    """Resize the raw scan to the reviewed image dimensions for direct differencing."""
+    if raw.ndim != 3 or annotated.ndim != 3:
+        raise ValueError("raw and annotated must be BGR colour images")
+    height, width = annotated.shape[:2]
+    if raw.shape[:2] == (height, width):
+        return raw.copy()
+    interpolation = cv2.INTER_AREA if raw.shape[0] >= height and raw.shape[1] >= width else cv2.INTER_LINEAR
+    return cv2.resize(raw, (width, height), interpolation=interpolation)
+
+
+def _remove_tiny_components(mask: np.ndarray, minimum_pixels: int = 3) -> np.ndarray:
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), 8)
+    cleaned = np.zeros_like(mask, dtype=np.uint8)
+    for index in range(1, count):
+        if int(stats[index, cv2.CC_STAT_AREA]) >= minimum_pixels:
+            cleaned[labels == index] = 1
+    return cleaned
+
+
+def stroke_masks(raw: np.ndarray, annotated: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Return hand-drawn red and green masks at annotation resolution.
+
+    Eligibility is determined first by raw-vs-shimask pixel change. Only those
+    changed pixels are then classified by the colour actually present in the
+    reviewed image. Thus unchanged natural purple nectar guides cannot enter the
+    red mask even when their RGB values are reddish.
+    """
+    raw_small = _raw_at_annotation_resolution(raw, annotated).astype(np.int16)
+    review = annotated.astype(np.int16)
+    delta = review - raw_small
+    absolute = np.abs(delta)
+    changed = (absolute.max(axis=2) >= DIFF_CHANNEL_MIN) & (absolute.sum(axis=2) >= DIFF_TOTAL_MIN)
+
+    b, g, r = cv2.split(review)
+    red_dominance = r - np.maximum(g, b)
+    green_dominance = g - np.maximum(r, b)
+
+    # The colour test is only applied after differencing. The secondary delta
+    # requirement rejects colourful unchanged tissue exposed by interpolation.
+    red_delta = delta[:, :, 2] - np.maximum(delta[:, :, 1], delta[:, :, 0])
+    green_delta = delta[:, :, 1] - np.maximum(delta[:, :, 2], delta[:, :, 0])
+    red = changed & (red_dominance >= ANNOTATION_DOMINANCE_MIN) & (red_delta >= 12)
+    green = changed & (green_dominance >= ANNOTATION_DOMINANCE_MIN) & (green_delta >= 12)
+
+    return _remove_tiny_components(red.astype(np.uint8)), _remove_tiny_components(green.astype(np.uint8))
+
+
+def stroke_colour_rows(raw: np.ndarray, annotated: np.ndarray) -> list[dict[str, object]]:
+    """Summarise the measured RGB values of the recovered annotation pixels."""
+    red, green = stroke_masks(raw, annotated)
+    rows: list[dict[str, object]] = []
+    rgb = annotated[:, :, ::-1]
+    for name, mask in (("red_corolla_outline", red), ("green_reproductive_organ", green)):
+        values = rgb[mask > 0]
+        if values.size == 0:
+            rows.append({"stroke": name, "n_pixels": 0})
+            continue
+        row: dict[str, object] = {"stroke": name, "n_pixels": int(values.shape[0])}
+        for channel_index, channel_name in enumerate(("R", "G", "B")):
+            channel = values[:, channel_index].astype(np.uint8)
+            counts = np.bincount(channel, minlength=256)
+            row[f"{channel_name}_mode"] = int(np.argmax(counts))
+            row[f"{channel_name}_median"] = round(float(np.median(channel)), 1)
+            row[f"{channel_name}_p05"] = round(float(np.percentile(channel, 5)), 1)
+            row[f"{channel_name}_p95"] = round(float(np.percentile(channel, 95)), 1)
+        rows.append(row)
+    return rows
+
+
+def write_stroke_colour_stats(raw: np.ndarray, annotated: np.ndarray, out_path: Path) -> None:
+    rows = stroke_colour_rows(raw, annotated)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fields: list[str] = []
+    for row in rows:
+        for key in row:
+            if key not in fields:
+                fields.append(key)
+    with out_path.open("w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def _resize_nn(mask: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
@@ -41,13 +126,7 @@ def _odd_kernel_size(mm: float, *, minimum: int = 3) -> int:
 
 
 def _closed_red_regions(red: np.ndarray) -> list[np.ndarray]:
-    """Fill regions enclosed by red strokes without shrinking their boundary.
-
-    A small 0.5-mm closing only bridges pen gaps. Unlike the previous 3-mm
-    close+erosion operation, this never contracts the confirmed outline inward.
-    The filled region follows the outside edge of the visible red stroke, which
-    stays within the human annotation width and is reproducible.
-    """
+    """Fill regions enclosed by red strokes without shrinking their boundary."""
     kernel_size = _odd_kernel_size(0.5)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
     joined = cv2.morphologyEx((red > 0).astype(np.uint8), cv2.MORPH_CLOSE, kernel)
@@ -64,7 +143,7 @@ def _closed_red_regions(red: np.ndarray) -> list[np.ndarray]:
 
 def red_corolla_components(raw: np.ndarray, annotated: np.ndarray) -> list[dict]:
     """Human red outlines -> components matching ``v2.corollas`` output."""
-    red_small, _ = stroke_masks(annotated)
+    red_small, _ = stroke_masks(raw, annotated)
     red = _resize_nn(red_small, raw.shape[:2])
     components: list[dict] = []
     for source_id, mask in enumerate(_closed_red_regions(red), start=1):
@@ -86,7 +165,7 @@ def red_corolla_components(raw: np.ndarray, annotated: np.ndarray) -> list[dict]
                 "mask": mask.astype(bool),
                 "source_component_id": source_id,
                 "split_piece": 1,
-                "split_status": "shimask_red_outline",
+                "split_status": "shimask_red_outline_from_raw_difference",
                 "cx": moments["m10"] / moments["m00"],
                 "cy": moments["m01"] / moments["m00"],
                 "m": measured,
@@ -135,7 +214,7 @@ def _principal_endpoints(skeleton: np.ndarray) -> tuple[tuple[int, int], tuple[i
 
 def green_organ_rows(raw: np.ndarray, annotated: np.ndarray) -> list[dict]:
     """Human green strokes -> rows matching the reviewed-organ contract."""
-    _, green_small = stroke_masks(annotated)
+    _, green_small = stroke_masks(raw, annotated)
     green = _resize_nn(green_small, raw.shape[:2])
     kernel_size = _odd_kernel_size(0.35)
     green = cv2.morphologyEx(
@@ -167,12 +246,8 @@ def green_organ_rows(raw: np.ndarray, annotated: np.ndarray) -> list[dict]:
             angle += 180.0
         rows.append(
             {
-                "cx": round(cx, 2),
-                "cy": round(cy, 2),
-                "x1": x1,
-                "y1": y1,
-                "x2": x2,
-                "y2": y2,
+                "cx": round(cx, 2), "cy": round(cy, 2),
+                "x1": x1, "y1": y1, "x2": x2, "y2": y2,
                 "length_mm": round(length_mm, 2),
                 "skeleton_length_mm": round(length_mm, 2),
                 "endpoint_distance_mm": round(chord_mm, 2),
@@ -181,12 +256,10 @@ def green_organ_rows(raw: np.ndarray, annotated: np.ndarray) -> list[dict]:
                 "angle_deg": round(angle, 2),
                 "score": round(1000.0 - len(rows), 3),
                 "organ_type_auto": "reviewed_reproductive_organ",
-                "organ_type_FILL": "",
-                "exclude_FILL": "",
-                "detection_source": "shimask_green_stroke",
-                "nearest_corolla_hint": "",
-                "association_confirmed": 1,
-                "visibility_note": "human-reviewed green stroke; path length measured on skeleton",
+                "organ_type_FILL": "", "exclude_FILL": "",
+                "detection_source": "shimask_green_stroke_from_raw_difference",
+                "nearest_corolla_hint": "", "association_confirmed": 1,
+                "visibility_note": "human-reviewed green stroke recovered by raw-image difference; path length measured on skeleton",
             }
         )
     rows.sort(key=lambda row: (float(row["cy"]), float(row["cx"])))
@@ -194,8 +267,8 @@ def green_organ_rows(raw: np.ndarray, annotated: np.ndarray) -> list[dict]:
 
 
 def write_annotation_overlay(raw: np.ndarray, annotated: np.ndarray, out_path: Path) -> None:
-    """Write raw + red/green annotation strokes only; never draw guide results."""
-    red_small, green_small = stroke_masks(annotated)
+    """Write raw + recovered red/green annotation strokes only; never draw guides."""
+    red_small, green_small = stroke_masks(raw, annotated)
     red = _resize_nn(red_small, raw.shape[:2]) > 0
     green = _resize_nn(green_small, raw.shape[:2]) > 0
     overlay = raw.copy()
