@@ -1,0 +1,93 @@
+name: Shimask input oshima1 validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "shimask_input.py"
+      - "qc_single_sheet_shimask.py"
+      - "tests/test_shimask_input.py"
+      - "qc_single_sheet.py"
+      - "measure_guides_review_spots.py"
+      - "measure_guides_review_traits.py"
+      - "measure_guides_review_organs.py"
+      - "shimask/oshima1.jpg"
+      - "shimahotarubukuro/oshima/oshima1.jpg"
+      - "requirements.txt"
+      - ".github/workflows/shimask-input-oshima1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-oshima1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+      - name: Run shimask input tests
+        run: python -m unittest -v tests/test_shimask_input.py
+      - name: Run established reviewed pipeline with confirmed inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s shimask/oshima1.jpg
+          test -s shimahotarubukuro/oshima/oshima1.jpg
+          python qc_single_sheet_shimask.py \
+            --image shimahotarubukuro/oshima/oshima1.jpg \
+            --shimask shimask/oshima1.jpg \
+            --folder oshima \
+            --out-dir results_shimask_oshima1 \
+            2>&1 | tee results_shimask_oshima1-run.txt
+      - name: Validate real-image outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=results_shimask_oshima1
+          test -s "$root/traits.csv"
+          test -s "$root/organs.csv"
+          test -s "$root/spot_summary.csv"
+          test -s "$root/visitor_traits.csv"
+          test -s "$root/scale_calibration.csv"
+          test -s "$root/annotation_overlays/Oshima_oshima1_annotation.png"
+          test -s "$root/spot_overlays/Oshima_oshima1_spots.png"
+          test -s "$root/trait_overlays/Oshima_oshima1_visitor_traits.png"
+          python - <<'PY'
+          import csv
+          from pathlib import Path
+
+          root = Path('results_shimask_oshima1')
+          def rows(name):
+              with (root / name).open(encoding='utf-8-sig') as handle:
+                  return list(csv.DictReader(handle))
+
+          traits = rows('traits.csv')
+          organs = rows('organs.csv')
+          spots = rows('spot_summary.csv')
+          visitor = rows('visitor_traits.csv')
+          assert len(traits) == 4, f'expected 4 confirmed corollas, found {len(traits)}'
+          assert len(organs) == 4, f'expected 4 confirmed organ traces, found {len(organs)}'
+          assert len(spots) == 4, f'expected 4 spot summaries, found {len(spots)}'
+          assert len(visitor) == 4, f'expected 4 visitor-trait rows, found {len(visitor)}'
+          assert all(row.get('detection_source') == 'shimask_green_stroke' for row in organs)
+          assert all(float(row.get('skeleton_length_mm') or 0) > 0 for row in organs)
+          print('oshima1 validated:', len(traits), 'corollas,', len(organs), 'organs')
+          for row in traits:
+              print('C' + row['corolla_id'], 'guide_cov_pct=' + row['guide_cov_pct'])
+          PY
+      - name: Upload oshima1 review artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shimask-input-oshima1-review
+          path: |
+            results_shimask_oshima1/
+            results_shimask_oshima1-run.txt
+          retention-days: 14
+          if-no-files-found: error
