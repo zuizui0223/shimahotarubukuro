@@ -67,7 +67,7 @@ jobs:
             tests/test_evaluate_v3_against_shimask_v2.py \
             tests/test_shimask_annotation_diff.py
 
-      - name: Export canonical shimask measurements
+      - name: Export confirmed shimask measurements and masks
         shell: bash
         run: |
           set -euo pipefail
@@ -75,16 +75,24 @@ jobs:
           python export_shimask_ground_truth.py \
             --labels shimask \
             --raw-root shimahotarubukuro \
-            --out-dir results_v3/shimask_ground_truth_measurements \
-            2>&1 | tee results_v3/shimask-ground-truth-summary.txt
-          test -f results_v3/shimask_ground_truth_measurements/ground_truth_corollas.csv
-          test -f results_v3/shimask_ground_truth_measurements/ground_truth_organs.csv
+            --out-dir results_v3/confirmed_shimask \
+            2>&1 | tee results_v3/confirmed-shimask-summary.txt
+          test -f results_v3/confirmed_shimask/ground_truth_corollas.csv
+          test -f results_v3/confirmed_shimask/ground_truth_organs.csv
+          test -d results_v3/confirmed_shimask/corolla_masks
+          cat > results_v3/confirmed_shimask/PROVENANCE.txt <<'EOF'
+          source=human_reviewed_shimask_annotations
+          role=confirmed_analysis_input_for_reviewed_sheets
+          automatic_extractor=measure_guides_v3_refine19.py
+          automatic_results_are_retained_separately_for_method_evaluation
+          do_not_describe_confirmed_outputs_as_fully_automatic
+          EOF
 
-      - name: Run accepted v3 extraction
+      - name: Run accepted automatic v3 extraction
         shell: bash
         run: |
           set -euo pipefail
-          python measure_guides_v3_refine23.py \
+          python measure_guides_v3_refine19.py \
             --data-root shimahotarubukuro \
             --out-dir results_shimask \
             2>&1 | tee results_shimask-run.txt
@@ -132,7 +140,7 @@ jobs:
           test -f results_v3/rescue/manual_rescue_template.csv
           test -f results_v3/rescue/mask_rescue_template.csv
 
-      - name: Score against annotation-only shimask ground truth
+      - name: Score automatic extractor against confirmed shimask
         shell: bash
         run: |
           set -euo pipefail
@@ -144,10 +152,10 @@ jobs:
           cat results_v3/shimask_evaluation/SUMMARY.txt
           cat results_v3/shimask_evaluation/metrics.csv
 
-      - name: Upload v3 results
+      - name: Upload automatic and confirmed results
         uses: actions/upload-artifact@v4
         with:
-          name: shimahotarubukuro-v3-shimask-evaluation
+          name: shimahotarubukuro-v3-automatic-and-confirmed
           path: |
             results_v3/
             results_shimask/
