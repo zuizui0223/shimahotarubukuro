@@ -3,7 +3,6 @@ name: Confirmed shimask trait measurements
 on:
   pull_request:
     branches:
-      - agent/automatic-extraction-v3
       - main
     paths:
       - "measure_confirmed_shimask_traits.py"
@@ -40,13 +39,16 @@ jobs:
         run: |
           set -euo pipefail
           test -d shimask || {
-            echo "::error::Required human-reviewed annotation directory 'shimask/' is not present in this branch."
+            echo "::error::Required human-reviewed annotation directory 'shimask/' is absent from the PR merge checkout."
+            git status --short
             exit 1
           }
-          count=$(find shimask -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.tif' -o -iname '*.tiff' \) | wc -l)
-          echo "confirmed annotation images: ${count}"
-          test "${count}" -gt 0 || {
-            echo "::error::No human-reviewed shimask annotation images were found."
+          mapfile -t labels < <(find shimask -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.tif' -o -iname '*.tiff' \) | sort)
+          count=${#labels[@]}
+          printf 'confirmed annotation images: %s\n' "${count}"
+          printf '%s\n' "${labels[@]}"
+          test "${count}" -eq 20 || {
+            echo "::error::Expected exactly 20 human-reviewed shimask images from main, found ${count}."
             exit 1
           }
       - name: Measure confirmed traits
@@ -62,14 +64,20 @@ jobs:
           test -f results_confirmed_traits/PROVENANCE.txt
           corolla_rows=$(($(wc -l < results_confirmed_traits/confirmed_corolla_traits.csv) - 1))
           organ_rows=$(($(wc -l < results_confirmed_traits/confirmed_reproductive_organs.csv) - 1))
+          overlay_count=$(find results_confirmed_traits/overlays -type f -name '*.jpg' | wc -l)
           echo "confirmed corolla rows: ${corolla_rows}"
           echo "confirmed organ rows: ${organ_rows}"
+          echo "confirmed overlay images: ${overlay_count}"
           test "${corolla_rows}" -gt 0 || {
             echo "::error::Confirmed corolla CSV is empty."
             exit 1
           }
           test "${organ_rows}" -gt 0 || {
             echo "::error::Confirmed reproductive-organ CSV is empty."
+            exit 1
+          }
+          test "${overlay_count}" -eq 20 || {
+            echo "::error::Expected 20 measurement overlays, found ${overlay_count}."
             exit 1
           }
           head -n 3 results_confirmed_traits/confirmed_corolla_traits.csv
