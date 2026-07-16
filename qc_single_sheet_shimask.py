@@ -2,8 +2,8 @@
 """Run the existing reviewed QC pipeline with human shimask inputs.
 
 Only two inputs are swapped:
-- red outline -> corolla mask
-- green stroke -> reproductive-organ rows
+- measured red marker outline -> corolla mask
+- measured green marker stroke -> reproductive-organ rows
 
 Guide extraction and trait measurement remain unchanged.
 """
@@ -17,8 +17,8 @@ import measure_guides as base
 import measure_guides_v2 as v2
 import measure_guides_review_organs as reviewed_organs
 import qc_single_sheet
+import shimask_fixed_marker
 import shimask_input
-import shimask_registered_difference
 
 
 def main() -> None:
@@ -37,34 +37,23 @@ def main() -> None:
     raw = base.load_bgr(str(args.image))
     annotated = base.load_bgr(str(args.shimask))
 
+    # The common marker RGB was measured from raw-vs-shimask differences on the
+    # aligned sheets. Use that measured colour directly for every sheet.
     original_stroke_masks = shimask_input.stroke_masks
-    red_components = shimask_input.red_corolla_components(raw, annotated)
-    green_organs = shimask_input.green_organ_rows(raw, annotated)
-    difference_mode = "direct_resized_raw_difference"
-
-    if not red_components:
-        shimask_input.stroke_masks = shimask_registered_difference.registered_stroke_masks
-        try:
-            red_components = shimask_input.red_corolla_components(raw, annotated)
-            green_organs = shimask_input.green_organ_rows(raw, annotated)
-            difference_mode = "ecc_registered_raw_difference"
-        finally:
-            shimask_input.stroke_masks = original_stroke_masks
-
-    if not red_components:
-        raise SystemExit("No red corolla outlines found after direct and registered raw-vs-shimask difference")
-
-    v2.corollas = lambda filled, auto_split=True, _c=red_components: [dict(c) for c in _c]
-    reviewed_organs.organs_reviewed = (
-        lambda img, corolla_mask, top, _r=green_organs: [dict(r) for r in _r]
-    )
-
-    island, _ = base.ISLANDS.get(args.folder.lower(), (args.folder, ""))
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-
-    if difference_mode == "ecc_registered_raw_difference":
-        shimask_input.stroke_masks = shimask_registered_difference.registered_stroke_masks
+    shimask_input.stroke_masks = shimask_fixed_marker.stroke_masks
     try:
+        red_components = shimask_input.red_corolla_components(raw, annotated)
+        green_organs = shimask_input.green_organ_rows(raw, annotated)
+        if not red_components:
+            raise SystemExit("No measured-red corolla outlines found in shimask")
+
+        v2.corollas = lambda filled, auto_split=True, _c=red_components: [dict(c) for c in _c]
+        reviewed_organs.organs_reviewed = (
+            lambda img, corolla_mask, top, _r=green_organs: [dict(r) for r in _r]
+        )
+
+        island, _ = base.ISLANDS.get(args.folder.lower(), (args.folder, ""))
+        args.out_dir.mkdir(parents=True, exist_ok=True)
         shimask_input.write_annotation_overlay(
             raw,
             annotated,
@@ -78,8 +67,8 @@ def main() -> None:
     finally:
         shimask_input.stroke_masks = original_stroke_masks
 
-    (args.out_dir / "ANNOTATION_DIFFERENCE_MODE.txt").write_text(
-        difference_mode + "\n",
+    (args.out_dir / "ANNOTATION_EXTRACTION_MODE.txt").write_text(
+        "measured_common_marker_rgb\n",
         encoding="utf-8",
     )
 
@@ -92,7 +81,7 @@ def main() -> None:
     qc_single_sheet.main()
     print(
         f"shimask-input QC done: corollas={len(red_components)} "
-        f"organs={len(green_organs)} mode={difference_mode} -> {args.out_dir}"
+        f"organs={len(green_organs)} mode=measured_common_marker_rgb -> {args.out_dir}"
     )
 
 
