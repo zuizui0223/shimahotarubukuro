@@ -1,0 +1,55 @@
+name: Confirmed shimask trait measurements
+
+on:
+  pull_request:
+    branches:
+      - agent/automatic-extraction-v3
+      - main
+    paths:
+      - "measure_confirmed_shimask_traits.py"
+      - "measure_guides_review_traits.py"
+      - "measure_guides_review_spots.py"
+      - "export_shimask_ground_truth.py"
+      - "shimask/**"
+      - "shimahotarubukuro/**/*.jpg"
+      - "shimahotarubukuro/**/*.jpeg"
+      - "tests/test_measure_confirmed_shimask_traits.py"
+      - "requirements.txt"
+      - ".github/workflows/confirmed-shimask-traits.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  confirmed-traits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+      - name: Run tests
+        run: python -m unittest -v tests/test_measure_confirmed_shimask_traits.py
+      - name: Measure confirmed traits
+        run: |
+          python measure_confirmed_shimask_traits.py \
+            --labels shimask \
+            --raw-root shimahotarubukuro \
+            --out-dir results_confirmed_traits
+          test -f results_confirmed_traits/confirmed_corolla_traits.csv
+          test -f results_confirmed_traits/confirmed_reproductive_organs.csv
+          test -f results_confirmed_traits/PROVENANCE.txt
+          head -n 3 results_confirmed_traits/confirmed_corolla_traits.csv
+          head -n 3 results_confirmed_traits/confirmed_reproductive_organs.csv
+      - name: Upload confirmed measurements
+        uses: actions/upload-artifact@v4
+        with:
+          name: shimahotarubukuro-confirmed-traits
+          path: results_confirmed_traits/
+          retention-days: 14
+          if-no-files-found: error
