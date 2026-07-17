@@ -255,23 +255,43 @@ def _principal_endpoints(skeleton: np.ndarray) -> tuple[tuple[int, int], tuple[i
 
 
 def green_organ_rows(raw: np.ndarray, annotated: np.ndarray) -> list[dict]:
-    """Human green strokes -> rows matching the reviewed-organ contract."""
-    _, green_small = stroke_masks(raw, annotated)
+    """Human green strokes -> rows matching the reviewed-organ contract.
+
+    Organs are elongated strokes laid out BESIDE the corollas on bare paper. The
+    raw-difference can also leave faint green speckle inside a corolla or on the
+    ruler ticks, so we drop the ruler band, drop components sitting inside a
+    corolla outline, and require a genuinely elongated bar.
+    """
+    red_small, green_small = stroke_masks(raw, annotated)
     green = _resize_nn(green_small, raw.shape[:2])
+    green[: v2.specimen_top(raw)] = 0  # ruler band residue
     kernel_size = _odd_kernel_size(0.35)
     green = cv2.morphologyEx(
         green,
         cv2.MORPH_CLOSE,
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size)),
     )
+
+    corolla_union = np.zeros(raw.shape[:2], np.uint8)
+    for corolla in _closed_red_regions(_resize_nn(red_small, raw.shape[:2])):
+        corolla_union |= corolla
+
     count, labels, stats, centroids = cv2.connectedComponentsWithStats(green, 8)
     rows: list[dict] = []
     for index in range(1, count):
-        area_px = int(stats[index, cv2.CC_STAT_AREA])
-        span_px = max(int(stats[index, cv2.CC_STAT_WIDTH]), int(stats[index, cv2.CC_STAT_HEIGHT]))
-        if area_px * float(base.MM2_PX) < 0.7 or span_px * float(base.MM_PX) < 3.0:
-            continue
+        cx0, cy0 = int(round(centroids[index][0])), int(round(centroids[index][1]))
+        if corolla_union[min(max(cy0, 0), raw.shape[0] - 1), min(max(cx0, 0), raw.shape[1] - 1)] > 0:
+            continue  # speckle inside a corolla, not a laid-out organ
         component = (labels == index).astype(np.uint8)
+        contours, _ = cv2.findContours(component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            continue
+        (_, _), (rect_w, rect_h), _ = cv2.minAreaRect(max(contours, key=cv2.contourArea))
+        rect_len = max(rect_w, rect_h)
+        rect_wid = max(min(rect_w, rect_h), 1.0)
+        # An organ stroke is an elongated bar; reject small round speckle noise.
+        if rect_len * float(base.MM_PX) < 6.0 or (rect_len / rect_wid) < 2.2:
+            continue
         skeleton = _skeletonize(component)
         length_px = _skeleton_length_px(skeleton)
         if length_px <= 0:
@@ -280,6 +300,7 @@ def green_organ_rows(raw: np.ndarray, annotated: np.ndarray) -> list[dict]:
         cx, cy = map(float, centroids[index])
         length_mm = length_px * float(base.MM_PX)
         chord_mm = chord_px * float(base.MM_PX)
+        area_px = int(stats[index, cv2.CC_STAT_AREA])
         width_mm = area_px * float(base.MM2_PX) / max(length_mm, 1e-9)
         angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
         while angle > 90.0:
