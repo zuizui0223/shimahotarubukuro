@@ -24,11 +24,20 @@ import numpy as np
 import measure_guides as base
 import measure_guides_v2 as v2
 
-# JPEG recompression and resizing can alter unchanged pixels by a few levels.
-# A hand-drawn stroke changes several channels by far more than this.
-DIFF_CHANNEL_MIN = 18
-DIFF_TOTAL_MIN = 42
-ANNOTATION_DOMINANCE_MIN = 28
+# A hand-drawn stroke is defined by being ADDED, not by an absolute colour, so we
+# detect the DIRECTIONAL colour-dominance INCREASE of the reviewed image over the
+# raw scan (red-ward for the corolla outline, green-ward for the organs). The
+# natural purple nectar guide is present in both images and cancels; a purple
+# corolla can therefore never read as red. Two robustness pieces make the
+# difference reliable on all 20 sheets:
+#   * ECC registration aligns the raw to the preview, so a resize/offset -- the
+#     case that made niijiama2-4 look "misaligned" and where a resize-only
+#     difference collapses to zero corollas -- does not corrupt the difference; and
+#   * hysteresis (pure OpenCV, connected-component seeded) keeps the faint part of
+#     a stroke -- e.g. where it crosses the guide-dense mouth -- connected into one
+#     continuous loop instead of a fragmented line.
+_RED_LOW, _RED_HIGH = 14.0, 40.0
+_GREEN_LOW, _GREEN_HIGH = 16.0, 42.0
 
 
 def _raw_at_annotation_resolution(raw: np.ndarray, annotated: np.ndarray) -> np.ndarray:
@@ -42,6 +51,24 @@ def _raw_at_annotation_resolution(raw: np.ndarray, annotated: np.ndarray) -> np.
     return cv2.resize(raw, (width, height), interpolation=interpolation)
 
 
+def _register_raw_to_preview(raw: np.ndarray, annotated: np.ndarray) -> np.ndarray:
+    """Resize the raw scan to the preview, then ECC-refine the alignment."""
+    ref = _raw_at_annotation_resolution(raw, annotated)
+    g_ann = cv2.cvtColor(annotated, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    g_ref = cv2.cvtColor(ref, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    warp = np.eye(2, 3, dtype=np.float32)
+    try:
+        criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 60, 1e-5)
+        cv2.findTransformECC(g_ann, g_ref, warp, cv2.MOTION_EUCLIDEAN, criteria, None, 5)
+        ref = cv2.warpAffine(
+            ref, warp, (ref.shape[1], ref.shape[0]),
+            flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP, borderMode=cv2.BORDER_REPLICATE,
+        )
+    except cv2.error:
+        pass  # fall back to the plain resize alignment
+    return ref
+
+
 def _remove_tiny_components(mask: np.ndarray, minimum_pixels: int = 3) -> np.ndarray:
     count, labels, stats, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), 8)
     cleaned = np.zeros_like(mask, dtype=np.uint8)
@@ -51,32 +78,37 @@ def _remove_tiny_components(mask: np.ndarray, minimum_pixels: int = 3) -> np.nda
     return cleaned
 
 
+def _hysteresis(gain: np.ndarray, low: float, high: float) -> np.ndarray:
+    """Keep weak-threshold components that contain at least one strong-threshold seed."""
+    weak = (gain >= low).astype(np.uint8)
+    strong = gain >= high
+    _, labels = cv2.connectedComponents(weak, 8)
+    keep = np.unique(labels[strong])
+    keep = keep[keep > 0]
+    if keep.size == 0:
+        return np.zeros_like(weak)
+    return np.isin(labels, keep).astype(np.uint8)
+
+
 def stroke_masks(raw: np.ndarray, annotated: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Return hand-drawn red and green masks at annotation resolution.
+    """Return hand-drawn red and green masks at annotation resolution, from the
+    directional colour-dominance INCREASE of the reviewed image over the raw scan.
 
-    Eligibility is determined first by raw-vs-shimask pixel change. Only those
-    changed pixels are then classified by the colour actually present in the
-    reviewed image. Thus unchanged natural purple nectar guides cannot enter the
-    red mask even when their RGB values are reddish.
+    Natural purple nectar guides are present in both images, so their dominance
+    does not increase and they cannot enter the red mask even though they are
+    reddish. No fixed colour range is used.
     """
-    raw_small = _raw_at_annotation_resolution(raw, annotated).astype(np.int16)
-    review = annotated.astype(np.int16)
-    delta = review - raw_small
-    absolute = np.abs(delta)
-    changed = (absolute.max(axis=2) >= DIFF_CHANNEL_MIN) & (absolute.sum(axis=2) >= DIFF_TOTAL_MIN)
-
-    b, g, r = cv2.split(review)
-    red_dominance = r - np.maximum(g, b)
-    green_dominance = g - np.maximum(r, b)
-
-    # The colour test is only applied after differencing. The secondary delta
-    # requirement rejects colourful unchanged tissue exposed by interpolation.
-    red_delta = delta[:, :, 2] - np.maximum(delta[:, :, 1], delta[:, :, 0])
-    green_delta = delta[:, :, 1] - np.maximum(delta[:, :, 2], delta[:, :, 0])
-    red = changed & (red_dominance >= ANNOTATION_DOMINANCE_MIN) & (red_delta >= 12)
-    green = changed & (green_dominance >= ANNOTATION_DOMINANCE_MIN) & (green_delta >= 12)
-
-    return _remove_tiny_components(red.astype(np.uint8)), _remove_tiny_components(green.astype(np.uint8))
+    if raw.ndim != 3 or annotated.ndim != 3:
+        raise ValueError("raw and annotated must be BGR colour images")
+    ref = _register_raw_to_preview(raw, annotated).astype(np.float32)
+    review = annotated.astype(np.float32)
+    ab, ag, ar = cv2.split(review)
+    rb, rg, rr = cv2.split(ref)
+    red_gain = (ar - np.maximum(ag, ab)) - (rr - np.maximum(rg, rb))
+    green_gain = (ag - np.maximum(ar, ab)) - (rg - np.maximum(rr, rb))
+    red = _hysteresis(red_gain, _RED_LOW, _RED_HIGH)
+    green = _hysteresis(green_gain, _GREEN_LOW, _GREEN_HIGH)
+    return _remove_tiny_components(red), _remove_tiny_components(green)
 
 
 def stroke_colour_rows(raw: np.ndarray, annotated: np.ndarray) -> list[dict[str, object]]:
@@ -126,18 +158,28 @@ def _odd_kernel_size(mm: float, *, minimum: int = 3) -> int:
 
 
 def _closed_red_regions(red: np.ndarray) -> list[np.ndarray]:
-    """Fill regions enclosed by red strokes without shrinking their boundary."""
-    kernel_size = _odd_kernel_size(0.5)
+    """Fill regions enclosed by red strokes without shrinking their boundary.
+
+    A hand-drawn outline can have gaps (e.g. over the guide-dense mouth). Close by
+    a few millimetres to bridge them, then fill the interior of each CLOSED loop by
+    flood-filling the background and inverting -- so text, the ruler and any open
+    stroke, which enclose nothing, contribute no region. Morphological closing
+    restores the loop's outer edge, so the filled boundary stays on the drawn line
+    rather than being eroded inward.
+    """
+    kernel_size = _odd_kernel_size(3.0)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
-    joined = cv2.morphologyEx((red > 0).astype(np.uint8), cv2.MORPH_CLOSE, kernel)
-    contours, _ = cv2.findContours(joined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    sealed = cv2.morphologyEx((red > 0).astype(np.uint8), cv2.MORPH_CLOSE, kernel)
+    flood = sealed.copy()
+    cv2.floodFill(flood, np.zeros((sealed.shape[0] + 2, sealed.shape[1] + 2), np.uint8), (0, 0), 1)
+    filled = (sealed | (1 - flood)).astype(np.uint8)
+
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(filled, 8)
     masks: list[np.ndarray] = []
-    for contour in contours:
-        if cv2.contourArea(contour) * float(base.MM2_PX) < float(base.AREA_MM2_MIN):
+    for index in range(1, count):
+        if float(stats[index, cv2.CC_STAT_AREA]) * float(base.MM2_PX) < float(base.AREA_MM2_MIN):
             continue
-        mask = np.zeros_like(joined, dtype=np.uint8)
-        cv2.drawContours(mask, [contour], -1, 1, thickness=cv2.FILLED)
-        masks.append(mask)
+        masks.append((labels == index).astype(np.uint8))
     return masks
 
 
