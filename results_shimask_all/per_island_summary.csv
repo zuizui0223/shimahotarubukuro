@@ -1,0 +1,6 @@
+﻿region_order,island,n_corolla,corolla_len_mm_mean,corolla_area_mm2_mean,guide_cov_pct_mean,guide_present_frac,degraded_frac,n_spots_mean
+1,Oshima,87,37.9,756.0,21.64,1.0,0.14,154.4
+2,Toshima,63,31.7,537.0,6.42,0.94,0.13,101.1
+3,Niijima,39,33.5,600.0,10.96,0.82,0.23,78.7
+3.5,Shikinejima,6,37.0,719.0,2.17,0.33,0.17,92.7
+4,Kozushima,19,35.6,645.0,5.73,0.95,0.16,124.3

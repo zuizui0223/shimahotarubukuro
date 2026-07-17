@@ -1,0 +1,2 @@
+corollas=17 organs=17 spots=4913 weak_recovered=85 scale=0.0846667mm/px (fallback_verified_300dpi) -> results_shimask_all/sheets/toshima1-2
+shimask-input QC done: corollas=17 organs=17 mode=raw_shimask_difference -> results_shimask_all/sheets/toshima1-2
