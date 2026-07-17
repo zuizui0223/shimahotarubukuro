@@ -111,9 +111,11 @@ def stroke_masks(raw: np.ndarray, annotated: np.ndarray) -> tuple[np.ndarray, np
     return _remove_tiny_components(red), _remove_tiny_components(green)
 
 
-def stroke_colour_rows(raw: np.ndarray, annotated: np.ndarray) -> list[dict[str, object]]:
+def stroke_colour_rows(
+    raw: np.ndarray, annotated: np.ndarray, *, strokes: tuple[np.ndarray, np.ndarray] | None = None
+) -> list[dict[str, object]]:
     """Summarise the measured RGB values of the recovered annotation pixels."""
-    red, green = stroke_masks(raw, annotated)
+    red, green = strokes if strokes is not None else stroke_masks(raw, annotated)
     rows: list[dict[str, object]] = []
     rgb = annotated[:, :, ::-1]
     for name, mask in (("red_corolla_outline", red), ("green_reproductive_organ", green)):
@@ -133,8 +135,10 @@ def stroke_colour_rows(raw: np.ndarray, annotated: np.ndarray) -> list[dict[str,
     return rows
 
 
-def write_stroke_colour_stats(raw: np.ndarray, annotated: np.ndarray, out_path: Path) -> None:
-    rows = stroke_colour_rows(raw, annotated)
+def write_stroke_colour_stats(
+    raw: np.ndarray, annotated: np.ndarray, out_path: Path, *, strokes: tuple[np.ndarray, np.ndarray] | None = None
+) -> None:
+    rows = stroke_colour_rows(raw, annotated, strokes=strokes)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fields: list[str] = []
     for row in rows:
@@ -183,9 +187,11 @@ def _closed_red_regions(red: np.ndarray) -> list[np.ndarray]:
     return masks
 
 
-def red_corolla_components(raw: np.ndarray, annotated: np.ndarray) -> list[dict]:
+def red_corolla_components(
+    raw: np.ndarray, annotated: np.ndarray, *, strokes: tuple[np.ndarray, np.ndarray] | None = None
+) -> list[dict]:
     """Human red outlines -> components matching ``v2.corollas`` output."""
-    red_small, _ = stroke_masks(raw, annotated)
+    red_small, _ = strokes if strokes is not None else stroke_masks(raw, annotated)
     red = _resize_nn(red_small, raw.shape[:2])
     components: list[dict] = []
     for source_id, mask in enumerate(_closed_red_regions(red), start=1):
@@ -254,7 +260,9 @@ def _principal_endpoints(skeleton: np.ndarray) -> tuple[tuple[int, int], tuple[i
     return (int(round(first[0])), int(round(first[1]))), (int(round(second[0])), int(round(second[1]))), chord
 
 
-def green_organ_rows(raw: np.ndarray, annotated: np.ndarray) -> list[dict]:
+def green_organ_rows(
+    raw: np.ndarray, annotated: np.ndarray, *, strokes: tuple[np.ndarray, np.ndarray] | None = None
+) -> list[dict]:
     """Human green strokes -> rows matching the reviewed-organ contract.
 
     Organs are elongated strokes laid out BESIDE the corollas on bare paper. The
@@ -262,7 +270,7 @@ def green_organ_rows(raw: np.ndarray, annotated: np.ndarray) -> list[dict]:
     ruler ticks, so we drop the ruler band, drop components sitting inside a
     corolla outline, and require a genuinely elongated bar.
     """
-    red_small, green_small = stroke_masks(raw, annotated)
+    red_small, green_small = strokes if strokes is not None else stroke_masks(raw, annotated)
     green = _resize_nn(green_small, raw.shape[:2])
     green[: v2.specimen_top(raw)] = 0  # ruler band residue
     kernel_size = _odd_kernel_size(0.35)
@@ -335,9 +343,11 @@ def green_organ_rows(raw: np.ndarray, annotated: np.ndarray) -> list[dict]:
     return rows
 
 
-def write_annotation_overlay(raw: np.ndarray, annotated: np.ndarray, out_path: Path) -> None:
+def write_annotation_overlay(
+    raw: np.ndarray, annotated: np.ndarray, out_path: Path, *, strokes: tuple[np.ndarray, np.ndarray] | None = None
+) -> None:
     """Write raw + recovered red/green annotation strokes only; never draw guides."""
-    red_small, green_small = stroke_masks(raw, annotated)
+    red_small, green_small = strokes if strokes is not None else stroke_masks(raw, annotated)
     red = _resize_nn(red_small, raw.shape[:2]) > 0
     green = _resize_nn(green_small, raw.shape[:2]) > 0
     overlay = raw.copy()

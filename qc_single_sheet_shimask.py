@@ -38,8 +38,10 @@ def main() -> None:
 
     # Strokes come from the raw-vs-shimask difference (see shimask_input), never a
     # fixed colour range -- so a purple corolla is never read as a red outline.
-    red_components = shimask_input.red_corolla_components(raw, annotated)
-    green_organs = shimask_input.green_organ_rows(raw, annotated)
+    # Compute the (ECC-registered) difference once and reuse it for both seams.
+    strokes = shimask_input.stroke_masks(raw, annotated)
+    red_components = shimask_input.red_corolla_components(raw, annotated, strokes=strokes)
+    green_organs = shimask_input.green_organ_rows(raw, annotated, strokes=strokes)
     if not red_components:
         raise SystemExit("No red corolla outlines recovered from the raw-vs-shimask difference")
 
@@ -54,11 +56,13 @@ def main() -> None:
         raw,
         annotated,
         args.out_dir / "annotation_overlays" / f"{island}_{args.image.stem}_annotation.png",
+        strokes=strokes,
     )
     shimask_input.write_stroke_colour_stats(
         raw,
         annotated,
         args.out_dir / "annotation_colour_stats.csv",
+        strokes=strokes,
     )
     (args.out_dir / "ANNOTATION_EXTRACTION_MODE.txt").write_text(
         "raw_shimask_difference\n",
