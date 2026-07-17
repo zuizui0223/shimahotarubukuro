@@ -276,9 +276,15 @@ def green_organ_rows(raw: np.ndarray, annotated: np.ndarray) -> list[dict]:
     for corolla in _closed_red_regions(_resize_nn(red_small, raw.shape[:2])):
         corolla_union |= corolla
 
+    height, width = green.shape
+    border = max(3, int(round(1.5 / float(base.MM_PX))))
     count, labels, stats, centroids = cv2.connectedComponentsWithStats(green, 8)
     rows: list[dict] = []
     for index in range(1, count):
+        left = int(stats[index, cv2.CC_STAT_LEFT]); top = int(stats[index, cv2.CC_STAT_TOP])
+        comp_w = int(stats[index, cv2.CC_STAT_WIDTH]); comp_h = int(stats[index, cv2.CC_STAT_HEIGHT])
+        if left <= border or top <= border or left + comp_w >= width - border or top + comp_h >= height - border:
+            continue  # touches the image edge -> scan-border / registration artifact
         cx0, cy0 = int(round(centroids[index][0])), int(round(centroids[index][1]))
         if corolla_union[min(max(cy0, 0), raw.shape[0] - 1), min(max(cx0, 0), raw.shape[1] - 1)] > 0:
             continue  # speckle inside a corolla, not a laid-out organ
