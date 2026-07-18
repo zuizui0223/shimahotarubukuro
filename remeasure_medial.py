@@ -150,6 +150,52 @@ def medial_axis(mask_local: np.ndarray, spot_local: np.ndarray) -> dict[str, obj
     }
 
 
+LENGTH_MERGE_MM = 55.0  # a single corolla never reaches this; longer => two merged
+
+
+def split_merged_pair(mask: np.ndarray) -> list[np.ndarray]:
+    """Split a mask that joins two corollas at a narrow neck.
+
+    Two adjacent hand outlines can touch, so the flood-fill yields one long
+    component with a strong central constriction. Only masks whose PCA-major
+    length exceeds a single corolla and that show a deep central neck are split;
+    a half-folded single corolla (normal length, folded waist) is left intact.
+    """
+    m = (mask > 0).astype(np.uint8)
+    ys, xs = np.where(m)
+    pts = np.column_stack([xs, ys]).astype(float)
+    mean = pts.mean(0)
+    _, _, vt = np.linalg.svd(pts - mean, full_matrices=False)
+    axis = vt[0]
+    if axis[1] < 0:
+        axis = -axis
+    lon = (pts - mean) @ axis
+    lo, hi = lon.min(), lon.max()
+    if (hi - lo) * MM_PX < LENGTH_MERGE_MM:
+        return [m]
+    n_bins = 60
+    idx = np.clip(((lon - lo) / (hi - lo) * n_bins).astype(int), 0, n_bins - 1)
+    prof = np.array([(idx == i).sum() for i in range(n_bins)], dtype=float)
+    c0, c1 = int(n_bins * 0.28), int(n_bins * 0.72)
+    neck = c0 + int(np.argmin(prof[c0:c1]))
+    top_max = prof[:neck].max() if neck > 0 else 0.0
+    bot_max = prof[neck:].max() if neck < n_bins else 0.0
+    if not (min(top_max, bot_max) > 0 and prof[neck] < 0.55 * min(top_max, bot_max)):
+        return [m]
+    t_neck = lo + (neck + 0.5) / n_bins * (hi - lo)
+    side = lon < t_neck
+    out = []
+    for sel in (side, ~side):
+        piece = np.zeros_like(m)
+        piece[ys[sel], xs[sel]] = 1
+        count, labels, stats, _ = cv2.connectedComponentsWithStats(piece, 8)
+        if count > 1:
+            k = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+            piece = (labels == k).astype(np.uint8)
+        out.append(piece)
+    return out
+
+
 def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[str, object]]:
     raw = base.load_bgr(str(raw_path))
     ann = base.load_bgr(str(shimask_path))
@@ -157,35 +203,46 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
     comps = shimask_input.red_corolla_components(raw, ann, strokes=strokes)
     rows: list[dict[str, object]] = []
     for cid, comp in enumerate(comps, start=1):
-        mask = comp["mask"].astype(np.uint8)
-        spot_local, mask_local, _ = detect_guide_spots(raw, mask)
-        m = medial_axis(mask_local, spot_local)
-        opened = is_full_open(sheet, cid)
-        fold = "opened_full" if opened else "folded_half"
-        factor = 1.0 if opened else 2.0
-        # multi-fragment / outlier length guard (e.g. two petals merged into one mask)
-        n_frag = int(cv2.connectedComponentsWithStats(mask_local, 8)[0]) - 1
-        qc = []
-        if float(m["sym_score"]) < 0.55:
-            qc.append("low_symmetry")
-        if float(m["length_mm"]) > 55.0:
-            qc.append("length_outlier")
-        if n_frag > 1:
-            qc.append(f"fragments={n_frag}")
-        rows.append({
-            "sheet": sheet,
-            "corolla_id": cid,
-            "fold_state": fold,
-            "corolla_length_mm": m["length_mm"],
-            "corolla_width_obs_mm": m["width_mm"],
-            "corolla_area_obs_mm2": m["area_mm2"],
-            "corolla_width_fulleq_mm": round(float(m["width_mm"]) * factor, 2),
-            "corolla_area_fulleq_mm2": round(float(m["area_mm2"]) * factor, 1),
-            "medial_angle_deg": m["angle_deg"],
-            "symmetry_score": m["sym_score"],
-            "n_fragments": n_frag,
-            "qc_flag": "|".join(qc),
-        })
+        full_mask = comp["mask"].astype(np.uint8)
+        pieces = split_merged_pair(full_mask)
+        suffixes = [""] if len(pieces) == 1 else ["a", "b"]
+        for suffix, piece in zip(suffixes, pieces):
+            spot_local, mask_local, _ = detect_guide_spots(raw, piece)
+            m = medial_axis(mask_local, spot_local)
+            opened = is_full_open(sheet, cid)
+            fold = "opened_full" if opened else "folded_half"
+            factor = 1.0 if opened else 2.0
+            length = float(m["length_mm"])
+            width = float(m["width_mm"])
+            aspect = length / max(width, 1e-6)
+            qc = []
+            # A correct axis makes opened corollas wider than long and folded ones
+            # clearly longer than wide. When that ordering breaks together with a
+            # weak symmetry score, the axis has usually locked onto a wrong diagonal
+            # and the individual needs manual axis review.
+            if fold == "folded_half" and aspect < 1.12 and float(m["sym_score"]) < 0.62:
+                qc.append("axis_review")
+            elif fold == "opened_full" and aspect > 0.95:
+                qc.append("axis_review")
+            if float(m["sym_score"]) < 0.45:
+                qc.append("low_symmetry")
+            if length > LENGTH_MERGE_MM:
+                qc.append("length_outlier")
+            if suffix:
+                qc.append("split_from_merged_pair")
+            rows.append({
+                "sheet": sheet,
+                "corolla_id": f"{cid}{suffix}",
+                "fold_state": fold,
+                "corolla_length_mm": m["length_mm"],
+                "corolla_width_obs_mm": m["width_mm"],
+                "corolla_area_obs_mm2": m["area_mm2"],
+                "corolla_width_fulleq_mm": round(float(m["width_mm"]) * factor, 2),
+                "corolla_area_fulleq_mm2": round(float(m["area_mm2"]) * factor, 1),
+                "medial_angle_deg": m["angle_deg"],
+                "symmetry_score": m["sym_score"],
+                "qc_flag": "|".join(qc),
+            })
     return rows
 
 
