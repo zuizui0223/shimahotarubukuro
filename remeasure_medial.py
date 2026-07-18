@@ -87,8 +87,14 @@ def medial_axis(mask_local: np.ndarray, spot_local: np.ndarray) -> dict[str, obj
     ms = cv2.resize(mask_local, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
     ss = cv2.resize(spot_local, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
 
+    # Specimens are mounted upright (tube up, lobes down) on every reviewed sheet,
+    # so the medial axis is always near-vertical. Constraining the search to a
+    # near-vertical window stops the reflection search from locking onto a wrong
+    # diagonal on torn/asymmetric silhouettes. A result that lands on the window
+    # edge is flagged (the unconstrained optimum lay outside) for manual review.
+    angle_min, angle_max = 62.0, 118.0
     best = (-1.0, 90.0, 0.0)
-    for angle in np.arange(40.0, 140.01, 1.0):
+    for angle in np.arange(angle_min, angle_max + 0.01, 1.0):
         for offset in np.arange(-18.0, 18.01, 2.0):
             score = _sym_score(ms, ss, float(angle), float(offset))
             if score > best[0]:
@@ -212,21 +218,17 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
             opened = is_full_open(sheet, cid)
             fold = "opened_full" if opened else "folded_half"
             factor = 1.0 if opened else 2.0
-            length = float(m["length_mm"])
-            width = float(m["width_mm"])
-            aspect = length / max(width, 1e-6)
+            score = float(m["sym_score"])
+            angle = float(m["angle_deg"])
             qc = []
-            # A correct axis makes opened corollas wider than long and folded ones
-            # clearly longer than wide. When that ordering breaks together with a
-            # weak symmetry score, the axis has usually locked onto a wrong diagonal
-            # and the individual needs manual axis review.
-            if fold == "folded_half" and aspect < 1.12 and float(m["sym_score"]) < 0.62:
+            # The axis search is constrained near-vertical; a result pinned to the
+            # window edge means the natural symmetry wanted a more diagonal axis,
+            # so the constrained axis is only approximate -> manual review.
+            if angle <= 64.0 or angle >= 116.0:
                 qc.append("axis_review")
-            elif fold == "opened_full" and aspect > 0.95:
-                qc.append("axis_review")
-            if float(m["sym_score"]) < 0.45:
+            if score < 0.42:
                 qc.append("low_symmetry")
-            if length > LENGTH_MERGE_MM:
+            if float(m["length_mm"]) > LENGTH_MERGE_MM:
                 qc.append("length_outlier")
             if suffix:
                 qc.append("split_from_merged_pair")
