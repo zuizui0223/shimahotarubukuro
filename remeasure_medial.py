@@ -182,17 +182,20 @@ def medial_axis(
     if axis[1] < 0:
         axis = -axis
     normal = np.array([-axis[1], axis[0]])
-    if anchor_top:
-        # Centre the axis on the tilt-corrected tube-base midpoint (see
-        # _upright_top_mid) rather than the skewed top of the still-tilted mask.
-        p_top = _upright_top_mid(mask_local, ang)
-        offset_px = float((p_top - centroid) @ normal)
+    # The medial axis starts at the ROI's top-edge midpoint (the tube-base centre)
+    # for every corolla: rotate the mask upright at the resolved angle, take the
+    # midpoint of the top edge and map it back (see _upright_top_mid). This gives a
+    # consistent, anatomy-based start point and measures the corolla length from
+    # there down to the tip, instead of from whichever silhouette corner happened
+    # to project highest on a tilted axis.
+    p_top = _upright_top_mid(mask_local, ang)
+    offset_px = float((p_top - centroid) @ normal)
     origin = centroid + offset_px * normal
 
     pts = np.column_stack([xs, ys]).astype(float)
     lon = (pts - origin) @ axis
     lat = (pts - origin) @ normal
-    lo, hi = lon.min(), lon.max()
+    lo, hi = float((p_top - origin) @ axis), float(lon.max())
     length_mm = (hi - lo) * MM_PX
 
     # widest perpendicular cross-section, scanning bins along the axis
