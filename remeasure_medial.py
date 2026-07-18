@@ -56,10 +56,11 @@ def is_full_open(sheet: str, corolla_id: int) -> bool:
 
 # Manually verified medial-axis angle (degrees) for corollas the automatic search
 # cannot resolve. kozu2 C3 is a torn, splayed open corolla whose weak bilateral
-# symmetry left the axis ambiguous; the reviewer marked the true axis as a
-# down-right diagonal, so it is pinned to 60 deg by hand. Keyed by (sheet, id).
+# symmetry left the axis ambiguous; on review the reviewer confirmed the original
+# automatic down-right diagonal was correct, so it is pinned to 64 deg (which also
+# suppresses the near-vertical-window axis_review flag). Keyed by (sheet, id).
 MANUAL_AXIS: dict[tuple[str, str], float] = {
-    ("kozu2", "3"): 60.0,
+    ("kozu2", "3"): 64.0,
 }
 
 
