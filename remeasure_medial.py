@@ -116,6 +116,46 @@ def _upright_top_mid(mask_local: np.ndarray, ang: float) -> np.ndarray:
     return np.array([p[0], p[1]])
 
 
+def _midline_angle(mask_local: np.ndarray) -> float | None:
+    """Axis angle from the silhouette's row-centre midline.
+
+    For an elongated folded corolla the true medial line is the locus of
+    horizontal-slice midpoints, which follows the middle of the shape far more
+    faithfully than reflection symmetry (a folded half is not bilaterally
+    symmetric). The mask is first rotated roughly upright using the tube-base ->
+    centroid direction, the midpoint of each row is taken over the central 80% of
+    rows (skipping the ragged tube tip and lobe tips), and a line is fitted. Falls
+    back to ``None`` when there are too few rows to fit.
+    """
+    ys, xs = np.where(mask_local > 0)
+    cen = np.array([xs.mean(), ys.mean()])
+    y_top = ys.min()
+    band = ys <= y_top + max(2, int(0.06 * (ys.max() - y_top)))
+    p_top = np.array([xs[band].mean(), float(y_top)])
+    v = cen - p_top
+    rough = math.degrees(math.atan2(v[1], v[0]))
+    M = cv2.getRotationMatrix2D((float(cen[0]), float(cen[1])), rough - 90.0, 1.0)
+    h, w = mask_local.shape
+    rot = cv2.warpAffine(mask_local, M, (w, h), flags=cv2.INTER_NEAREST)
+    ry, rx = np.where(rot > 0)
+    y0, y1 = ry.min(), ry.max()
+    mids = []
+    for y in range(int(y0), int(y1) + 1):
+        xr = np.where(rot[y] > 0)[0]
+        if xr.size >= 3:
+            mids.append(((xr.min() + xr.max()) / 2.0, float(y)))
+    if len(mids) < 8:
+        return None
+    mids = np.array(mids)
+    lo, hi = int(len(mids) * 0.10), int(len(mids) * 0.90)
+    mm = mids[lo:hi]
+    if len(mm) < 5:
+        return None
+    slope = float(np.polyfit(mm[:, 1], mm[:, 0], 1)[0])  # dx per dy, rotated frame
+    ang_rot = math.degrees(math.atan2(1.0, slope))
+    return ((rough - 90.0) + ang_rot) % 180.0
+
+
 def medial_axis(
     mask_local: np.ndarray,
     spot_local: np.ndarray,
@@ -175,6 +215,21 @@ def medial_axis(
         _sym_score(ms, ss, ang, float(o)) for o in np.arange(-18.0, 18.01, 2.0)
     )
 
+    # Folded corollas: prefer the row-centre midline, which tracks the true medial
+    # line of an elongated fold better than reflection symmetry. Trust it only when
+    # it agrees with the symmetry axis (<=12 deg); a large disagreement means a
+    # wide/ambiguous silhouette where the midline is unreliable, so keep the
+    # symmetry angle and flag the corolla for manual axis review.
+    axis_disagree = False
+    if force_angle is None and anchor_top:
+        mid_ang = _midline_angle(mask_local)
+        if mid_ang is not None:
+            diff = abs(((mid_ang - ang + 90.0) % 180.0) - 90.0)
+            if diff <= 12.0:
+                ang = mid_ang
+            else:
+                axis_disagree = True
+
     ys, xs = np.where(mask_local > 0)
     centroid = np.array([xs.mean(), ys.mean()])
     theta = math.radians(ang)
@@ -228,6 +283,7 @@ def medial_axis(
         "tip_xy": (float(tip_pt[0]), float(tip_pt[1])),
         "w0_xy": tuple((wc + w_lo * normal).tolist()),
         "w1_xy": tuple((wc + w_hi * normal).tolist()),
+        "axis_disagree": axis_disagree,
     }
 
 
@@ -309,6 +365,10 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
                 # the window edge means the natural symmetry wanted a more diagonal
                 # axis, so the constrained axis is only approximate -> manual review.
                 if angle <= 64.0 or angle >= 116.0:
+                    qc.append("axis_review")
+                # Folded corolla where the midline and symmetry axes disagreed too
+                # much to trust the midline (wide/ambiguous silhouette) -> review.
+                elif m.get("axis_disagree"):
                     qc.append("axis_review")
                 # Folded silhouettes legitimately have low reflection symmetry (torn
                 # edges, one-sided spots) yet their anchored axis is still correct,
