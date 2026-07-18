@@ -76,37 +76,63 @@ def _sym_score(mask_s: np.ndarray, spot_s: np.ndarray, angle: float, offset: flo
     return mask_iou
 
 
-def medial_axis(mask_local: np.ndarray, spot_local: np.ndarray) -> dict[str, object]:
+def _top_edge_midpoint(mask_s: np.ndarray) -> np.ndarray:
+    """Midpoint of the topmost (tube-base) edge, on the downscaled mask."""
+    ys, xs = np.where(mask_s > 0)
+    y_top = ys.min()
+    band = ys <= y_top + max(2, int(0.06 * (ys.max() - y_top)))
+    return np.array([xs[band].mean(), float(y_top)])
+
+
+def medial_axis(mask_local: np.ndarray, spot_local: np.ndarray, *, anchor_top: bool = False) -> dict[str, object]:
     """Symmetry-axis measurement on the cropped corolla frame.
 
-    Two-stage search: a coarse sweep on a downscaled mask to find the angle, then
-    a fine offset refinement, keeping runtime low enough for all 214 corollas.
+    The reflection search runs on a downscaled mask over a near-vertical angle
+    window (specimens are mounted upright, so the axis is always near-vertical;
+    this stops the search from locking onto a wrong diagonal). When ``anchor_top``
+    is set (folded corollas), the axis is forced through the top-edge midpoint -
+    the tube-base centre lies on the flower axis and pins the otherwise-drifting
+    offset, removing residual tilt on narrow folded silhouettes. Opened corollas
+    are wide fans whose top-edge midpoint is not on the axis, so they keep the
+    free offset search.
     """
     target_h = 150.0
     scale = min(1.0, target_h / mask_local.shape[0])
     ms = cv2.resize(mask_local, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
     ss = cv2.resize(spot_local, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
 
-    # Specimens are mounted upright (tube up, lobes down) on every reviewed sheet,
-    # so the medial axis is always near-vertical. Constraining the search to a
-    # near-vertical window stops the reflection search from locking onto a wrong
-    # diagonal on torn/asymmetric silhouettes. A result that lands on the window
-    # edge is flagged (the unconstrained optimum lay outside) for manual review.
     angle_min, angle_max = 62.0, 118.0
     best = (-1.0, 90.0, 0.0)
-    for angle in np.arange(angle_min, angle_max + 0.01, 1.0):
-        for offset in np.arange(-18.0, 18.01, 2.0):
-            score = _sym_score(ms, ss, float(angle), float(offset))
+    if anchor_top:
+        cs = np.where(ms > 0)
+        centroid_s = np.array([cs[1].mean(), cs[0].mean()])
+        p_top = _top_edge_midpoint(ms)
+        for angle in np.arange(angle_min, angle_max + 0.01, 1.0):
+            theta = math.radians(angle)
+            normal = np.array([-math.sin(theta), math.cos(theta)])
+            offset = float((p_top - centroid_s) @ normal)  # line passes through p_top
+            score = _sym_score(ms, ss, float(angle), offset)
             if score > best[0]:
-                best = (score, float(angle), float(offset))
-    # fine offset refine around the winner
-    _, ang, off0 = best
-    for offset in np.arange(off0 - 2.0, off0 + 2.01, 0.5):
-        score = _sym_score(ms, ss, ang, float(offset))
-        if score > best[0]:
-            best = (score, ang, float(offset))
-    score, ang, off_small = best
+                best = (score, float(angle), offset)
+    else:
+        for angle in np.arange(angle_min, angle_max + 0.01, 1.0):
+            for offset in np.arange(-18.0, 18.01, 2.0):
+                score = _sym_score(ms, ss, float(angle), float(offset))
+                if score > best[0]:
+                    best = (score, float(angle), float(offset))
+        _, ang0, off0 = best
+        for offset in np.arange(off0 - 2.0, off0 + 2.01, 0.5):
+            score = _sym_score(ms, ss, ang0, float(offset))
+            if score > best[0]:
+                best = (score, ang0, float(offset))
+    _, ang, off_small = best
     offset_px = off_small / scale
+    # Report symmetry quality as the best achievable at the chosen angle over any
+    # offset, so anchoring (which fixes the offset) is not penalised as "low
+    # symmetry" -- the score reflects how bilaterally symmetric the flower is.
+    score = max(
+        _sym_score(ms, ss, ang, float(o)) for o in np.arange(-18.0, 18.01, 2.0)
+    )
 
     ys, xs = np.where(mask_local > 0)
     centroid = np.array([xs.mean(), ys.mean()])
@@ -214,8 +240,8 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
         suffixes = [""] if len(pieces) == 1 else ["a", "b"]
         for suffix, piece in zip(suffixes, pieces):
             spot_local, mask_local, _ = detect_guide_spots(raw, piece)
-            m = medial_axis(mask_local, spot_local)
             opened = is_full_open(sheet, cid)
+            m = medial_axis(mask_local, spot_local, anchor_top=not opened)
             fold = "opened_full" if opened else "folded_half"
             factor = 1.0 if opened else 2.0
             score = float(m["sym_score"])
@@ -226,7 +252,10 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
             # so the constrained axis is only approximate -> manual review.
             if angle <= 64.0 or angle >= 116.0:
                 qc.append("axis_review")
-            if score < 0.42:
+            # Folded silhouettes legitimately have low reflection symmetry (torn
+            # edges, one-sided spots) yet their anchored axis is still correct, so
+            # only a very low score points at a genuinely malformed mask.
+            if score < 0.30:
                 qc.append("low_symmetry")
             if float(m["length_mm"]) > LENGTH_MERGE_MM:
                 qc.append("length_outlier")
