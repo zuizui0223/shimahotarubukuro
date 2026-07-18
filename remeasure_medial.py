@@ -54,6 +54,16 @@ def is_full_open(sheet: str, corolla_id: int) -> bool:
     return False
 
 
+# Manually verified medial-axis angle (degrees) for corollas the automatic search
+# cannot resolve. kozu2 C3 is a torn, splayed open corolla whose weak bilateral
+# symmetry sent the free search onto a 64 deg diagonal; the sheet's other opened
+# corollas all run vertically from the tube base down through the centre, so the
+# axis is pinned to 90 deg (matches C4/C9 on the same sheet). Keyed by (sheet, id).
+MANUAL_AXIS: dict[tuple[str, str], float] = {
+    ("kozu2", "3"): 90.0,
+}
+
+
 def detect_guide_spots(raw: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray, tuple[int, int]]:
     """Purple/magenta nectar-guide spots inside the corolla mask (cropped frame)."""
     ys, xs = np.where(mask)
@@ -106,7 +116,13 @@ def _upright_top_mid(mask_local: np.ndarray, ang: float) -> np.ndarray:
     return np.array([p[0], p[1]])
 
 
-def medial_axis(mask_local: np.ndarray, spot_local: np.ndarray, *, anchor_top: bool = False) -> dict[str, object]:
+def medial_axis(
+    mask_local: np.ndarray,
+    spot_local: np.ndarray,
+    *,
+    anchor_top: bool = False,
+    force_angle: float | None = None,
+) -> dict[str, object]:
     """Symmetry-axis measurement on the cropped corolla frame.
 
     The reflection search runs on a downscaled mask over a near-vertical angle
@@ -125,7 +141,10 @@ def medial_axis(mask_local: np.ndarray, spot_local: np.ndarray, *, anchor_top: b
 
     angle_min, angle_max = 62.0, 118.0
     best = (-1.0, 90.0, 0.0)
-    if anchor_top:
+    if force_angle is not None:
+        # Manually specified axis: fix the angle, centre on the silhouette (offset 0).
+        best = (0.0, float(force_angle), 0.0)
+    elif anchor_top:
         cs = np.where(ms > 0)
         centroid_s = np.array([cs[1].mean(), cs[0].mean()])
         p_top = _top_edge_midpoint(ms)
@@ -268,22 +287,31 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
         for suffix, piece in zip(suffixes, pieces):
             spot_local, mask_local, _ = detect_guide_spots(raw, piece)
             opened = is_full_open(sheet, cid)
-            m = medial_axis(mask_local, spot_local, anchor_top=not opened)
+            manual = MANUAL_AXIS.get((sheet, f"{cid}{suffix}"))
+            m = medial_axis(
+                mask_local, spot_local, anchor_top=not opened, force_angle=manual
+            )
             fold = "opened_full" if opened else "folded_half"
             factor = 1.0 if opened else 2.0
             score = float(m["sym_score"])
             angle = float(m["angle_deg"])
             qc = []
-            # The axis search is constrained near-vertical; a result pinned to the
-            # window edge means the natural symmetry wanted a more diagonal axis,
-            # so the constrained axis is only approximate -> manual review.
-            if angle <= 64.0 or angle >= 116.0:
-                qc.append("axis_review")
-            # Folded silhouettes legitimately have low reflection symmetry (torn
-            # edges, one-sided spots) yet their anchored axis is still correct, so
-            # only a very low score points at a genuinely malformed mask.
-            if score < 0.30:
-                qc.append("low_symmetry")
+            if manual is not None:
+                # Axis was set by hand after visual review; skip the automatic
+                # axis/symmetry flags (they fired precisely because the automatic
+                # search failed here) but record that it is a manual override.
+                qc.append("manual_axis")
+            else:
+                # The axis search is constrained near-vertical; a result pinned to
+                # the window edge means the natural symmetry wanted a more diagonal
+                # axis, so the constrained axis is only approximate -> manual review.
+                if angle <= 64.0 or angle >= 116.0:
+                    qc.append("axis_review")
+                # Folded silhouettes legitimately have low reflection symmetry (torn
+                # edges, one-sided spots) yet their anchored axis is still correct,
+                # so only a very low score points at a genuinely malformed mask.
+                if score < 0.30:
+                    qc.append("low_symmetry")
             if float(m["length_mm"]) > LENGTH_MERGE_MM:
                 qc.append("length_outlier")
             if suffix:
