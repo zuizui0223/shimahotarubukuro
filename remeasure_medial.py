@@ -84,6 +84,28 @@ def _top_edge_midpoint(mask_s: np.ndarray) -> np.ndarray:
     return np.array([xs[band].mean(), float(y_top)])
 
 
+def _upright_top_mid(mask_local: np.ndarray, ang: float) -> np.ndarray:
+    """Top-edge midpoint measured after tilt correction.
+
+    The raw silhouette is still tilted, so its topmost edge is skewed off the
+    tube-base centre. Rotate the mask so the resolved axis is vertical, take the
+    midpoint of the top edge in that upright frame, then map it back to the
+    original image - this is the true tube-base centre the axis should run through.
+    """
+    ys, xs = np.where(mask_local > 0)
+    centre = (float(xs.mean()), float(ys.mean()))
+    M = cv2.getRotationMatrix2D(centre, ang - 90.0, 1.0)
+    h, w = mask_local.shape
+    rot = cv2.warpAffine(mask_local, M, (w, h), flags=cv2.INTER_NEAREST)
+    ry, rx = np.where(rot > 0)
+    y_top, y_bot = ry.min(), ry.max()
+    band = ry <= y_top + max(2, int(0.06 * (y_bot - y_top)))
+    x0 = rx[band].mean()
+    inv = cv2.invertAffineTransform(M)
+    p = inv @ np.array([x0, float(y_top), 1.0])
+    return np.array([p[0], p[1]])
+
+
 def medial_axis(mask_local: np.ndarray, spot_local: np.ndarray, *, anchor_top: bool = False) -> dict[str, object]:
     """Symmetry-axis measurement on the cropped corolla frame.
 
@@ -141,6 +163,11 @@ def medial_axis(mask_local: np.ndarray, spot_local: np.ndarray, *, anchor_top: b
     if axis[1] < 0:
         axis = -axis
     normal = np.array([-axis[1], axis[0]])
+    if anchor_top:
+        # Centre the axis on the tilt-corrected tube-base midpoint (see
+        # _upright_top_mid) rather than the skewed top of the still-tilted mask.
+        p_top = _upright_top_mid(mask_local, ang)
+        offset_px = float((p_top - centroid) @ normal)
     origin = centroid + offset_px * normal
 
     pts = np.column_stack([xs, ys]).astype(float)
