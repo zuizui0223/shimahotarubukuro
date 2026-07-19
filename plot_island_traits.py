@@ -82,7 +82,7 @@ def _box_strip(ax, data, key, ylabel, title):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--csv", type=Path, default=Path("results_shimask_all/medial_traits.csv"))
+    ap.add_argument("--csv", type=Path, default=Path("results_shimask_all/corolla_traits_final.csv"))
     ap.add_argument("--out", type=Path, default=Path("results_shimask_all/island_corolla_size.png"))
     args = ap.parse_args()
 
@@ -132,11 +132,11 @@ def main() -> None:
     fig.suptitle(f"Corolla size across Izu-island populations of Campanula microdonta  "
                  f"(n = {n_used} corollas, 20 sheets)", x=0.055, ha="left",
                  fontsize=13, fontweight="bold")
-    fig.text(0.055, 0.055, "Measured from the reviewed corolla ROI (minimum-area oriented box); "
-             "folded halves at full-open-equivalent width (x2).", fontsize=7.5, color=MUTED, ha="left")
-    fig.text(0.055, 0.02, "Box = median/IQR, whiskers 1.5xIQR, points jittered.  "
-             "All 218 corollas included (length/width valid for every ROI).",
+    fig.text(0.055, 0.055, "ROI from iPhone-extracted corolla masks registered to the ruler-calibrated "
+             "scan (minimum-area oriented box); hand-mask fallback for split pairs and unmatched.",
              fontsize=7.5, color=MUTED, ha="left")
+    fig.text(0.055, 0.02, "Folded halves at full-open-equivalent width (x2). Box = median/IQR, "
+             "whiskers 1.5xIQR, points jittered. All 218 corollas.", fontsize=7.5, color=MUTED, ha="left")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.out, dpi=150)
