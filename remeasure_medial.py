@@ -30,7 +30,6 @@ import numpy as np
 
 import measure_guides as base
 import shimask_input
-import measure_guides_symmetry_axis as sym
 from run_all_shimask_confirmed import find_raw, IMAGE_SUFFIXES
 
 MM_PX = float(base.MM_PX)
@@ -54,14 +53,11 @@ def is_full_open(sheet: str, corolla_id: int) -> bool:
     return False
 
 
-# Manually verified medial-axis angle (degrees) for corollas the automatic search
-# cannot resolve. kozu2 C3 is a torn, splayed open corolla whose weak bilateral
-# symmetry left the axis ambiguous; on review the reviewer confirmed the original
-# automatic down-right diagonal was correct, so it is pinned to 64 deg (which also
-# suppresses the near-vertical-window axis_review flag). Keyed by (sheet, id).
-MANUAL_AXIS: dict[tuple[str, str], float] = {
-    ("kozu2", "3"): 64.0,
-}
+# Hand-set orientation (degrees) for corollas whose minAreaRect box is judged wrong
+# on review; keyed by (sheet, id). Empty by default - the ROI box handles every
+# corolla (e.g. kozu2 C3's diagonal falls straight out of the box), so overrides are
+# only added if a specific specimen needs one.
+MANUAL_AXIS: dict[tuple[str, str], float] = {}
 
 
 def detect_guide_spots(raw: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray, tuple[int, int]]:
@@ -78,20 +74,36 @@ def detect_guide_spots(raw: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, n
     return spot, m.astype(np.uint8), (y0, x0)
 
 
-def _sym_score(mask_s: np.ndarray, spot_s: np.ndarray, angle: float, offset: float) -> float:
-    mask_iou = sym._reflect_iou(mask_s, angle, offset)
-    if spot_s.sum() > 12:
-        spot_iou = sym._reflect_iou(cv2.dilate(spot_s, np.ones((3, 3), np.uint8)), angle, offset)
-        return 0.45 * mask_iou + 0.55 * spot_iou
-    return mask_iou
 
 
-def _top_edge_midpoint(mask_s: np.ndarray) -> np.ndarray:
-    """Midpoint of the topmost (tube-base) edge, on the downscaled mask."""
-    ys, xs = np.where(mask_s > 0)
-    y_top = ys.min()
-    band = ys <= y_top + max(2, int(0.06 * (ys.max() - y_top)))
-    return np.array([xs[band].mean(), float(y_top)])
+def _fill_holes(mask_u8: np.ndarray) -> np.ndarray:
+    """Fill interior holes of a binary mask by flood-filling the background."""
+    padded = cv2.copyMakeBorder(mask_u8, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
+    flood = padded.copy()
+    cv2.floodFill(flood, np.zeros((padded.shape[0] + 2, padded.shape[1] + 2), np.uint8), (0, 0), 1)
+    filled = padded | (1 - flood)
+    return filled[1:-1, 1:-1].astype(np.uint8)
+
+
+def _solid_roi(mask_u8: np.ndarray) -> np.ndarray:
+    """Return the solid corolla region, repairing hollow outline masks.
+
+    A properly segmented corolla is already solid, so filling its holes is a no-op.
+    A hollow outline (an open hand-drawn ring the pipeline could not seal) has no
+    enclosed interior to fill; bridge the gap by morphological closing, widening the
+    kernel only until the interior fills, then flood-fill. Keeps well-formed masks
+    untouched while recovering the area of the few broken ones.
+    """
+    filled = _fill_holes(mask_u8)
+    base_area = int(mask_u8.sum())
+    if int(filled.sum()) >= 1.3 * base_area:
+        return filled
+    for k in (15, 25, 41, 61, 81, 101):
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+        sealed = _fill_holes(cv2.morphologyEx(mask_u8, cv2.MORPH_CLOSE, kernel))
+        if int(sealed.sum()) >= 1.8 * base_area:
+            return sealed
+    return filled
 
 
 def _upright_top_mid(mask_local: np.ndarray, ang: float) -> np.ndarray:
@@ -116,174 +128,100 @@ def _upright_top_mid(mask_local: np.ndarray, ang: float) -> np.ndarray:
     return np.array([p[0], p[1]])
 
 
-def _midline_angle(mask_local: np.ndarray) -> float | None:
-    """Axis angle from the silhouette's row-centre midline.
-
-    For an elongated folded corolla the true medial line is the locus of
-    horizontal-slice midpoints, which follows the middle of the shape far more
-    faithfully than reflection symmetry (a folded half is not bilaterally
-    symmetric). The mask is first rotated roughly upright using the tube-base ->
-    centroid direction, the midpoint of each row is taken over the central 80% of
-    rows (skipping the ragged tube tip and lobe tips), and a line is fitted. Falls
-    back to ``None`` when there are too few rows to fit.
-    """
-    ys, xs = np.where(mask_local > 0)
-    cen = np.array([xs.mean(), ys.mean()])
-    y_top = ys.min()
-    band = ys <= y_top + max(2, int(0.06 * (ys.max() - y_top)))
-    p_top = np.array([xs[band].mean(), float(y_top)])
-    v = cen - p_top
-    rough = math.degrees(math.atan2(v[1], v[0]))
-    M = cv2.getRotationMatrix2D((float(cen[0]), float(cen[1])), rough - 90.0, 1.0)
-    h, w = mask_local.shape
-    rot = cv2.warpAffine(mask_local, M, (w, h), flags=cv2.INTER_NEAREST)
-    ry, rx = np.where(rot > 0)
-    y0, y1 = ry.min(), ry.max()
-    mids = []
-    for y in range(int(y0), int(y1) + 1):
-        xr = np.where(rot[y] > 0)[0]
-        if xr.size >= 3:
-            mids.append(((xr.min() + xr.max()) / 2.0, float(y)))
-    if len(mids) < 8:
-        return None
-    mids = np.array(mids)
-    lo, hi = int(len(mids) * 0.10), int(len(mids) * 0.90)
-    mm = mids[lo:hi]
-    if len(mm) < 5:
-        return None
-    slope = float(np.polyfit(mm[:, 1], mm[:, 0], 1)[0])  # dx per dy, rotated frame
-    ang_rot = math.degrees(math.atan2(1.0, slope))
-    return ((rough - 90.0) + ang_rot) % 180.0
-
-
 def medial_axis(
     mask_local: np.ndarray,
     spot_local: np.ndarray,
     *,
-    anchor_top: bool = False,
     force_angle: float | None = None,
 ) -> dict[str, object]:
-    """Symmetry-axis measurement on the cropped corolla frame.
+    """ROI-based corolla dimensions from the minimum-area oriented bounding box.
 
-    The reflection search runs on a downscaled mask over a near-vertical angle
-    window (specimens are mounted upright, so the axis is always near-vertical;
-    this stops the search from locking onto a wrong diagonal). When ``anchor_top``
-    is set (folded corollas), the axis is forced through the top-edge midpoint -
-    the tube-base centre lies on the flower axis and pins the otherwise-drifting
-    offset, removing residual tilt on narrow folded silhouettes. Opened corollas
-    are wide fans whose top-edge midpoint is not on the axis, so they keep the
-    free offset search.
+    Corolla length and width are read straight off the ROI (the corolla mask):
+    ``cv2.minAreaRect`` fits the tightest rotated rectangle to the silhouette and
+    its two side lengths are the corolla dimensions - the side nearer vertical is
+    the length (base->tip; specimens are mounted tube-up) and the other is the
+    width. This depends only on the ROI shape, so it is stable and needs no fragile
+    per-flower symmetry/axis search. ``force_angle`` overrides the orientation for a
+    corolla whose box is judged wrong on review; length and width are then the
+    extents along and across that fixed direction. The reported start point is the
+    ROI's top-edge midpoint (the tube-base centre).
+
+    ``spot_local`` is accepted for call-site compatibility and is not used.
     """
-    target_h = 150.0
-    scale = min(1.0, target_h / mask_local.shape[0])
-    ms = cv2.resize(mask_local, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
-    ss = cv2.resize(spot_local, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
-
-    angle_min, angle_max = 62.0, 118.0
-    best = (-1.0, 90.0, 0.0)
-    if force_angle is not None:
-        # Manually specified axis: fix the angle, centre on the silhouette (offset 0).
-        best = (0.0, float(force_angle), 0.0)
-    elif anchor_top:
-        cs = np.where(ms > 0)
-        centroid_s = np.array([cs[1].mean(), cs[0].mean()])
-        p_top = _top_edge_midpoint(ms)
-        for angle in np.arange(angle_min, angle_max + 0.01, 1.0):
-            theta = math.radians(angle)
-            normal = np.array([-math.sin(theta), math.cos(theta)])
-            offset = float((p_top - centroid_s) @ normal)  # line passes through p_top
-            score = _sym_score(ms, ss, float(angle), offset)
-            if score > best[0]:
-                best = (score, float(angle), offset)
-    else:
-        for angle in np.arange(angle_min, angle_max + 0.01, 1.0):
-            for offset in np.arange(-18.0, 18.01, 2.0):
-                score = _sym_score(ms, ss, float(angle), float(offset))
-                if score > best[0]:
-                    best = (score, float(angle), float(offset))
-        _, ang0, off0 = best
-        for offset in np.arange(off0 - 2.0, off0 + 2.01, 0.5):
-            score = _sym_score(ms, ss, ang0, float(offset))
-            if score > best[0]:
-                best = (score, ang0, float(offset))
-    _, ang, off_small = best
-    offset_px = off_small / scale
-    # Report symmetry quality as the best achievable at the chosen angle over any
-    # offset, so anchoring (which fixes the offset) is not penalised as "low
-    # symmetry" -- the score reflects how bilaterally symmetric the flower is.
-    score = max(
-        _sym_score(ms, ss, ang, float(o)) for o in np.arange(-18.0, 18.01, 2.0)
-    )
-
-    # Folded corollas: prefer the row-centre midline, which tracks the true medial
-    # line of an elongated fold better than reflection symmetry. Trust it only when
-    # it agrees with the symmetry axis (<=12 deg); a large disagreement means a
-    # wide/ambiguous silhouette where the midline is unreliable, so keep the
-    # symmetry angle and flag the corolla for manual axis review.
-    axis_disagree = False
-    if force_angle is None and anchor_top:
-        mid_ang = _midline_angle(mask_local)
-        if mid_ang is not None:
-            diff = abs(((mid_ang - ang + 90.0) % 180.0) - 90.0)
-            if diff <= 12.0:
-                ang = mid_ang
-            else:
-                axis_disagree = True
-
-    ys, xs = np.where(mask_local > 0)
-    centroid = np.array([xs.mean(), ys.mean()])
-    theta = math.radians(ang)
-    axis = np.array([math.cos(theta), math.sin(theta)])
-    if axis[1] < 0:
-        axis = -axis
-    normal = np.array([-axis[1], axis[0]])
-    # The medial axis starts at the ROI's top-edge midpoint (the tube-base centre)
-    # for every corolla: rotate the mask upright at the resolved angle, take the
-    # midpoint of the top edge and map it back (see _upright_top_mid). This gives a
-    # consistent, anatomy-based start point and measures the corolla length from
-    # there down to the tip, instead of from whichever silhouette corner happened
-    # to project highest on a tilted axis.
-    p_top = _upright_top_mid(mask_local, ang)
-    offset_px = float((p_top - centroid) @ normal)
-    origin = centroid + offset_px * normal
-
+    # Repair the ROI first: a few annotations trace only the corolla outline with a
+    # gap too wide for the pipeline's 3 mm seal, so the interior never filled and the
+    # mask is a hollow ring whose area is wrong (length/width, taken from the outline
+    # extent, are still fine). _solid_roi fills the interior, widening the gap-seal
+    # only as much as each mask needs; already-solid masks pass through unchanged.
+    mask_u8 = _solid_roi((mask_local > 0).astype(np.uint8))
+    cnts, _ = cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnt = max(cnts, key=cv2.contourArea)
+    ys, xs = np.where(mask_u8 > 0)
     pts = np.column_stack([xs, ys]).astype(float)
-    lon = (pts - origin) @ axis
-    lat = (pts - origin) @ normal
-    lo, hi = float((p_top - origin) @ axis), float(lon.max())
-    length_mm = (hi - lo) * MM_PX
 
-    # widest perpendicular cross-section, scanning bins along the axis
+    if force_angle is not None:
+        ang = float(force_angle) % 180.0
+        u = np.array([math.cos(math.radians(ang)), math.sin(math.radians(ang))])
+        if u[1] < 0:
+            u = -u
+        n = np.array([-u[1], u[0]])
+        lon_all, lat_all = pts @ u, pts @ n
+        length_px = float(lon_all.max() - lon_all.min())
+        width_px = float(lat_all.max() - lat_all.min())
+    else:
+        centre, (rw, rh), angle = cv2.minAreaRect(cnt)
+        box = cv2.boxPoints((centre, (rw, rh), angle))
+        e1, e2 = box[1] - box[0], box[2] - box[1]
+        l1, l2 = float(np.linalg.norm(e1)), float(np.linalg.norm(e2))
+        # Assign the side nearer vertical as the length (upright-mounted flowers).
+        vert1, vert2 = abs(e1[1]) / (l1 + 1e-9), abs(e2[1]) / (l2 + 1e-9)
+        if vert1 >= vert2:
+            length_px, width_px, ldir = l1, l2, e1
+        else:
+            length_px, width_px, ldir = l2, l1, e2
+        u = ldir / (np.linalg.norm(ldir) + 1e-9)
+        if u[1] < 0:
+            u = -u
+        n = np.array([-u[1], u[0]])
+        ang = math.degrees(math.atan2(u[1], u[0])) % 180.0
+
+    length_mm = length_px * MM_PX
+    width_mm = width_px * MM_PX
+    area_mm2 = float(mask_u8.sum()) * MM_PX * MM_PX
+    # Fill ratio: how much of the oriented box the ROI occupies (a torn or badly
+    # segmented mask sits low; scalloped lobes keep normal corollas around 0.6-0.8).
+    fill_ratio = float(mask_u8.sum()) / (length_px * width_px + 1e-9)
+
+    # Start point = ROI top-edge midpoint (tube-base centre); draw base->tip along
+    # the length direction and place the width bar at the widest cross-section.
+    p_top = _upright_top_mid(mask_local, ang)
+    lon, lat = (pts - p_top) @ u, (pts - p_top) @ n
+    base_pt = p_top + float(lon.min()) * u
+    tip_pt = p_top + float(lon.max()) * u
     n_bins = 26
-    edges = np.linspace(lo, hi, n_bins + 1)
-    width_px = 0.0
+    edges = np.linspace(float(lon.min()), float(lon.max()), n_bins + 1)
     w_center = w_lo = w_hi = 0.0
+    best_w = 0.0
     for i in range(n_bins):
         sel = (lon >= edges[i]) & (lon < edges[i + 1])
         if int(sel.sum()) < 5:
             continue
         span = float(lat[sel].max() - lat[sel].min())
-        if span > width_px:
-            width_px = span
+        if span > best_w:
+            best_w = span
             w_center = (edges[i] + edges[i + 1]) / 2.0
             w_lo, w_hi = float(lat[sel].min()), float(lat[sel].max())
-    width_mm = width_px * MM_PX
-    area_mm2 = float((mask_local > 0).sum()) * MM_PX * MM_PX
-
-    base_pt = origin + lo * axis
-    tip_pt = origin + hi * axis
-    wc = origin + w_center * axis
+    wc = p_top + w_center * u
     return {
-        "sym_score": round(float(score), 4),
+        "fill_ratio": round(float(fill_ratio), 4),
         "angle_deg": round(float(ang), 2),
         "length_mm": round(length_mm, 2),
         "width_mm": round(width_mm, 2),
         "area_mm2": round(area_mm2, 1),
         "base_xy": (float(base_pt[0]), float(base_pt[1])),
         "tip_xy": (float(tip_pt[0]), float(tip_pt[1])),
-        "w0_xy": tuple((wc + w_lo * normal).tolist()),
-        "w1_xy": tuple((wc + w_hi * normal).tolist()),
-        "axis_disagree": axis_disagree,
+        "w0_xy": tuple((wc + w_lo * n).tolist()),
+        "w1_xy": tuple((wc + w_hi * n).tolist()),
     }
 
 
@@ -347,36 +285,18 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
             spot_local, mask_local, _ = detect_guide_spots(raw, piece)
             opened = is_full_open(sheet, cid)
             manual = MANUAL_AXIS.get((sheet, f"{cid}{suffix}"))
-            m = medial_axis(
-                mask_local, spot_local, anchor_top=not opened, force_angle=manual
-            )
+            m = medial_axis(mask_local, spot_local, force_angle=manual)
             fold = "opened_full" if opened else "folded_half"
             factor = 1.0 if opened else 2.0
-            score = float(m["sym_score"])
-            angle = float(m["angle_deg"])
             qc = []
             if manual is not None:
-                # Axis was set by hand after visual review; skip the automatic
-                # axis/symmetry flags (they fired precisely because the automatic
-                # search failed here) but record that it is a manual override.
+                # Orientation set by hand after review (the ROI box was judged wrong).
                 qc.append("manual_axis")
-            else:
-                # The axis search is constrained near-vertical; a result pinned to
-                # the window edge means the natural symmetry wanted a more diagonal
-                # axis, so the constrained axis is only approximate -> manual review.
-                if angle <= 64.0 or angle >= 116.0:
-                    qc.append("axis_review")
-                # Folded corolla where the midline and symmetry axes disagreed too
-                # much to trust the midline (wide/ambiguous silhouette) -> review.
-                elif m.get("axis_disagree"):
-                    qc.append("axis_review")
-                # Folded silhouettes legitimately have low reflection symmetry (torn
-                # edges, one-sided spots) yet their anchored axis is still correct,
-                # so only a very low score points at a genuinely malformed mask.
-                if score < 0.30:
-                    qc.append("low_symmetry")
             if float(m["length_mm"]) > LENGTH_MERGE_MM:
                 qc.append("length_outlier")
+            if float(m["fill_ratio"]) < 0.45:
+                # ROI fills little of its box -> possibly torn or mis-segmented mask.
+                qc.append("irregular_roi")
             if suffix:
                 qc.append("split_from_merged_pair")
             rows.append({
@@ -388,8 +308,8 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
                 "corolla_area_obs_mm2": m["area_mm2"],
                 "corolla_width_fulleq_mm": round(float(m["width_mm"]) * factor, 2),
                 "corolla_area_fulleq_mm2": round(float(m["area_mm2"]) * factor, 1),
-                "medial_angle_deg": m["angle_deg"],
-                "symmetry_score": m["sym_score"],
+                "roi_angle_deg": m["angle_deg"],
+                "roi_fill_ratio": m["fill_ratio"],
                 "qc_flag": "|".join(qc),
             })
     return rows
