@@ -49,10 +49,13 @@ FULL_OPEN: dict[str, object] = {
     "niijiama1-2": {17},  # wide, clearly five-lobed open corolla
 }
 
-# Corollas whose ROI is misaligned with the raw scan (annotation/registration off)
-# and should be redrawn; measurements are approximate until then. Keyed by (sheet, id).
-REANNOTATE: set[tuple[str, str]] = {
-    ("niijiama1-2", "17"),  # mask shifted right of the flower
+# Corollas whose hand-drawn mask encloses non-petal background (paper) that the
+# nectar-guide/tissue distribution shows is not part of the flower; the ROI is
+# trimmed to the petal tissue for these. Only used where the over-inclusion is a
+# contiguous edge region - a blanket trim would wrongly eat the paper in the lobe
+# gaps of legitimately splayed open corollas. Keyed by (sheet, id).
+TRIM_TO_PETAL: set[tuple[str, str]] = {
+    ("niijiama1-2", "17"),  # mask extends into the bottom-right paper (no guides there)
 }
 
 
@@ -76,6 +79,29 @@ def crop_to_mask(mask: np.ndarray) -> np.ndarray:
     """Binary mask cropped to its own bounding box (the frame measurements run in)."""
     ys, xs = np.where(mask)
     return (mask[ys.min():ys.max() + 1, xs.min():xs.max() + 1] > 0).astype(np.uint8)
+
+
+def crop_to_petal(raw: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Cropped mask trimmed to petal tissue, dropping enclosed white-paper background.
+
+    Some hand-drawn outlines enclose non-petal paper (e.g. niijiama1-2 C17's
+    bottom-right corner). White paper is low-saturation and bright; the corolla,
+    even where pale, is not. Keep the mask pixels that sit on tissue, clean up, and
+    take the largest connected region so a paper over-inclusion is removed while the
+    petal (including its guide-bearing lobes) is kept.
+    """
+    ys, xs = np.where(mask)
+    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    m = (mask[y0:y1, x0:x1] > 0).astype(np.uint8)
+    hsv = cv2.cvtColor(raw[y0:y1, x0:x1], cv2.COLOR_BGR2HSV)
+    tissue = ~((hsv[:, :, 1] < 32) & (hsv[:, :, 2] > 190))
+    petal = ((m > 0) & tissue).astype(np.uint8)
+    petal = cv2.morphologyEx(petal, cv2.MORPH_OPEN, np.ones((7, 7), np.uint8))
+    petal = cv2.morphologyEx(petal, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(petal, 8)
+    if count < 2:
+        return m
+    return (labels == 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))).astype(np.uint8)
 
 
 def _fill_holes(mask_u8: np.ndarray) -> np.ndarray:
@@ -297,7 +323,8 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
         pieces = split_merged_pair(full_mask)
         suffixes = [""] if len(pieces) == 1 else ["a", "b"]
         for suffix, piece in zip(suffixes, pieces):
-            mask_local = crop_to_mask(piece)
+            trimmed = (sheet, f"{cid}{suffix}") in TRIM_TO_PETAL
+            mask_local = crop_to_petal(raw, piece) if trimmed else crop_to_mask(piece)
             opened = is_full_open(sheet, cid)
             manual = MANUAL_AXIS.get((sheet, f"{cid}{suffix}"))
             m = medial_axis(mask_local, force_angle=manual)
@@ -307,8 +334,9 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
             if manual is not None:
                 # Orientation set by hand after review (the ROI box was judged wrong).
                 qc.append("manual_axis")
-            if (sheet, f"{cid}{suffix}") in REANNOTATE:
-                qc.append("roi_misaligned")
+            if trimmed:
+                # ROI was trimmed to petal tissue (hand mask enclosed background).
+                qc.append("roi_trimmed_to_petal")
             if float(m["length_mm"]) > LENGTH_MERGE_MM:
                 qc.append("length_outlier")
             repair = m.get("roi_repair")

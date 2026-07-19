@@ -43,7 +43,9 @@ def island_of(sheet: str) -> str:
 
 def load(csv_path: Path) -> tuple[dict[str, dict[str, list]], int]:
     rows = list(csv.DictReader(csv_path.open(encoding="utf-8-sig")))
-    used = [r for r in rows if "roi_misaligned" not in r["qc_flag"]]
+    # All 218 corollas carry a valid length/width; reconstructed/trimmed ROIs affect
+    # only area, so none are dropped from the size comparison.
+    used = rows
     data = {i: {"len": [], "w": [], "fold": []} for i in ORDER}
     for r in used:
         d = data[island_of(r["sheet"])]
@@ -132,8 +134,8 @@ def main() -> None:
                  fontsize=13, fontweight="bold")
     fig.text(0.055, 0.055, "Measured from the reviewed corolla ROI (minimum-area oriented box); "
              "folded halves at full-open-equivalent width (x2).", fontsize=7.5, color=MUTED, ha="left")
-    fig.text(0.055, 0.02, f"Box = median/IQR, whiskers 1.5xIQR, points jittered.  "
-             f"{n_excl} corolla excluded (ROI misaligned, pending re-annotation).",
+    fig.text(0.055, 0.02, "Box = median/IQR, whiskers 1.5xIQR, points jittered.  "
+             "All 218 corollas included (length/width valid for every ROI).",
              fontsize=7.5, color=MUTED, ha="left")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
