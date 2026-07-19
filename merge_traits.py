@@ -24,6 +24,8 @@ def main() -> None:
     hand = list(csv.DictReader((RESULTS / "medial_traits.csv").open(encoding="utf-8-sig")))
     iphone = {(r["sheet"], r["corolla_id"]): r
               for r in csv.DictReader((RESULTS / "iphone_traits.csv").open(encoding="utf-8-sig"))}
+    guide = {(r["sheet"], r["corolla_id"]): r
+             for r in csv.DictReader((RESULTS / "guide_traits.csv").open(encoding="utf-8-sig"))}
 
     rows = []
     n_iphone = 0
@@ -56,6 +58,9 @@ def main() -> None:
             "corolla_area_fulleq_mm2": round(area * factor, 1),
             "roi_source": source, "match_iou": iou,
             "nectar_guide_px": h["nectar_guide_px"], "has_nectar_guide": h["has_nectar_guide"],
+            "guide_coverage_pct": g["guide_coverage_pct"] if (g := guide.get(key)) else "",
+            "n_guide_spots": g["n_guide_spots"] if g else "",
+            "guide_density_per_cm2": g["guide_density_per_cm2"] if g else "",
             "qc_flag": "|".join(qc),
         })
 
