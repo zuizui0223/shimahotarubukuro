@@ -46,6 +46,13 @@ FULL_OPEN: dict[str, object] = {
     "shikine1": {1, 4, 5, 6},
     "toshima6-8": {3},
     "toshima3-6": {5},
+    "niijiama1-2": {17},  # wide, clearly five-lobed open corolla
+}
+
+# Corollas whose ROI is misaligned with the raw scan (annotation/registration off)
+# and should be redrawn; measurements are approximate until then. Keyed by (sheet, id).
+REANNOTATE: set[tuple[str, str]] = {
+    ("niijiama1-2", "17"),  # mask shifted right of the flower
 }
 
 
@@ -300,6 +307,8 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
             if manual is not None:
                 # Orientation set by hand after review (the ROI box was judged wrong).
                 qc.append("manual_axis")
+            if (sheet, f"{cid}{suffix}") in REANNOTATE:
+                qc.append("roi_misaligned")
             if float(m["length_mm"]) > LENGTH_MERGE_MM:
                 qc.append("length_outlier")
             repair = m.get("roi_repair")
