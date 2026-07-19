@@ -26,6 +26,8 @@ def main() -> None:
               for r in csv.DictReader((RESULTS / "iphone_traits.csv").open(encoding="utf-8-sig"))}
     guide = {(r["sheet"], r["corolla_id"]): r
              for r in csv.DictReader((RESULTS / "guide_traits.csv").open(encoding="utf-8-sig"))}
+    organ = {(r["sheet"], r["corolla_id"]): r
+             for r in csv.DictReader((RESULTS / "organ_traits.csv").open(encoding="utf-8-sig"))}
 
     rows = []
     n_iphone = 0
@@ -61,6 +63,7 @@ def main() -> None:
             "guide_coverage_pct": g["guide_coverage_pct"] if (g := guide.get(key)) else "",
             "n_guide_spots": g["n_guide_spots"] if g else "",
             "guide_density_per_cm2": g["guide_density_per_cm2"] if g else "",
+            "organ_length_mm": o["organ_length_mm"] if (o := organ.get(key)) else "",
             "qc_flag": "|".join(qc),
         })
 
