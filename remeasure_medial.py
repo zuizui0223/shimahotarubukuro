@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
-"""Re-measure corolla length/width/area on a spot+symmetry medial axis.
+"""Re-measure corolla length/width/area straight from the reviewed corolla ROI.
 
 Motivation
 ----------
 The existing flat-trait orientation rotates the silhouette's longest (PCA) axis
 to vertical and calls that "length". For opened, flattened corollas the longest
 silhouette dimension is the lobe-to-lobe spread, so length and width come out
-swapped, and on tilted specimens length is over-estimated.
+swapped. Per-flower symmetry/axis searches, in turn, are fragile on torn or
+asymmetric silhouettes.
 
-This module instead finds the flower's bilateral-symmetry medial axis from the
-reviewed corolla mask AND its nectar-guide spot pattern, then measures:
-- corolla length  : extent ALONG the medial axis (tube base -> lobe tip)
-- corolla width   : max extent PERPENDICULAR to the medial axis
+This module measures directly from the accepted corolla mask (the ROI). It fits
+the minimum-area oriented bounding box to the mask and reads:
+- corolla length  : the box side nearer vertical (specimens are mounted tube-up)
+- corolla width   : the other box side
 - corolla area    : filled mask area
+
+The result depends only on the ROI shape, so it is stable and reproducible. The
+ROI itself is repaired first when an outline was left hollow or open (see
+``_solid_roi``); such reconstructions are flagged in the QC column.
 
 Half-folded (2.5-lobe) vs fully-open (5-lobe) is taken from a reviewed
 ground-truth table, not auto-detected. To compare both on one basis, folded
@@ -60,20 +65,10 @@ def is_full_open(sheet: str, corolla_id: int) -> bool:
 MANUAL_AXIS: dict[tuple[str, str], float] = {}
 
 
-def detect_guide_spots(raw: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray, tuple[int, int]]:
-    """Purple/magenta nectar-guide spots inside the corolla mask (cropped frame)."""
+def crop_to_mask(mask: np.ndarray) -> np.ndarray:
+    """Binary mask cropped to its own bounding box (the frame measurements run in)."""
     ys, xs = np.where(mask)
-    y0, x0 = int(ys.min()), int(xs.min())
-    sub = raw[y0:ys.max() + 1, x0:xs.max() + 1]
-    m = mask[y0:ys.max() + 1, x0:xs.max() + 1].astype(bool)
-    hsv = cv2.cvtColor(sub, cv2.COLOR_BGR2HSV)
-    S, V = hsv[:, :, 1], hsv[:, :, 2]
-    b, g, r = cv2.split(sub.astype(int))
-    spot = ((((r - g) > 18) & ((b - g) > -10) & (S > 50) & (V < 210)) & m).astype(np.uint8)
-    spot = cv2.morphologyEx(spot, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
-    return spot, m.astype(np.uint8), (y0, x0)
-
-
+    return (mask[ys.min():ys.max() + 1, xs.min():xs.max() + 1] > 0).astype(np.uint8)
 
 
 def _fill_holes(mask_u8: np.ndarray) -> np.ndarray:
@@ -85,28 +80,29 @@ def _fill_holes(mask_u8: np.ndarray) -> np.ndarray:
     return filled[1:-1, 1:-1].astype(np.uint8)
 
 
-def _solid_roi(mask_u8: np.ndarray) -> tuple[np.ndarray, bool]:
-    """Return (solid corolla region, filled_by_hull).
+def _solid_roi(mask_u8: np.ndarray) -> tuple[np.ndarray, str]:
+    """Return (solid corolla region, repair kind).
 
-    A properly segmented corolla is already solid, so filling its holes is a no-op.
-    A hollow outline (an open hand-drawn ring the pipeline could not seal) has no
-    enclosed interior to fill; bridge the gap by morphological closing, widening the
-    kernel only until the interior fills, then flood-fill. If even that fails - a
-    side of the outline was left open - fall back to the convex hull so the corolla
-    is still measured (length/width are unaffected; area is a slight overestimate
-    across the concave lobe notches). ``filled_by_hull`` flags that last case.
+    Repair kind is one of:
+    - ``""``     : mask was already solid (or a closed ring); area is as-measured.
+    - ``"sealed"``: a hollow outline whose gap was bridged by morphological closing
+      then flood-filled; area is reconstructed and slightly inflated by the bridge.
+    - ``"hull"``  : an outline left open on one side; filled from its convex hull, so
+      length/width are unaffected but area overestimates across the lobe notches.
+
+    Both non-empty kinds mean the area is a reconstruction, so the caller flags it.
+    A real corolla occupies most of its convex hull; a thin outline occupies only a
+    small fraction, which is how the two are told apart.
     """
     filled = _fill_holes(mask_u8)
     base_area = int(mask_u8.sum())
     if int(filled.sum()) >= 1.3 * base_area:
-        return filled, False  # a closed ring/holes filled straight away
-    # Already a solid blob? A real corolla occupies most of its convex hull, whereas
-    # a thin outline occupies only a small fraction of it.
+        return filled, ""  # a closed ring/holes filled straight away
     cnt = max(cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0], key=cv2.contourArea)
     hull_pts = cv2.convexHull(cnt)
     hull_area = max(cv2.contourArea(hull_pts), 1.0)
     if base_area >= 0.45 * hull_area:
-        return filled, False
+        return filled, ""  # already a solid blob
     # Thin outline: bridge the gap by closing, widening the kernel only as needed.
     # Accept a seal only once the filled region covers most of the corolla (its
     # convex hull), so a partial bridge that encloses a small pocket is rejected.
@@ -114,11 +110,11 @@ def _solid_roi(mask_u8: np.ndarray) -> tuple[np.ndarray, bool]:
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
         sealed = _fill_holes(cv2.morphologyEx(mask_u8, cv2.MORPH_CLOSE, kernel))
         if int(sealed.sum()) >= 0.55 * hull_area:
-            return sealed, False
+            return sealed, "sealed"
     # A side was left open and closing cannot seal it: fall back to the convex hull.
     hull = np.zeros_like(mask_u8)
     cv2.fillConvexPoly(hull, hull_pts, 1)
-    return hull, True
+    return hull, "hull"
 
 
 def _upright_top_mid(mask_local: np.ndarray, ang: float) -> np.ndarray:
@@ -145,7 +141,6 @@ def _upright_top_mid(mask_local: np.ndarray, ang: float) -> np.ndarray:
 
 def medial_axis(
     mask_local: np.ndarray,
-    spot_local: np.ndarray,
     *,
     force_angle: float | None = None,
 ) -> dict[str, object]:
@@ -160,17 +155,14 @@ def medial_axis(
     corolla whose box is judged wrong on review; length and width are then the
     extents along and across that fixed direction. The reported start point is the
     ROI's top-edge midpoint (the tube-base centre).
-
-    ``spot_local`` is accepted for call-site compatibility and is not used.
     """
     # Repair the ROI first: a few annotations trace only the corolla outline with a
     # gap too wide for the pipeline's 3 mm seal, so the interior never filled and the
     # mask is a hollow ring whose area is wrong (length/width, taken from the outline
     # extent, are still fine). _solid_roi fills the interior, widening the gap-seal
     # only as much as each mask needs; already-solid masks pass through unchanged.
-    mask_u8, filled_by_hull = _solid_roi((mask_local > 0).astype(np.uint8))
-    cnts, _ = cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cnt = max(cnts, key=cv2.contourArea)
+    mask_u8, roi_repair = _solid_roi((mask_local > 0).astype(np.uint8))
+    cnt = max(cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0], key=cv2.contourArea)
     ys, xs = np.where(mask_u8 > 0)
     pts = np.column_stack([xs, ys]).astype(float)
 
@@ -184,8 +176,7 @@ def medial_axis(
         length_px = float(lon_all.max() - lon_all.min())
         width_px = float(lat_all.max() - lat_all.min())
     else:
-        centre, (rw, rh), angle = cv2.minAreaRect(cnt)
-        box = cv2.boxPoints((centre, (rw, rh), angle))
+        box = cv2.boxPoints(cv2.minAreaRect(cnt))
         e1, e2 = box[1] - box[0], box[2] - box[1]
         l1, l2 = float(np.linalg.norm(e1)), float(np.linalg.norm(e2))
         # Assign the side nearer vertical as the length (upright-mounted flowers).
@@ -208,8 +199,9 @@ def medial_axis(
     fill_ratio = float(mask_u8.sum()) / (length_px * width_px + 1e-9)
 
     # Start point = ROI top-edge midpoint (tube-base centre); draw base->tip along
-    # the length direction and place the width bar at the widest cross-section.
-    p_top = _upright_top_mid(mask_local, ang)
+    # the length direction and place the width bar at the widest cross-section. Use
+    # the repaired mask so the start point tracks the region actually measured.
+    p_top = _upright_top_mid(mask_u8, ang)
     lon, lat = (pts - p_top) @ u, (pts - p_top) @ n
     base_pt = p_top + float(lon.min()) * u
     tip_pt = p_top + float(lon.max()) * u
@@ -229,7 +221,7 @@ def medial_axis(
     wc = p_top + w_center * u
     return {
         "fill_ratio": round(float(fill_ratio), 4),
-        "filled_by_hull": filled_by_hull,
+        "roi_repair": roi_repair,
         "angle_deg": round(float(ang), 2),
         "length_mm": round(length_mm, 2),
         "width_mm": round(width_mm, 2),
@@ -298,10 +290,10 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
         pieces = split_merged_pair(full_mask)
         suffixes = [""] if len(pieces) == 1 else ["a", "b"]
         for suffix, piece in zip(suffixes, pieces):
-            spot_local, mask_local, _ = detect_guide_spots(raw, piece)
+            mask_local = crop_to_mask(piece)
             opened = is_full_open(sheet, cid)
             manual = MANUAL_AXIS.get((sheet, f"{cid}{suffix}"))
-            m = medial_axis(mask_local, spot_local, force_angle=manual)
+            m = medial_axis(mask_local, force_angle=manual)
             fold = "opened_full" if opened else "folded_half"
             factor = 1.0 if opened else 2.0
             qc = []
@@ -310,10 +302,14 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
                 qc.append("manual_axis")
             if float(m["length_mm"]) > LENGTH_MERGE_MM:
                 qc.append("length_outlier")
-            if m.get("filled_by_hull"):
+            repair = m.get("roi_repair")
+            if repair == "hull":
                 # Outline left open on one side; area came from the convex hull and
                 # is a slight overestimate (length/width are still fine).
                 qc.append("roi_open_outline")
+            elif repair == "sealed":
+                # Hollow outline whose gap was bridged and filled; area reconstructed.
+                qc.append("roi_area_reconstructed")
             elif float(m["fill_ratio"]) < 0.45:
                 # ROI fills little of its box -> possibly torn or mis-segmented mask.
                 qc.append("irregular_roi")
