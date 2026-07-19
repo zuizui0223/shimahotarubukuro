@@ -85,25 +85,40 @@ def _fill_holes(mask_u8: np.ndarray) -> np.ndarray:
     return filled[1:-1, 1:-1].astype(np.uint8)
 
 
-def _solid_roi(mask_u8: np.ndarray) -> np.ndarray:
-    """Return the solid corolla region, repairing hollow outline masks.
+def _solid_roi(mask_u8: np.ndarray) -> tuple[np.ndarray, bool]:
+    """Return (solid corolla region, filled_by_hull).
 
     A properly segmented corolla is already solid, so filling its holes is a no-op.
     A hollow outline (an open hand-drawn ring the pipeline could not seal) has no
     enclosed interior to fill; bridge the gap by morphological closing, widening the
-    kernel only until the interior fills, then flood-fill. Keeps well-formed masks
-    untouched while recovering the area of the few broken ones.
+    kernel only until the interior fills, then flood-fill. If even that fails - a
+    side of the outline was left open - fall back to the convex hull so the corolla
+    is still measured (length/width are unaffected; area is a slight overestimate
+    across the concave lobe notches). ``filled_by_hull`` flags that last case.
     """
     filled = _fill_holes(mask_u8)
     base_area = int(mask_u8.sum())
     if int(filled.sum()) >= 1.3 * base_area:
-        return filled
+        return filled, False  # a closed ring/holes filled straight away
+    # Already a solid blob? A real corolla occupies most of its convex hull, whereas
+    # a thin outline occupies only a small fraction of it.
+    cnt = max(cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0], key=cv2.contourArea)
+    hull_pts = cv2.convexHull(cnt)
+    hull_area = max(cv2.contourArea(hull_pts), 1.0)
+    if base_area >= 0.45 * hull_area:
+        return filled, False
+    # Thin outline: bridge the gap by closing, widening the kernel only as needed.
+    # Accept a seal only once the filled region covers most of the corolla (its
+    # convex hull), so a partial bridge that encloses a small pocket is rejected.
     for k in (15, 25, 41, 61, 81, 101):
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
         sealed = _fill_holes(cv2.morphologyEx(mask_u8, cv2.MORPH_CLOSE, kernel))
-        if int(sealed.sum()) >= 1.8 * base_area:
-            return sealed
-    return filled
+        if int(sealed.sum()) >= 0.55 * hull_area:
+            return sealed, False
+    # A side was left open and closing cannot seal it: fall back to the convex hull.
+    hull = np.zeros_like(mask_u8)
+    cv2.fillConvexPoly(hull, hull_pts, 1)
+    return hull, True
 
 
 def _upright_top_mid(mask_local: np.ndarray, ang: float) -> np.ndarray:
@@ -153,7 +168,7 @@ def medial_axis(
     # mask is a hollow ring whose area is wrong (length/width, taken from the outline
     # extent, are still fine). _solid_roi fills the interior, widening the gap-seal
     # only as much as each mask needs; already-solid masks pass through unchanged.
-    mask_u8 = _solid_roi((mask_local > 0).astype(np.uint8))
+    mask_u8, filled_by_hull = _solid_roi((mask_local > 0).astype(np.uint8))
     cnts, _ = cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cnt = max(cnts, key=cv2.contourArea)
     ys, xs = np.where(mask_u8 > 0)
@@ -214,6 +229,7 @@ def medial_axis(
     wc = p_top + w_center * u
     return {
         "fill_ratio": round(float(fill_ratio), 4),
+        "filled_by_hull": filled_by_hull,
         "angle_deg": round(float(ang), 2),
         "length_mm": round(length_mm, 2),
         "width_mm": round(width_mm, 2),
@@ -294,7 +310,11 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
                 qc.append("manual_axis")
             if float(m["length_mm"]) > LENGTH_MERGE_MM:
                 qc.append("length_outlier")
-            if float(m["fill_ratio"]) < 0.45:
+            if m.get("filled_by_hull"):
+                # Outline left open on one side; area came from the convex hull and
+                # is a slight overestimate (length/width are still fine).
+                qc.append("roi_open_outline")
+            elif float(m["fill_ratio"]) < 0.45:
                 # ROI fills little of its box -> possibly torn or mis-segmented mask.
                 qc.append("irregular_roi")
             if suffix:
