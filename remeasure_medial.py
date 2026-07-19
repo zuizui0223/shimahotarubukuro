@@ -81,6 +81,27 @@ def crop_to_mask(mask: np.ndarray) -> np.ndarray:
     return (mask[ys.min():ys.max() + 1, xs.min():xs.max() + 1] > 0).astype(np.uint8)
 
 
+GUIDE_MIN_PX = 150  # below this a corolla has no detectable purple nectar guide
+
+
+def guide_pixels(raw: np.ndarray, mask: np.ndarray) -> int:
+    """Count purple/magenta nectar-guide pixels inside the ROI.
+
+    Guides are saturated purple dots; oxidised brown flecks and pale tissue are
+    excluded. Some populations (notably Shikinejima) have almost no guides, so this
+    is recorded per corolla rather than assumed present.
+    """
+    ys, xs = np.where(mask)
+    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    sub = raw[y0:y1, x0:x1]
+    inside = mask[y0:y1, x0:x1] > 0
+    b, g, r = cv2.split(sub.astype(int))
+    hsv = cv2.cvtColor(sub, cv2.COLOR_BGR2HSV)
+    spot = (((r - g) > 18) & ((b - g) > -10) & (hsv[:, :, 1] > 60) & (hsv[:, :, 2] < 205)) & inside
+    spot = cv2.morphologyEx(spot.astype(np.uint8), cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
+    return int(spot.sum())
+
+
 def crop_to_petal(raw: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """Cropped mask trimmed to petal tissue, dropping enclosed white-paper background.
 
@@ -352,6 +373,9 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
                 qc.append("irregular_roi")
             if suffix:
                 qc.append("split_from_merged_pair")
+            # Guide presence is a biological trait (Shikinejima is largely guideless),
+            # recorded in its own columns rather than as a QC problem.
+            n_guide = guide_pixels(raw, piece)
             rows.append({
                 "sheet": sheet,
                 "corolla_id": f"{cid}{suffix}",
@@ -363,6 +387,8 @@ def measure_sheet(sheet: str, raw_path: Path, shimask_path: Path) -> list[dict[s
                 "corolla_area_fulleq_mm2": round(float(m["area_mm2"]) * factor, 1),
                 "roi_angle_deg": m["angle_deg"],
                 "roi_fill_ratio": m["fill_ratio"],
+                "nectar_guide_px": n_guide,
+                "has_nectar_guide": int(n_guide >= GUIDE_MIN_PX),
                 "qc_flag": "|".join(qc),
             })
     return rows
