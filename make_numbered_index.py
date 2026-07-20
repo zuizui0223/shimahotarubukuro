@@ -140,7 +140,7 @@ def process_sheet(sheet: str, gid_map: dict) -> tuple[Path, int, int]:
                 cv2.polylines(img, [c + [x0, y0]], True, C_ROI, 2, cv2.LINE_AA)
             circled_number(img, int(xs.mean()), int(ys.mean()), f"{gid}", C_NUM)
 
-            gr = organ.get(cid0) if suffix in ("", "a") else None
+            gr = organ.get(corolla_id)
             if gr is not None:
                 p1 = (int(gr["x1"]), int(gr["y1"]))
                 p2 = (int(gr["x2"]), int(gr["y2"]))

@@ -59,23 +59,31 @@ def guide_spot_mask(raw: np.ndarray, piece: np.ndarray) -> np.ndarray:
     return full
 
 
-def organ_for_corolla(raw, ann, strokes, comps) -> dict[int, dict]:
-    """Map corolla index (0-based) -> its green organ stroke, as in organ_traits.py."""
-    centroids, heights = [], []
-    for comp in comps:
-        ys, xs = np.where(comp["mask"] > 0)
-        centroids.append((xs.mean(), ys.mean()))
-        heights.append(ys.max() - ys.min())
-    band = float(np.median(heights)) * 0.7 if heights else 200.0
+def organ_for_corolla(raw, ann, strokes, comps) -> dict[str, dict]:
+    """Map corolla_id ("3", "8a", ...) -> its green organ stroke, as in organ_traits.py.
+
+    Association runs on the split pieces (split_merged_pair, a/b ids) so each half of
+    a merged pair gets its own nearest stroke - matching the measured organ_traits.csv.
+    """
+    pieces = []
+    for cid0, comp in enumerate(comps):
+        parts = rm.split_merged_pair(comp["mask"].astype(np.uint8))
+        suffixes = [""] if len(parts) == 1 else ["a", "b"]
+        for suffix, part in zip(suffixes, parts):
+            ys, xs = np.where(part > 0)
+            pieces.append({"id": f"{cid0 + 1}{suffix}", "cx": float(xs.mean()),
+                           "cy": float(ys.mean()), "h": float(ys.max() - ys.min())})
+    band = float(np.median([p["h"] for p in pieces])) * 0.7 if pieces else 200.0
     greens = shimask_input.green_organ_rows(raw, ann, strokes=strokes)
-    best: dict[int, dict] = {}
+    best: dict[str, dict] = {}
     for gr in greens:
         gx, gy = float(gr["cx"]), float(gr["cy"])
-        cand = [i for i, (cx, cy) in enumerate(centroids) if cx < gx and abs(cy - gy) < band]
-        pool = cand if cand else range(len(centroids))
-        cid = min(pool, key=lambda i: (gx - centroids[i][0]) ** 2 + (gy - centroids[i][1]) ** 2)
-        if cid not in best or gr["endpoint_distance_mm"] > best[cid]["endpoint_distance_mm"]:
-            best[cid] = gr
+        cand = [p for p in pieces if p["cx"] < gx and abs(p["cy"] - gy) < band]
+        pool = cand if cand else pieces
+        p = min(pool, key=lambda p: (gx - p["cx"]) ** 2 + (gy - p["cy"]) ** 2)
+        pid = p["id"]
+        if pid not in best or gr["endpoint_distance_mm"] > best[pid]["endpoint_distance_mm"]:
+            best[pid] = gr
     return best
 
 
@@ -134,8 +142,8 @@ def process_sheet(sheet: str, final: dict) -> Path | None:
             gc, _ = cv2.findContours(spots, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(img, gc, -1, C_GUIDE, 2, cv2.LINE_AA)
 
-            # Organ stroke (only attached to the base piece of a split pair).
-            gr = organ.get(cid0) if suffix in ("", "a") else None
+            # Organ stroke for this corolla (each split half has its own).
+            gr = organ.get(corolla_id)
             if gr is not None:
                 cv2.line(img, (int(gr["x1"]), int(gr["y1"])), (int(gr["x2"]), int(gr["y2"])),
                          C_ORGAN, 3, cv2.LINE_AA)
