@@ -1,46 +1,49 @@
 #!/usr/bin/env python3
-"""Among-island analysis of the floral traits: Pst and island comparisons.
+"""Among-island analysis of the floral traits: Pst and site-corrected comparisons.
 
-Consumes the finalised extraction output (results_shimask_all/corolla_master.csv)
-and asks how the traits diverge among the five Izu-island populations.
+Consumes the finalised extraction output (results_shimask_all/corolla_master.csv,
+plus the colour-free guide spatial metrics in guide_spatial.csv) and asks how the
+traits diverge among the five Izu-island populations.
 
-Pseudoreplication matters here: a plant contributes 1-2 flowers, so every test is
-run on PLANT MEANS (one value per individual = island x site(no) x id), not per
-flower. The individual id is numbered within a site, so the key includes the site
-number. n = 47/38/23/5/12 plants for Oshima/Toshima/Niijima/Shikinejima/Kozushima
-(125 plants, 218 flowers).
+Two levels of non-independence are handled:
+  - flowers within a plant  -> everything is aggregated to PLANT MEANS first
+    (individual = island x site(no) x id; 1-2 flowers/plant; 125 plants).
+  - plants within a site     -> sites are uneven (e.g. Niijima), so the island
+    comparison is a LINEAR MIXED MODEL with island as a fixed effect and site as a
+    random intercept (statsmodels), tested by a likelihood-ratio test. This
+    "site-corrects" the island effect instead of letting a heavily-sampled site
+    dominate its island.
 
-Per continuous trait it reports:
-  - Pst = Vb / (Vb + 2 Vw) from a one-way island variance decomposition on plant
-    means, with a 95% bootstrap CI (resampling plants within islands). Pst is a
-    PHENOTYPIC surrogate for Qst; a definitive Qst-Fst test needs neutral markers,
-    so Pst is read as "how strongly the trait diverges among islands", compared
-    across traits, not as proof of selection.
-  - Kruskal-Wallis across the five islands, its p, a Benjamini-Hochberg adjusted p
-    (across traits), and the epsilon^2 effect size.
-  - Oshima (the only island with a bumblebee, Bombus ardens) vs the pooled
-    bumblebee-free islands (Mann-Whitney).
-  - Spearman correlation of the plant values with latitude (a north-south cline;
-    Oshima 34.75 -> Kozushima 34.22 degN).
+Per trait it reports:
+  - Pst = Vb/(Vb+2Vw) on plant means, with a 95% bootstrap CI (a PHENOTYPIC
+    surrogate for Qst - it ranks divergence, it is not a Qst-Fst test).
+  - the site-corrected island test (mixed-model LRT p, Benjamini-Hochberg adjusted).
+  - a plant-level Kruskal-Wallis (uncorrected) for comparison.
+  - a latitude cline (Spearman; Oshima 34.75 -> Kozushima 34.22 degN).
 
-Also tests the sexual phase (protandry): proportion of female-phase flowers per
-island (chi-square). Writes results_shimask_all/island_analysis_stats.csv and
-results_shimask_all/plant_means.csv.
+Nectar-guide traits are the amount (coverage, spot count, density) and the COLOUR-
+FREE spatial distribution of the spots (basal concentration and petal-midline
+concentration); guide colour/contrast is dropped because it is not reliably
+measurable on dried, pressed specimens.
+
+Writes results_shimask_all/island_analysis_stats.csv and plant_means.csv.
 """
 from __future__ import annotations
 
 import csv
+import warnings
 from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from scipy import stats
+import statsmodels.formula.api as smf
 
-from plot_island_traits import ORDER, island_of  # noqa: F401  (ORDER order/labels)
+from plot_island_traits import island_of  # noqa: F401
 
 RESULTS = Path("results_shimask_all")
 ISLANDS = ["oshima", "toshima", "niijima", "shikine", "kozu"]
-BOMBUS = {"oshima"}
 LABEL = {"oshima": "Oshima", "toshima": "Toshima", "niijima": "Niijima",
          "shikine": "Shikinejima", "kozu": "Kozushima"}
 
@@ -58,28 +61,33 @@ TRAITS = [
     ("guide_coverage_pct", "guide coverage"),
     ("n_guide_spots", "guide spot count"),
     ("guide_density_per_cm2", "guide density"),
-    ("guide_reach_frac", "guide reach"),
-    ("guide_contrast_dE", "guide contrast"),
-    ("guide_saturation", "guide chroma"),
+    # colour-free spatial distribution of the spots (robust on dried specimens)
+    ("guide_basal_frac", "guide basal concentration"),
+    ("guide_midline_ratio", "guide midline concentration"),
 ]
 
 
 def load_plant_means():
-    """One row per plant (island, id): mean of each trait over its flowers."""
+    """One row per plant (island, site, id): mean of each trait over its flowers."""
     rows = list(csv.DictReader((RESULTS / "corolla_master.csv").open(encoding="utf-8-sig")))
-    # Individual = (island, site no, id); id is numbered within a site, so the site
-    # number is part of the key. Each plant has 1-2 flowers.
+    # Attach colour-free guide spatial-distribution metrics (per guided corolla).
+    sp = {(g["sheet"], g["corolla_id"]): g for g in
+          csv.DictReader((RESULTS / "guide_spatial.csv").open(encoding="utf-8-sig"))}
+    for r in rows:
+        g = sp.get((r["sheet"], r["sheet_corolla_id"]))
+        r["guide_basal_frac"] = g["basal_frac_prox_third"] if g else ""
+        r["guide_midline_ratio"] = g["midline_ratio_distal"] if g else ""
+
     groups: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
     for r in rows:
         groups[(r["island"], r["no"], r["id"])].append(r)
     plants = []
     for (isl, site, pid), fl in groups.items():
-        rec = {"island": isl, "no": site, "id": pid, "lat": float(fl[0]["lat"]),
-               "n_flowers": len(fl)}
+        rec = {"island": isl, "no": site, "site": f"{isl}_{site}",
+               "id": pid, "lat": float(fl[0]["lat"]), "n_flowers": len(fl)}
         for key, _ in TRAITS:
             vals = [float(f[key]) for f in fl if f.get(key, "") not in ("", "nan")]
             rec[key] = float(np.mean(vals)) if vals else np.nan
-        # sexual phase: fraction of this plant's flowers in female phase
         ph = [f["status"] for f in fl if f["status"] in ("s", "p")]
         rec["frac_female"] = (ph.count("p") / len(ph)) if ph else np.nan
         plants.append(rec)
@@ -87,7 +95,6 @@ def load_plant_means():
 
 
 def pst_value(groups):
-    """Pst = Vb/(Vb+2Vw) from a one-way decomposition of the group arrays."""
     groups = [np.asarray(g, float) for g in groups if len(g) >= 2]
     if len(groups) < 2:
         return np.nan
@@ -105,110 +112,97 @@ def pst_value(groups):
 def pst_bootstrap(by_isl, n_boot=2000, seed=0):
     rng = np.random.RandomState(seed)
     obs = pst_value(list(by_isl.values()))
-    boots = []
-    for _ in range(n_boot):
-        resampled = [rng.choice(g, len(g), replace=True) for g in by_isl.values() if len(g) >= 2]
-        boots.append(pst_value(resampled))
-    lo, hi = np.percentile(boots, [2.5, 97.5])
+    boots = [pst_value([rng.choice(g, len(g), replace=True)
+                        for g in by_isl.values() if len(g) >= 2]) for _ in range(n_boot)]
+    lo, hi = np.nanpercentile(boots, [2.5, 97.5])
     return obs, lo, hi
 
 
-def epsilon_sq(groups):
-    """Kruskal-Wallis effect size epsilon^2 = (H - k + 1) / (n - k)."""
-    n = sum(len(g) for g in groups)
-    k = len(groups)
-    H, _ = stats.kruskal(*groups)
-    return (H - k + 1) / (n - k) if n > k else np.nan
+def site_corrected_p(df, key):
+    """Likelihood-ratio p for the island fixed effect, site as random intercept."""
+    sub = df[["island", "site", key]].dropna().rename(columns={key: "y"})
+    if sub["island"].nunique() < 2 or len(sub) < 8:
+        return np.nan, np.nan
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            full = smf.mixedlm("y ~ C(island)", sub, groups=sub["site"]).fit(reml=False)
+            null = smf.mixedlm("y ~ 1", sub, groups=sub["site"]).fit(reml=False)
+        lr = 2.0 * (full.llf - null.llf)
+        ddf = sub["island"].nunique() - 1
+        return float(lr), float(stats.chi2.sf(max(lr, 0), ddf))
+    except Exception:
+        return np.nan, np.nan
 
 
 def bh_adjust(pvals):
-    p = np.asarray(pvals, float)
-    order = np.argsort(p)
+    p = np.array([x if x == x else 1.0 for x in pvals], float)
     m = len(p)
+    order = np.argsort(p)
     adj = np.empty(m)
     prev = 1.0
     for rank, idx in enumerate(order[::-1]):
-        r = m - rank
-        prev = min(prev, p[idx] * m / r)
+        prev = min(prev, p[idx] * m / (m - rank))
         adj[idx] = prev
     return adj
 
 
 def main() -> None:
     plants = load_plant_means()
-    # write plant means
-    pm = RESULTS / "plant_means.csv"
+    df = pd.DataFrame(plants)
+
     cols = ["island", "no", "id", "lat", "n_flowers", "frac_female"] + [k for k, _ in TRAITS]
-    with pm.open("w", newline="", encoding="utf-8-sig") as fh:
+    with (RESULTS / "plant_means.csv").open("w", newline="", encoding="utf-8-sig") as fh:
         w = csv.DictWriter(fh, fieldnames=cols)
         w.writeheader()
         for p in plants:
-            w.writerow({c: (round(p[c], 4) if isinstance(p.get(c), float) and p[c] == p[c] else
-                            (p.get(c, "") if p.get(c) == p.get(c) else "")) for c in cols})
-    print(f"wrote {pm}  ({len(plants)} plants)")
+            w.writerow({c: (round(p[c], 4) if isinstance(p.get(c), float) and p[c] == p[c]
+                            else (p.get(c, "") if p.get(c) == p.get(c) else "")) for c in cols})
+    print(f"wrote {RESULTS/'plant_means.csv'}  ({len(plants)} plants)")
+    n_sites = {i: df[df.island == i]["site"].nunique() for i in ISLANDS}
+    n_pl = {i: int((df.island == i).sum()) for i in ISLANDS}
+    print("plants/island:", {LABEL[i]: n_pl[i] for i in ISLANDS})
+    print("sites/island: ", {LABEL[i]: n_sites[i] for i in ISLANDS})
 
-    n_by_isl = {i: sum(1 for p in plants if p["island"] == i) for i in ISLANDS}
-    print("plants/island:", {LABEL[i]: n_by_isl[i] for i in ISLANDS})
-
-    results, kw_p = [], []
+    results, kw_p, site_p = [], [], []
     for key, label in TRAITS:
-        by_isl = {}
-        for i in ISLANDS:
-            v = np.array([p[key] for p in plants if p["island"] == i and p[key] == p[key]])
-            if v.size:
-                by_isl[i] = v
-        groups = [g for g in by_isl.values() if len(g) >= 2]
+        by_isl = {i: df[(df.island == i)][key].dropna().values for i in ISLANDS}
+        by_isl = {i: v for i, v in by_isl.items() if len(v)}
         pst, lo, hi = pst_bootstrap(by_isl)
+        groups = [v for v in by_isl.values() if len(v) >= 2]
         H, p_kw = stats.kruskal(*groups)
-        eps = epsilon_sq(groups)
-        # Bombus present vs free
-        pres = np.concatenate([by_isl[i] for i in by_isl if i in BOMBUS])
-        free = np.concatenate([by_isl[i] for i in by_isl if i not in BOMBUS])
-        _, p_bombus = stats.mannwhitneyu(pres, free, alternative="two-sided")
-        # latitude cline (plant values vs latitude)
-        xs = np.array([p["lat"] for p in plants if p[key] == p[key]])
-        ys = np.array([p[key] for p in plants if p[key] == p[key]])
-        rho, p_lat = stats.spearmanr(xs, ys)
-        means = {i: (by_isl[i].mean() if i in by_isl else np.nan) for i in ISLANDS}
+        lr, p_site = site_corrected_p(df, key)
+        sub = df[[key, "lat"]].dropna()
+        rho, p_lat = stats.spearmanr(sub["lat"], sub[key])
         results.append({"trait": label, "key": key,
                         "pst": round(pst, 3), "pst_lo": round(lo, 3), "pst_hi": round(hi, 3),
-                        "kw_H": round(H, 2), "kw_p": p_kw, "eps2": round(eps, 3),
-                        "bombus_p": p_bombus, "lat_rho": round(rho, 2), "lat_p": p_lat,
-                        **{f"mean_{i}": round(means[i], 2) for i in ISLANDS}})
+                        "kw_p": p_kw, "site_lrt": round(lr, 2) if lr == lr else "",
+                        "site_p": p_site, "lat_rho": round(rho, 2), "lat_p": p_lat,
+                        **{f"mean_{i}": (round(float(np.mean(by_isl[i])), 2) if i in by_isl else "")
+                           for i in ISLANDS}})
         kw_p.append(p_kw)
+        site_p.append(p_site)
 
-    adj = bh_adjust(kw_p)
-    for r, a in zip(results, adj):
-        r["kw_p_adj"] = a
+    for r, a, b in zip(results, bh_adjust(kw_p), bh_adjust(site_p)):
+        r["kw_p_adj"], r["site_p_adj"] = a, b
 
-    out = RESULTS / "island_analysis_stats.csv"
-    fields = ["trait", "key", "pst", "pst_lo", "pst_hi", "kw_H", "kw_p", "kw_p_adj",
-              "eps2", "bombus_p", "lat_rho", "lat_p"] + [f"mean_{i}" for i in ISLANDS]
-    with out.open("w", newline="", encoding="utf-8-sig") as fh:
+    fields = ["trait", "key", "pst", "pst_lo", "pst_hi", "kw_p", "kw_p_adj",
+              "site_lrt", "site_p", "site_p_adj", "lat_rho", "lat_p"] + [f"mean_{i}" for i in ISLANDS]
+    with (RESULTS / "island_analysis_stats.csv").open("w", newline="", encoding="utf-8-sig") as fh:
         w = csv.DictWriter(fh, fieldnames=fields)
         w.writeheader()
         for r in results:
-            w.writerow({k: (f"{r[k]:.2e}" if k in ("kw_p", "kw_p_adj", "bombus_p", "lat_p")
-                            else r[k]) for k in fields})
-    print(f"wrote {out}")
+            w.writerow({k: (f"{r[k]:.2e}" if k in ("kw_p", "kw_p_adj", "site_p", "site_p_adj", "lat_p")
+                            and r[k] == r[k] else r[k]) for k in fields})
+    print(f"wrote {RESULTS/'island_analysis_stats.csv'}")
 
-    # sexual phase across islands (flower-level chi-square)
-    rows = list(csv.DictReader((RESULTS / "corolla_master.csv").open(encoding="utf-8-sig")))
-    tab = []
-    for i in ISLANDS:
-        s = sum(1 for r in rows if r["island"] == i and r["status"] == "s")
-        p = sum(1 for r in rows if r["island"] == i and r["status"] == "p")
-        tab.append([s, p])
-    chi2, p_phase, _, _ = stats.chi2_contingency(np.array(tab).T)
-
-    print("\n=== among-island analysis (plant means) ===")
-    print(f"{'trait':20} {'Pst [95% CI]':>20} {'KW p(adj)':>11} {'eps2':>6} {'Bombus p':>10} {'lat rho':>8}")
+    print("\n=== among-island analysis (plant means; site-corrected island test) ===")
+    print(f"{'trait':26} {'Pst [95% CI]':>18} {'site p(adj)':>12} {'KW p(adj)':>11} {'lat rho':>8}")
     for r in sorted(results, key=lambda r: -r["pst"]):
-        print(f"{r['trait']:20} {r['pst']:.2f} [{r['pst_lo']:.2f},{r['pst_hi']:.2f}]"
-              f"   {r['kw_p_adj']:.1e}  {r['eps2']:.2f}   {r['bombus_p']:.1e}  {r['lat_rho']:+.2f}")
-    print(f"\nsexual phase (female fraction) by island: "
-          f"{[f'{LABEL[i]} {tab[j][1]/(sum(tab[j]) or 1):.0%}' for j,i in enumerate(ISLANDS)]}")
-    print(f"  chi-square across islands: chi2={chi2:.1f}, p={p_phase:.3f}")
+        sp = f"{r['site_p_adj']:.1e}" if r["site_p_adj"] == r["site_p_adj"] else "  n/a"
+        star = "" if (r["site_p_adj"] == r["site_p_adj"] and r["site_p_adj"] < 0.05) else " n.s."
+        print(f"{r['trait']:26} {r['pst']:.2f} [{r['pst_lo']:.2f},{r['pst_hi']:.2f}]"
+              f"  {sp}{star:5} {r['kw_p_adj']:.1e}  {r['lat_rho']:+.2f}")
 
 
 if __name__ == "__main__":

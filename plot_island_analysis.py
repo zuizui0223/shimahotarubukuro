@@ -37,7 +37,7 @@ GROUP = {  # trait key -> group
                            "tube_flare_W_throat", "lobe_incision_mm"]},
     **{k: "repro" for k in ["style_length_mm", "style_corolla_ratio"]},
     **{k: "guide" for k in ["guide_coverage_pct", "n_guide_spots", "guide_density_per_cm2",
-                            "guide_reach_frac", "guide_contrast_dE", "guide_saturation"]},
+                            "guide_basal_frac", "guide_midline_ratio"]},
 }
 GCOL = {"size": "#2878ff", "repro": "#d1495b", "guide": "#7B2D8E"}
 GNAME = {"size": "corolla size/shape", "repro": "reproductive organ", "guide": "nectar guide"}
@@ -66,13 +66,16 @@ def main() -> None:
         lo, hi, p = float(r["pst_lo"]), float(r["pst_hi"]), float(r["pst"])
         axa.plot([lo, hi], [i, i], color=c, lw=2.0, alpha=0.6, solid_capstyle="round")
         axa.scatter([p], [i], s=46, color=c, edgecolor="white", linewidth=0.8, zorder=3)
-        sig = "" if float(r["kw_p_adj"]) < 0.05 else "  n.s."
+        # significance = site-corrected island test (mixed model LRT, BH-adjusted)
+        sp = r.get("site_p_adj", "")
+        sig = "" if (sp not in ("", None) and float(sp) < 0.05) else "  n.s."
         axa.text(hi + 0.012, i, f"{p:.2f}{sig}", va="center", fontsize=7.6, color=MUTED)
     axa.set_yticks(y)
     axa.set_yticklabels([r["trait"] for r in stat], fontsize=8.8)
     axa.set_xlim(0, max(float(r["pst_hi"]) for r in stat) * 1.12)
     axa.set_xlabel("Pst  (among-island divergence, plant-level; 95% bootstrap CI)")
-    axa.set_title("A  How strongly each trait diverges among islands", fontsize=11,
+    axa.set_title("A  How strongly each trait diverges among islands\n"
+                  "    (n.s. = not significant in the site-corrected test)", fontsize=10.5,
                   fontweight="bold", loc="left", pad=8)
     axa.xaxis.grid(True, color=GRID, lw=0.8)
     axa.set_axisbelow(True)
@@ -116,9 +119,11 @@ def main() -> None:
 
     fig.suptitle("Among-island divergence of floral traits - Izu-island Campanula microdonta "
                  "(125 plants)", x=0.16, ha="left", fontsize=13, fontweight="bold")
-    fig.text(0.16, 0.015, "Plant-level (1-2 flowers/plant averaged). Pst = Vb/(Vb+2Vw); a phenotypic "
-             "surrogate, not a Qst-Fst test. Latitude and Bombus presence (Oshima only) are confounded.",
-             fontsize=7.4, color=MUTED, ha="left")
+    fig.text(0.16, 0.02, "Plant means; island test = mixed model with site as random effect (uneven sites "
+             "corrected). Pst = Vb/(Vb+2Vw), a phenotypic surrogate, not Qst-Fst.", fontsize=7.3,
+             color=MUTED, ha="left")
+    fig.text(0.16, 0.005, "Guide colour/contrast excluded (unreliable on dried specimens); guide spatial "
+             "structure (basal / petal-midline concentration) included.", fontsize=7.3, color=MUTED, ha="left")
 
     out = RESULTS / "island_divergence.png"
     fig.savefig(out, dpi=150)
