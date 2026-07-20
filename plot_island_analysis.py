@@ -44,8 +44,11 @@ GNAME = {"size": "corolla size/shape", "repro": "reproductive organ", "guide": "
 
 
 def main() -> None:
-    stat = list(csv.DictReader((RESULTS / "island_analysis_stats.csv").open(encoding="utf-8-sig")))
+    stat_all = list(csv.DictReader((RESULTS / "island_analysis_stats.csv").open(encoding="utf-8-sig")))
     plants = list(csv.DictReader((RESULTS / "plant_means.csv").open(encoding="utf-8-sig")))
+    # keep only traits that diverge significantly among islands after site correction
+    stat = [r for r in stat_all if r.get("site_p_adj", "") not in ("", None)
+            and float(r["site_p_adj"]) < 0.05]
     stat.sort(key=lambda r: float(r["pst"]))
 
     plt.rcParams.update({
@@ -64,18 +67,15 @@ def main() -> None:
     for i, r in enumerate(stat):
         c = GCOL[GROUP[r["key"]]]
         lo, hi, p = float(r["pst_lo"]), float(r["pst_hi"]), float(r["pst"])
-        axa.plot([lo, hi], [i, i], color=c, lw=2.0, alpha=0.6, solid_capstyle="round")
-        axa.scatter([p], [i], s=46, color=c, edgecolor="white", linewidth=0.8, zorder=3)
-        # significance = site-corrected island test (mixed model LRT, BH-adjusted)
-        sp = r.get("site_p_adj", "")
-        sig = "" if (sp not in ("", None) and float(sp) < 0.05) else "  n.s."
-        axa.text(hi + 0.012, i, f"{p:.2f}{sig}", va="center", fontsize=7.6, color=MUTED)
+        axa.plot([lo, hi], [i, i], color=c, lw=2.4, alpha=0.6, solid_capstyle="round")
+        axa.scatter([p], [i], s=52, color=c, edgecolor="white", linewidth=0.8, zorder=3)
+        axa.text(hi + 0.012, i, f"{p:.2f}", va="center", fontsize=8, color=MUTED)
     axa.set_yticks(y)
     axa.set_yticklabels([r["trait"] for r in stat], fontsize=8.8)
     axa.set_xlim(0, max(float(r["pst_hi"]) for r in stat) * 1.12)
     axa.set_xlabel("Pst  (among-island divergence, plant-level; 95% bootstrap CI)")
-    axa.set_title("A  How strongly each trait diverges among islands\n"
-                  "    (n.s. = not significant in the site-corrected test)", fontsize=10.5,
+    axa.set_title("A  Traits that diverge significantly among islands\n"
+                  "    (site-corrected mixed model, BH p < 0.05)", fontsize=10.5,
                   fontweight="bold", loc="left", pad=8)
     axa.xaxis.grid(True, color=GRID, lw=0.8)
     axa.set_axisbelow(True)
