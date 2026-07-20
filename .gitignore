@@ -1,4 +1,4 @@
-# Raw specimen scans and image data (kept out of the repo)
+# Raw specimen scans and image data (tracked copies are force-added; new *.jpg stay out)
 *.jpg
 *.jpeg
 *.JPG
@@ -6,15 +6,15 @@
 data/
 shimahotarubukuro/
 
-# QC overlays embed the specimen scans — regenerate locally
-results/overlays/
+# iPhone masks are shipped as mask.zip; run_pipeline.sh unzips them here
+mask/
+__MACOSX/
 
-# Review-app runtime state & caches (regenerated locally)
-results/review_state/
-results/review_cache/
-results/reviewed/*/app_review/
-results_single/
-results_all_review/
+# Generated figures/overlays embed the specimen scans — regenerate locally or from CI
+results_shimask_all/**/*.png
+results_shimask_all/*.png
+results_shimask_all/*.npz
+results_shimask_all/sheets/
 
 # Python
 __pycache__/

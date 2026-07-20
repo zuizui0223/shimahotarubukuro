@@ -15,7 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 echo ">> unzip iPhone masks"
-rm -rf mask && unzip -q -o mask.zip -d . && test -d mask
+rm -rf mask __MACOSX && unzip -q -o mask.zip -x '__MACOSX/*' -d . && test -d mask
 
 mkdir -p results_shimask_all
 
