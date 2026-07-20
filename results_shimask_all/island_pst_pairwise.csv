@@ -1,0 +1,131 @@
+﻿trait,key,island_a,island_b,pst,n_a,n_b
+corolla length,corolla_length_mm,Oshima,Toshima,0.319,47,38
+corolla length,corolla_length_mm,Oshima,Niijima,0.296,47,23
+corolla length,corolla_length_mm,Oshima,Shikinejima,0.282,47,5
+corolla length,corolla_length_mm,Oshima,Kozushima,0.579,47,12
+corolla length,corolla_length_mm,Toshima,Niijima,0.0,38,23
+corolla length,corolla_length_mm,Toshima,Shikinejima,0.0,38,5
+corolla length,corolla_length_mm,Toshima,Kozushima,0.394,38,12
+corolla length,corolla_length_mm,Niijima,Shikinejima,0.0,23,5
+corolla length,corolla_length_mm,Niijima,Kozushima,0.381,23,12
+corolla length,corolla_length_mm,Shikinejima,Kozushima,0.084,5,12
+corolla width,corolla_width_fulleq_mm,Oshima,Toshima,0.225,47,38
+corolla width,corolla_width_fulleq_mm,Oshima,Niijima,0.037,47,23
+corolla width,corolla_width_fulleq_mm,Oshima,Shikinejima,0.376,47,5
+corolla width,corolla_width_fulleq_mm,Oshima,Kozushima,0.617,47,12
+corolla width,corolla_width_fulleq_mm,Toshima,Niijima,0.078,38,23
+corolla width,corolla_width_fulleq_mm,Toshima,Shikinejima,0.001,38,5
+corolla width,corolla_width_fulleq_mm,Toshima,Kozushima,0.32,38,12
+corolla width,corolla_width_fulleq_mm,Niijima,Shikinejima,0.211,23,5
+corolla width,corolla_width_fulleq_mm,Niijima,Kozushima,0.502,23,12
+corolla width,corolla_width_fulleq_mm,Shikinejima,Kozushima,0.092,5,12
+corolla area,corolla_area_fulleq_mm2,Oshima,Toshima,0.323,47,38
+corolla area,corolla_area_fulleq_mm2,Oshima,Niijima,0.231,47,23
+corolla area,corolla_area_fulleq_mm2,Oshima,Shikinejima,0.469,47,5
+corolla area,corolla_area_fulleq_mm2,Oshima,Kozushima,0.596,47,12
+corolla area,corolla_area_fulleq_mm2,Toshima,Niijima,0.005,38,23
+corolla area,corolla_area_fulleq_mm2,Toshima,Shikinejima,0.194,38,5
+corolla area,corolla_area_fulleq_mm2,Toshima,Kozushima,0.423,38,12
+corolla area,corolla_area_fulleq_mm2,Niijima,Shikinejima,0.29,23,5
+corolla area,corolla_area_fulleq_mm2,Niijima,Kozushima,0.509,23,12
+corolla area,corolla_area_fulleq_mm2,Shikinejima,Kozushima,0.013,5,12
+throat width,throat_width_mm,Oshima,Toshima,0.178,47,38
+throat width,throat_width_mm,Oshima,Niijima,0.174,47,23
+throat width,throat_width_mm,Oshima,Shikinejima,0.284,47,5
+throat width,throat_width_mm,Oshima,Kozushima,0.547,47,12
+throat width,throat_width_mm,Toshima,Niijima,0.0,38,23
+throat width,throat_width_mm,Toshima,Shikinejima,0.003,38,5
+throat width,throat_width_mm,Toshima,Kozushima,0.324,38,12
+throat width,throat_width_mm,Niijima,Shikinejima,0.0,23,5
+throat width,throat_width_mm,Niijima,Kozushima,0.295,23,12
+throat width,throat_width_mm,Shikinejima,Kozushima,0.069,5,12
+mouth width,mouth_width_mm,Oshima,Toshima,0.199,47,38
+mouth width,mouth_width_mm,Oshima,Niijima,0.013,47,23
+mouth width,mouth_width_mm,Oshima,Shikinejima,0.545,47,5
+mouth width,mouth_width_mm,Oshima,Kozushima,0.75,47,12
+mouth width,mouth_width_mm,Toshima,Niijima,0.081,38,23
+mouth width,mouth_width_mm,Toshima,Shikinejima,0.209,38,5
+mouth width,mouth_width_mm,Toshima,Kozushima,0.536,38,12
+mouth width,mouth_width_mm,Niijima,Shikinejima,0.4,23,5
+mouth width,mouth_width_mm,Niijima,Kozushima,0.693,23,12
+mouth width,mouth_width_mm,Shikinejima,Kozushima,0.114,5,12
+corolla aspect,corolla_aspect_L_W,Oshima,Toshima,0.027,47,38
+corolla aspect,corolla_aspect_L_W,Oshima,Niijima,0.329,47,23
+corolla aspect,corolla_aspect_L_W,Oshima,Shikinejima,0.0,47,5
+corolla aspect,corolla_aspect_L_W,Oshima,Kozushima,0.0,47,12
+corolla aspect,corolla_aspect_L_W,Toshima,Niijima,0.205,38,23
+corolla aspect,corolla_aspect_L_W,Toshima,Shikinejima,0.0,38,5
+corolla aspect,corolla_aspect_L_W,Toshima,Kozushima,0.0,38,12
+corolla aspect,corolla_aspect_L_W,Niijima,Shikinejima,0.293,23,5
+corolla aspect,corolla_aspect_L_W,Niijima,Kozushima,0.37,23,12
+corolla aspect,corolla_aspect_L_W,Shikinejima,Kozushima,0.0,5,12
+tube flare,tube_flare_W_throat,Oshima,Toshima,0.018,47,38
+tube flare,tube_flare_W_throat,Oshima,Niijima,0.089,47,23
+tube flare,tube_flare_W_throat,Oshima,Shikinejima,0.032,47,5
+tube flare,tube_flare_W_throat,Oshima,Kozushima,0.214,47,12
+tube flare,tube_flare_W_throat,Toshima,Niijima,0.16,38,23
+tube flare,tube_flare_W_throat,Toshima,Shikinejima,0.0,38,5
+tube flare,tube_flare_W_throat,Toshima,Kozushima,0.052,38,12
+tube flare,tube_flare_W_throat,Niijima,Shikinejima,0.254,23,5
+tube flare,tube_flare_W_throat,Niijima,Kozushima,0.429,23,12
+tube flare,tube_flare_W_throat,Shikinejima,Kozushima,0.012,5,12
+lobe incision,lobe_incision_mm,Oshima,Toshima,0.0,47,38
+lobe incision,lobe_incision_mm,Oshima,Niijima,0.0,47,23
+lobe incision,lobe_incision_mm,Oshima,Shikinejima,0.226,47,5
+lobe incision,lobe_incision_mm,Oshima,Kozushima,0.02,47,12
+lobe incision,lobe_incision_mm,Toshima,Niijima,0.0,38,23
+lobe incision,lobe_incision_mm,Toshima,Shikinejima,0.296,38,5
+lobe incision,lobe_incision_mm,Toshima,Kozushima,0.029,38,12
+lobe incision,lobe_incision_mm,Niijima,Shikinejima,0.197,23,5
+lobe incision,lobe_incision_mm,Niijima,Kozushima,0.0,23,12
+lobe incision,lobe_incision_mm,Shikinejima,Kozushima,0.0,5,12
+organ/style length,style_length_mm,Oshima,Toshima,0.429,47,38
+organ/style length,style_length_mm,Oshima,Niijima,0.505,47,23
+organ/style length,style_length_mm,Oshima,Shikinejima,0.516,47,4
+organ/style length,style_length_mm,Oshima,Kozushima,0.675,47,12
+organ/style length,style_length_mm,Toshima,Niijima,0.046,38,23
+organ/style length,style_length_mm,Toshima,Shikinejima,0.089,38,4
+organ/style length,style_length_mm,Toshima,Kozushima,0.431,38,12
+organ/style length,style_length_mm,Niijima,Shikinejima,0.0,23,4
+organ/style length,style_length_mm,Niijima,Kozushima,0.229,23,12
+organ/style length,style_length_mm,Shikinejima,Kozushima,0.146,4,12
+style / corolla,style_corolla_ratio,Oshima,Toshima,0.016,47,38
+style / corolla,style_corolla_ratio,Oshima,Niijima,0.163,47,23
+style / corolla,style_corolla_ratio,Oshima,Shikinejima,0.17,47,4
+style / corolla,style_corolla_ratio,Oshima,Kozushima,0.0,47,12
+style / corolla,style_corolla_ratio,Toshima,Niijima,0.084,38,23
+style / corolla,style_corolla_ratio,Toshima,Shikinejima,0.095,38,4
+style / corolla,style_corolla_ratio,Toshima,Kozushima,0.0,38,12
+style / corolla,style_corolla_ratio,Niijima,Shikinejima,0.0,23,4
+style / corolla,style_corolla_ratio,Niijima,Kozushima,0.108,23,12
+style / corolla,style_corolla_ratio,Shikinejima,Kozushima,0.115,4,12
+guide coverage,guide_coverage_pct,Oshima,Toshima,0.303,47,38
+guide coverage,guide_coverage_pct,Oshima,Niijima,0.116,47,23
+guide coverage,guide_coverage_pct,Oshima,Shikinejima,0.223,47,5
+guide coverage,guide_coverage_pct,Oshima,Kozushima,0.259,47,12
+guide coverage,guide_coverage_pct,Toshima,Niijima,0.149,38,23
+guide coverage,guide_coverage_pct,Toshima,Shikinejima,0.019,38,5
+guide coverage,guide_coverage_pct,Toshima,Kozushima,0.029,38,12
+guide coverage,guide_coverage_pct,Niijima,Shikinejima,0.109,23,5
+guide coverage,guide_coverage_pct,Niijima,Kozushima,0.151,23,12
+guide coverage,guide_coverage_pct,Shikinejima,Kozushima,0.0,5,12
+guide basal concentration,guide_basal_frac,Oshima,Toshima,0.0,47,33
+guide basal concentration,guide_basal_frac,Oshima,Niijima,0.0,47,18
+guide basal concentration,guide_basal_frac,Oshima,Shikinejima,,47,1
+guide basal concentration,guide_basal_frac,Oshima,Kozushima,0.149,47,10
+guide basal concentration,guide_basal_frac,Toshima,Niijima,0.0,33,18
+guide basal concentration,guide_basal_frac,Toshima,Shikinejima,,33,1
+guide basal concentration,guide_basal_frac,Toshima,Kozushima,0.141,33,10
+guide basal concentration,guide_basal_frac,Niijima,Shikinejima,,18,1
+guide basal concentration,guide_basal_frac,Niijima,Kozushima,0.144,18,10
+guide basal concentration,guide_basal_frac,Shikinejima,Kozushima,,1,10
+guide midline concentration,guide_midline_ratio,Oshima,Toshima,0.024,45,31
+guide midline concentration,guide_midline_ratio,Oshima,Niijima,0.054,45,18
+guide midline concentration,guide_midline_ratio,Oshima,Shikinejima,,45,1
+guide midline concentration,guide_midline_ratio,Oshima,Kozushima,0.01,45,10
+guide midline concentration,guide_midline_ratio,Toshima,Niijima,0.0,31,18
+guide midline concentration,guide_midline_ratio,Toshima,Shikinejima,,31,1
+guide midline concentration,guide_midline_ratio,Toshima,Kozushima,0.0,31,10
+guide midline concentration,guide_midline_ratio,Niijima,Shikinejima,,18,1
+guide midline concentration,guide_midline_ratio,Niijima,Kozushima,0.0,18,10
+guide midline concentration,guide_midline_ratio,Shikinejima,Kozushima,,1,10

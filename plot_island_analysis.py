@@ -13,6 +13,7 @@ Reads results_shimask_all/island_analysis_stats.csv and plant_means.csv.
 from __future__ import annotations
 
 import csv
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -106,6 +107,68 @@ def make_table(stat_all):
     print(f"wrote {RESULTS/'island_divergence_table.png'}")
 
 
+def make_pairwise(stat_all):
+    """Grid of pairwise-Pst heatmaps for the significantly-diverged traits (+ mean)."""
+    from matplotlib.colors import LinearSegmentedColormap
+    pw = list(csv.DictReader((RESULTS / "island_pst_pairwise.csv").open(encoding="utf-8-sig")))
+    sig = [r for r in stat_all if r.get("site_p_adj", "") not in ("", None)
+           and float(r["site_p_adj"]) < 0.05]
+    sig.sort(key=lambda r: -float(r["pst"]))
+    order = ["Oshima", "Toshima", "Niijima", "Shikinejima", "Kozushima"]
+    short = ["Osh", "Tos", "Nii", "Shi", "Koz"]
+    idx = {n: i for i, n in enumerate(order)}
+
+    def matrix(key):
+        m = np.full((5, 5), np.nan)
+        for r in pw:
+            if r["key"] == key and r["pst"] != "":
+                i, j = idx[r["island_a"]], idx[r["island_b"]]
+                m[max(i, j), min(i, j)] = float(r["pst"])  # lower triangle
+        return m
+
+    mats = [(r["trait"], matrix(r["key"])) for r in sig]
+    with np.errstate(invalid="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        mean_m = np.nanmean(np.dstack([m for _, m in mats]), axis=2)
+    panels = mats + [("MEAN (7 traits)", mean_m)]
+    vmax = max(np.nanmax(m) for _, m in panels)
+    cmap = LinearSegmentedColormap.from_list("pst", ["#f7f4fb", "#c9a5d6", "#7B2D8E", "#2a0a33"])
+    cmap.set_bad("white")
+
+    ncol = 4
+    nrow = int(np.ceil(len(panels) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(3.05 * ncol, 3.0 * nrow))
+    axes = np.atleast_1d(axes).ravel()
+    for ax in axes:
+        ax.axis("off")
+    im = None
+    for ax, (name, m) in zip(axes, panels):
+        ax.axis("on")
+        im = ax.imshow(m, cmap=cmap, vmin=0, vmax=vmax)
+        for i in range(5):
+            for j in range(5):
+                if not np.isnan(m[i, j]):
+                    ax.text(j, i, f"{m[i, j]:.2f}", ha="center", va="center", fontsize=7.5,
+                            color="white" if m[i, j] > vmax * 0.55 else INK)
+        ax.set_xticks(range(5)); ax.set_yticks(range(5))
+        ax.set_xticklabels(short, fontsize=7.5); ax.set_yticklabels(short, fontsize=7.5)
+        ax.set_title(name, fontsize=9.5, fontweight="bold", pad=4)
+        for s in ("top", "right", "left", "bottom"):
+            ax.spines[s].set_visible(False)
+        ax.tick_params(length=0)
+    fig.suptitle("Pairwise Pst between islands (per significant trait; islands ordered N->S)",
+                 fontsize=12.5, fontweight="bold", x=0.02, ha="left")
+    cb = fig.colorbar(im, ax=axes.tolist(), fraction=0.015, pad=0.02)
+    cb.set_label("pairwise Pst", fontsize=8)
+    fig.text(0.02, 0.005, "Each cell = Pst for that island pair alone (plant means). Higher = more "
+             "differentiated; note the N-S extremes (Oshima vs Kozushima) are largest.",
+             fontsize=7.4, color=MUTED, ha="left")
+    out = RESULTS / "island_pst_pairwise.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {out}")
+
+
 def main() -> None:
     stat_all = list(csv.DictReader((RESULTS / "island_analysis_stats.csv").open(encoding="utf-8-sig")))
     plants = list(csv.DictReader((RESULTS / "plant_means.csv").open(encoding="utf-8-sig")))
@@ -193,6 +256,7 @@ def main() -> None:
     print(f"wrote {out}")
 
     make_table(stat_all)
+    make_pairwise(stat_all)
 
 
 if __name__ == "__main__":

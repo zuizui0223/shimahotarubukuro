@@ -31,6 +31,7 @@ Writes results_shimask_all/island_analysis_stats.csv and plant_means.csv.
 from __future__ import annotations
 
 import csv
+import itertools
 import warnings
 from collections import defaultdict
 from pathlib import Path
@@ -196,6 +197,23 @@ def main() -> None:
             w.writerow({k: (f"{r[k]:.2e}" if k in ("kw_p", "kw_p_adj", "site_p", "site_p_adj", "lat_p")
                             and r[k] == r[k] else r[k]) for k in fields})
     print(f"wrote {RESULTS/'island_analysis_stats.csv'}")
+
+    # Pairwise Pst: each island pair on its own (k=2), per trait.
+    pair_rows = []
+    for key, label in TRAITS:
+        for a, b in itertools.combinations(ISLANDS, 2):
+            va = df[df.island == a][key].dropna().values
+            vb = df[df.island == b][key].dropna().values
+            p = pst_value([va, vb]) if (len(va) >= 2 and len(vb) >= 2) else np.nan
+            pair_rows.append({"trait": label, "key": key,
+                              "island_a": LABEL[a], "island_b": LABEL[b],
+                              "pst": round(p, 3) if p == p else "",
+                              "n_a": len(va), "n_b": len(vb)})
+    with (RESULTS / "island_pst_pairwise.csv").open("w", newline="", encoding="utf-8-sig") as fh:
+        w = csv.DictWriter(fh, fieldnames=["trait", "key", "island_a", "island_b", "pst", "n_a", "n_b"])
+        w.writeheader()
+        w.writerows(pair_rows)
+    print(f"wrote {RESULTS/'island_pst_pairwise.csv'}")
 
     print("\n=== among-island analysis (plant means; site-corrected island test) ===")
     print(f"{'trait':26} {'Pst [95% CI]':>18} {'site p(adj)':>12} {'KW p(adj)':>11} {'lat rho':>8}")
