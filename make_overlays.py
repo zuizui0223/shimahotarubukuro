@@ -24,6 +24,7 @@ import numpy as np
 import measure_guides as base
 import shimask_input
 import remeasure_medial as rm
+import organ_traits
 from run_all_shimask_confirmed import find_raw
 
 MM = float(base.MM_PX)
@@ -59,32 +60,15 @@ def guide_spot_mask(raw: np.ndarray, piece: np.ndarray) -> np.ndarray:
     return full
 
 
-def organ_for_corolla(raw, ann, strokes, comps) -> dict[str, dict]:
-    """Map corolla_id ("3", "8a", ...) -> its green organ stroke, as in organ_traits.py.
+def organ_for_corolla(raw, ann, strokes, comps, sheet: str) -> dict[str, dict]:
+    """Map corolla_id ("3", "8a", ...) -> its green organ stroke.
 
-    Association runs on the split pieces (split_merged_pair, a/b ids) so each half of
-    a merged pair gets its own nearest stroke - matching the measured organ_traits.csv.
+    Delegates to organ_traits so the drawn organs match organ_traits.csv exactly,
+    including the split-pair handling and the manual ORGAN_ASSIGN pins.
     """
-    pieces = []
-    for cid0, comp in enumerate(comps):
-        parts = rm.split_merged_pair(comp["mask"].astype(np.uint8))
-        suffixes = [""] if len(parts) == 1 else ["a", "b"]
-        for suffix, part in zip(suffixes, parts):
-            ys, xs = np.where(part > 0)
-            pieces.append({"id": f"{cid0 + 1}{suffix}", "cx": float(xs.mean()),
-                           "cy": float(ys.mean()), "h": float(ys.max() - ys.min())})
-    band = float(np.median([p["h"] for p in pieces])) * 0.7 if pieces else 200.0
+    pieces = organ_traits.build_pieces(comps)
     greens = shimask_input.green_organ_rows(raw, ann, strokes=strokes)
-    best: dict[str, dict] = {}
-    for gr in greens:
-        gx, gy = float(gr["cx"]), float(gr["cy"])
-        cand = [p for p in pieces if p["cx"] < gx and abs(p["cy"] - gy) < band]
-        pool = cand if cand else pieces
-        p = min(pool, key=lambda p: (gx - p["cx"]) ** 2 + (gy - p["cy"]) ** 2)
-        pid = p["id"]
-        if pid not in best or gr["endpoint_distance_mm"] > best[pid]["endpoint_distance_mm"]:
-            best[pid] = gr
-    return best
+    return organ_traits.associate_organs(sheet, pieces, greens)
 
 
 def draw_label(img, x, y, lines, colour=C_TXT):
@@ -109,7 +93,7 @@ def process_sheet(sheet: str, final: dict) -> Path | None:
     ann = base.load_bgr(str(Path("shimask") / (sheet + ".jpg")))
     strokes = shimask_input.stroke_masks(raw, ann)
     comps = shimask_input.red_corolla_components(raw, ann, strokes=strokes)
-    organ = organ_for_corolla(raw, ann, strokes, comps)
+    organ = organ_for_corolla(raw, ann, strokes, comps, sheet)
     img = raw.copy()
 
     for cid0, comp in enumerate(comps):

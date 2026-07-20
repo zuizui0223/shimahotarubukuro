@@ -116,7 +116,7 @@ def process_sheet(sheet: str, gid_map: dict) -> tuple[Path, int, int]:
     ann = base.load_bgr(str(Path("shimask") / (sheet + ".jpg")))
     strokes = shimask_input.stroke_masks(raw, ann)
     comps = shimask_input.red_corolla_components(raw, ann, strokes=strokes)
-    organ = organ_for_corolla(raw, ann, strokes, comps)
+    organ = organ_for_corolla(raw, ann, strokes, comps, sheet)
     img = raw.copy()
     draw_grid(img)
     gids = []
