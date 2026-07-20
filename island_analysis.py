@@ -58,9 +58,10 @@ TRAITS = [
     ("lobe_incision_mm", "lobe incision"),
     ("style_length_mm", "organ/style length"),
     ("style_corolla_ratio", "style / corolla"),
+    # guide amount = coverage (area fraction) only; spot count / density are dropped
+    # because a discrete-blob count is unstable (spots merge/split with threshold,
+    # scan resolution and fading), unlike the area-based coverage.
     ("guide_coverage_pct", "guide coverage"),
-    ("n_guide_spots", "guide spot count"),
-    ("guide_density_per_cm2", "guide density"),
     # colour-free spatial distribution of the spots (robust on dried specimens)
     ("guide_basal_frac", "guide basal concentration"),
     ("guide_midline_ratio", "guide midline concentration"),

@@ -36,8 +36,7 @@ GROUP = {  # trait key -> group
                            "throat_width_mm", "mouth_width_mm", "corolla_aspect_L_W",
                            "tube_flare_W_throat", "lobe_incision_mm"]},
     **{k: "repro" for k in ["style_length_mm", "style_corolla_ratio"]},
-    **{k: "guide" for k in ["guide_coverage_pct", "n_guide_spots", "guide_density_per_cm2",
-                            "guide_basal_frac", "guide_midline_ratio"]},
+    **{k: "guide" for k in ["guide_coverage_pct", "guide_basal_frac", "guide_midline_ratio"]},
 }
 GCOL = {"size": "#2878ff", "repro": "#d1495b", "guide": "#7B2D8E"}
 GNAME = {"size": "corolla size/shape", "repro": "reproductive organ", "guide": "nectar guide"}
