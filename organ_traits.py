@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+"""Reproductive-organ length per corolla from the reviewer's green strokes.
+
+Each corolla has one green line drawn beside it marking the reproductive organ
+(stamens / the three-branched pistil); the organ is not classified - the green line
+is measured directly. shimask_input.green_organ_rows recovers each green stroke and
+its skeleton length; here each stroke is assigned to the nearest corolla and the
+length recorded. Writes results_shimask_all/organ_traits.csv.
+"""
+from __future__ import annotations
+
+import csv
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+import measure_guides as base
+import shimask_input
+import remeasure_medial as rm
+from run_all_shimask_confirmed import find_raw
+
+
+# Manual organ->corolla pins for cases the nearest-left heuristic gets wrong - a big
+# open flower whose stamen is drawn above/left can be nearer a neighbour and, being
+# the longer of two candidates, steal that neighbour's slot. (sheet, corolla_id) ->
+# (approx_cx, approx_cy) of the correct stroke; the nearest stroke to that point is
+# pinned to that corolla and removed from the automatic pool.
+ORGAN_ASSIGN: dict[tuple[str, str], tuple[float, float]] = {
+    ("niijiama1-2", "16"): (1219, 2890),  # #168's own vertical stamen, just to its right
+    ("niijiama1-2", "17"): (1410, 2821),  # #169's horizontal stamen, drawn above-left
+    ("kozu1", "9"): (1562, 2138),         # #208's stamen, drawn just below it (was labelled 209)
+    ("kozu1", "10"): (641, 2238),         # #209's own stamen, to its right (was discarded)
+}
+
+# Organs that green_organ_rows misses entirely (e.g. a stroke drawn so close to the
+# scan's bottom edge that the border filter discards it as an artifact). We measure
+# the green component nearest the given point directly and inject it. (sheet,
+# corolla_id) -> (approx_cx, approx_cy).
+ORGAN_MANUAL: dict[tuple[str, str], tuple[float, float]] = {
+    ("toshima6-8", "12b"): (1616, 3131),  # #149's stamen, drawn below it at the sheet edge
+}
+
+
+def measure_green_at(raw: np.ndarray, strokes, px: float, py: float) -> dict | None:
+    """Measure the green stroke component nearest (px, py) as a green_organ_rows row.
+
+    For strokes the normal detector drops (touching the scan border etc.); reuses the
+    same skeleton/endpoint measurement so the numbers are comparable.
+    """
+    _red, green_small = strokes
+    green = shimask_input._resize_nn(green_small, raw.shape[:2]).astype(np.uint8)
+    k = shimask_input._odd_kernel_size(0.35)
+    green = cv2.morphologyEx(green, cv2.MORPH_CLOSE,
+                             cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    count, labels, stats, cents = cv2.connectedComponentsWithStats(green, 8)
+    best_i, best_d = None, 1e18
+    for i in range(1, count):
+        if stats[i, cv2.CC_STAT_AREA] < 30:
+            continue
+        d = (cents[i][0] - px) ** 2 + (cents[i][1] - py) ** 2
+        if d < best_d:
+            best_d, best_i = d, i
+    if best_i is None:
+        return None
+    comp = (labels == best_i).astype(np.uint8)
+    skeleton = shimask_input._skeletonize(comp)
+    length_px = shimask_input._skeleton_length_px(skeleton)
+    (x1, y1), (x2, y2), chord_px = shimask_input._principal_endpoints(skeleton)
+    cx, cy = float(cents[best_i][0]), float(cents[best_i][1])
+    area_px = int(stats[best_i, cv2.CC_STAT_AREA])
+    length_mm = length_px * float(base.MM_PX)
+    return {
+        "cx": round(cx, 2), "cy": round(cy, 2),
+        "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+        "length_mm": round(length_mm, 2), "skeleton_length_mm": round(length_mm, 2),
+        "endpoint_distance_mm": round(chord_px * float(base.MM_PX), 2),
+        "width_mm": round(area_px * float(base.MM2_PX) / max(length_mm, 1e-9), 2),
+    }
+
+
+def manual_green_rows(sheet: str, raw: np.ndarray, strokes) -> list[dict]:
+    """Constructed green rows for this sheet's ORGAN_MANUAL entries."""
+    rows = []
+    for (sh, _cid), (px, py) in ORGAN_MANUAL.items():
+        if sh != sheet:
+            continue
+        r = measure_green_at(raw, strokes, px, py)
+        if r is not None:
+            rows.append(r)
+    return rows
+
+
+def build_pieces(comps) -> list[dict]:
+    """One entry per measured corolla (split merged pairs into a/b), with centroid."""
+    pieces = []
+    for cid0, comp in enumerate(comps):
+        parts = rm.split_merged_pair(comp["mask"].astype(np.uint8))
+        suffixes = [""] if len(parts) == 1 else ["a", "b"]
+        for suffix, part in zip(suffixes, parts):
+            ys, xs = np.where(part > 0)
+            pieces.append({"id": f"{cid0 + 1}{suffix}",
+                           "cx": float(xs.mean()), "cy": float(ys.mean()),
+                           "h": float(ys.max() - ys.min())})
+    return pieces
+
+
+def associate_organs(sheet: str, pieces: list[dict], greens: list[dict]) -> dict[str, dict]:
+    """Map corolla_id -> its green organ stroke.
+
+    Manual pins (ORGAN_ASSIGN) are applied first and lock both the stroke and the
+    corolla; the rest use the heuristic: each organ line is drawn beside its corolla
+    at the same row, so assign it to the nearest corolla to its left within one row,
+    falling back to the plain nearest centroid, keeping the longest stroke per corolla.
+    """
+    band = float(np.median([p["h"] for p in pieces])) * 0.7 if pieces else 200.0
+    best: dict[str, dict] = {}
+    used = set()
+    pins = {**ORGAN_ASSIGN, **ORGAN_MANUAL}
+    pinned_ids = {cid for (sh, cid) in pins if sh == sheet}
+    for (sh, cid), (px, py) in pins.items():
+        if sh != sheet or not greens:
+            continue
+        gi = min(range(len(greens)),
+                 key=lambda i: (greens[i]["cx"] - px) ** 2 + (greens[i]["cy"] - py) ** 2)
+        best[cid] = greens[gi]
+        used.add(gi)
+    for i, g in enumerate(greens):
+        if i in used:
+            continue
+        gx, gy = float(g["cx"]), float(g["cy"])
+        avail = [p for p in pieces if p["id"] not in pinned_ids]
+        cand = [p for p in avail if p["cx"] < gx and abs(p["cy"] - gy) < band]
+        pool = cand if cand else avail
+        if not pool:
+            continue
+        p = min(pool, key=lambda p: (gx - p["cx"]) ** 2 + (gy - p["cy"]) ** 2)
+        pid = p["id"]
+        if pid not in best or g["endpoint_distance_mm"] > best[pid]["endpoint_distance_mm"]:
+            best[pid] = g
+    return best
+
+
+def main() -> None:
+    labels = sorted(p for p in Path("shimask").iterdir()
+                    if p.suffix.lower() in (".jpg", ".jpeg", ".png"))
+    rows = []
+    for lp in labels:
+        sheet = lp.stem
+        _, raw_path = find_raw(sheet, Path("shimahotarubukuro"))
+        raw = base.load_bgr(str(raw_path))
+        ann = base.load_bgr(str(lp))
+        strokes = shimask_input.stroke_masks(raw, ann)
+        comps = shimask_input.red_corolla_components(raw, ann, strokes=strokes)
+        pieces = build_pieces(comps)
+        greens = shimask_input.green_organ_rows(raw, ann, strokes=strokes)
+        greens += manual_green_rows(sheet, raw, strokes)
+        best = associate_organs(sheet, pieces, greens)
+        for p in pieces:
+            g = best.get(p["id"])
+            # The green line is straight, so its end-to-end distance is the organ
+            # length; the skeleton path length over-counts on the thick stroke.
+            rows.append({
+                "sheet": sheet, "corolla_id": p["id"],
+                "organ_length_mm": g["endpoint_distance_mm"] if g else "",
+                "organ_skeleton_mm": g["length_mm"] if g else "",
+                "organ_width_mm": g["width_mm"] if g else "",
+                "has_organ": int(g is not None),
+            })
+        n = sum(1 for r in rows if r["sheet"] == sheet and r["has_organ"])
+        print(f"[{sheet}] {n}/{len(pieces)} corollas with a green organ stroke", flush=True)
+
+    out = Path("results_shimask_all/organ_traits.csv")
+    with out.open("w", newline="", encoding="utf-8-sig") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    print(f"wrote {out}  ({len(rows)} corollas)")
+
+
+if __name__ == "__main__":
+    main()
