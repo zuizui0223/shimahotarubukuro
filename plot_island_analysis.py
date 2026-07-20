@@ -42,6 +42,70 @@ GCOL = {"size": "#2878ff", "repro": "#d1495b", "guide": "#7B2D8E"}
 GNAME = {"size": "corolla size/shape", "repro": "reproductive organ", "guide": "nectar guide"}
 
 
+UNIT = {"organ/style length": "mm", "mouth width": "mm", "corolla area": "mm2",
+        "corolla length": "mm", "corolla width": "mm", "guide coverage": "%",
+        "throat width": "mm"}
+ILAB = ["Oshima", "Toshima", "Niijima", "Shikinejima", "Kozushima"]
+IKEY = ["mean_oshima", "mean_toshima", "mean_niijima", "mean_shikine", "mean_kozu"]
+
+
+def make_table(stat_all):
+    """Paper Table 1: the significantly-diverged traits, as a CSV and a rendered PNG."""
+    sig = [r for r in stat_all if r.get("site_p_adj", "") not in ("", None)
+           and float(r["site_p_adj"]) < 0.05]
+    sig.sort(key=lambda r: -float(r["pst"]))
+
+    # CSV
+    fields = ["trait", "unit", "pst", "pst_ci", "site_p_adj", "lat_rho"] + ILAB
+    with (RESULTS / "island_divergence_table.csv").open("w", newline="", encoding="utf-8-sig") as fh:
+        w = csv.writer(fh)
+        w.writerow(fields)
+        for r in sig:
+            w.writerow([r["trait"], UNIT.get(r["trait"], ""), r["pst"],
+                        f"{r['pst_lo']}-{r['pst_hi']}", r["site_p_adj"], r["lat_rho"]]
+                       + [r[k] for k in IKEY])
+    print(f"wrote {RESULTS/'island_divergence_table.csv'}")
+
+    # rendered PNG
+    header = ["Trait (unit)", "Pst", "95% CI", "p (site-corr.)", "lat rho"] + ILAB
+    cells, colours = [], []
+    for r in sig:
+        cells.append([f"{r['trait']} ({UNIT.get(r['trait'],'')})", r["pst"],
+                      f"{r['pst_lo']}-{r['pst_hi']}", f"{float(r['site_p_adj']):.1e}",
+                      f"{float(r['lat_rho']):+.2f}"] + [r[k] for k in IKEY])
+        g = GROUP[r["key"]]
+        colours.append(GCOL.get(g if g in GCOL else "size", "#2878ff"))
+
+    fig, ax = plt.subplots(figsize=(12.4, 0.52 * (len(sig) + 1) + 0.8))
+    ax.axis("off")
+    tbl = ax.table(cellText=cells, colLabels=header, loc="center", cellLoc="center")
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(9)
+    tbl.scale(1, 1.5)
+    ncol = len(header)
+    widths = [0.185, 0.058, 0.10, 0.10, 0.072] + [0.097] * 5  # wide trait column
+    for (row, col), cell in tbl.get_celld().items():
+        cell.set_width(widths[col])
+        cell.set_edgecolor("#dddddd")
+        if row == 0:
+            cell.set_facecolor("#33324a"); cell.set_text_props(color="white", fontweight="bold")
+        else:
+            if col == 0:
+                cell.set_text_props(color=colours[row - 1], fontweight="bold", ha="left")
+                cell.PAD = 0.03
+            if col >= ncol - 5:  # island-mean columns, light shade
+                cell.set_facecolor("#f4f4fa")
+    ax.set_title("Table 1  Floral traits that diverge significantly among Izu islands "
+                 "(site-corrected, BH p < 0.05; 125 plants)",
+                 fontsize=11.5, fontweight="bold", loc="left", pad=12)
+    ax.text(0, -0.04, "Pst = among-island divergence (phenotypic surrogate, not Qst-Fst); lat rho = Spearman "
+            "with latitude; last five columns = island means (mm, mm2 or %).",
+            transform=ax.transAxes, fontsize=7.6, color=MUTED)
+    fig.savefig(RESULTS / "island_divergence_table.png", dpi=160, bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {RESULTS/'island_divergence_table.png'}")
+
+
 def main() -> None:
     stat_all = list(csv.DictReader((RESULTS / "island_analysis_stats.csv").open(encoding="utf-8-sig")))
     plants = list(csv.DictReader((RESULTS / "plant_means.csv").open(encoding="utf-8-sig")))
@@ -127,6 +191,8 @@ def main() -> None:
     out = RESULTS / "island_divergence.png"
     fig.savefig(out, dpi=150)
     print(f"wrote {out}")
+
+    make_table(stat_all)
 
 
 if __name__ == "__main__":
