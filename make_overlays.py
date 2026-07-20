@@ -68,6 +68,7 @@ def organ_for_corolla(raw, ann, strokes, comps, sheet: str) -> dict[str, dict]:
     """
     pieces = organ_traits.build_pieces(comps)
     greens = shimask_input.green_organ_rows(raw, ann, strokes=strokes)
+    greens += organ_traits.manual_green_rows(sheet, raw, strokes)
     return organ_traits.associate_organs(sheet, pieces, greens)
 
 

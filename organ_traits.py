@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 import measure_guides as base
@@ -31,6 +32,63 @@ ORGAN_ASSIGN: dict[tuple[str, str], tuple[float, float]] = {
     ("kozu1", "9"): (1562, 2138),         # #208's stamen, drawn just below it (was labelled 209)
     ("kozu1", "10"): (641, 2238),         # #209's own stamen, to its right (was discarded)
 }
+
+# Organs that green_organ_rows misses entirely (e.g. a stroke drawn so close to the
+# scan's bottom edge that the border filter discards it as an artifact). We measure
+# the green component nearest the given point directly and inject it. (sheet,
+# corolla_id) -> (approx_cx, approx_cy).
+ORGAN_MANUAL: dict[tuple[str, str], tuple[float, float]] = {
+    ("toshima6-8", "12b"): (1616, 3131),  # #149's stamen, drawn below it at the sheet edge
+}
+
+
+def measure_green_at(raw: np.ndarray, strokes, px: float, py: float) -> dict | None:
+    """Measure the green stroke component nearest (px, py) as a green_organ_rows row.
+
+    For strokes the normal detector drops (touching the scan border etc.); reuses the
+    same skeleton/endpoint measurement so the numbers are comparable.
+    """
+    _red, green_small = strokes
+    green = shimask_input._resize_nn(green_small, raw.shape[:2]).astype(np.uint8)
+    k = shimask_input._odd_kernel_size(0.35)
+    green = cv2.morphologyEx(green, cv2.MORPH_CLOSE,
+                             cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    count, labels, stats, cents = cv2.connectedComponentsWithStats(green, 8)
+    best_i, best_d = None, 1e18
+    for i in range(1, count):
+        if stats[i, cv2.CC_STAT_AREA] < 30:
+            continue
+        d = (cents[i][0] - px) ** 2 + (cents[i][1] - py) ** 2
+        if d < best_d:
+            best_d, best_i = d, i
+    if best_i is None:
+        return None
+    comp = (labels == best_i).astype(np.uint8)
+    skeleton = shimask_input._skeletonize(comp)
+    length_px = shimask_input._skeleton_length_px(skeleton)
+    (x1, y1), (x2, y2), chord_px = shimask_input._principal_endpoints(skeleton)
+    cx, cy = float(cents[best_i][0]), float(cents[best_i][1])
+    area_px = int(stats[best_i, cv2.CC_STAT_AREA])
+    length_mm = length_px * float(base.MM_PX)
+    return {
+        "cx": round(cx, 2), "cy": round(cy, 2),
+        "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+        "length_mm": round(length_mm, 2), "skeleton_length_mm": round(length_mm, 2),
+        "endpoint_distance_mm": round(chord_px * float(base.MM_PX), 2),
+        "width_mm": round(area_px * float(base.MM2_PX) / max(length_mm, 1e-9), 2),
+    }
+
+
+def manual_green_rows(sheet: str, raw: np.ndarray, strokes) -> list[dict]:
+    """Constructed green rows for this sheet's ORGAN_MANUAL entries."""
+    rows = []
+    for (sh, _cid), (px, py) in ORGAN_MANUAL.items():
+        if sh != sheet:
+            continue
+        r = measure_green_at(raw, strokes, px, py)
+        if r is not None:
+            rows.append(r)
+    return rows
 
 
 def build_pieces(comps) -> list[dict]:
@@ -58,8 +116,9 @@ def associate_organs(sheet: str, pieces: list[dict], greens: list[dict]) -> dict
     band = float(np.median([p["h"] for p in pieces])) * 0.7 if pieces else 200.0
     best: dict[str, dict] = {}
     used = set()
-    pinned_ids = {cid for (sh, cid) in ORGAN_ASSIGN if sh == sheet}
-    for (sh, cid), (px, py) in ORGAN_ASSIGN.items():
+    pins = {**ORGAN_ASSIGN, **ORGAN_MANUAL}
+    pinned_ids = {cid for (sh, cid) in pins if sh == sheet}
+    for (sh, cid), (px, py) in pins.items():
         if sh != sheet or not greens:
             continue
         gi = min(range(len(greens)),
@@ -95,6 +154,7 @@ def main() -> None:
         comps = shimask_input.red_corolla_components(raw, ann, strokes=strokes)
         pieces = build_pieces(comps)
         greens = shimask_input.green_organ_rows(raw, ann, strokes=strokes)
+        greens += manual_green_rows(sheet, raw, strokes)
         best = associate_organs(sheet, pieces, greens)
         for p in pieces:
             g = best.get(p["id"])
