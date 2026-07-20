@@ -35,18 +35,20 @@ echo ">> 7/12 continuous 1-218 numbering       -> global_index.csv (+ numbered_i
 python3 make_numbered_index.py
 echo ">> 8/12 integrate field metadata        -> corolla_master.csv  (FINAL)"
 python3 integrate_metadata.py
-echo ">> 9/12 guide divergence stats          -> guide_divergence_stats.csv"
+echo ">> 9/13 guide divergence stats          -> guide_divergence_stats.csv"
 python3 guide_divergence.py
-echo ">> 10/12 guide spatial structure        -> guide_spatial.csv"
+echo ">> 10/13 guide spatial structure        -> guide_spatial.csv"
 python3 guide_spatial.py
+echo ">> 11/13 among-island Pst / comparisons -> island_analysis_stats.csv, plant_means.csv"
+python3 island_analysis.py
 
-echo ">> 11/12 figures"
+echo ">> 12/13 figures"
 for p in plot_island_traits plot_guide_traits plot_organ_traits plot_pollination_traits \
-         plot_guide_hypothesis plot_guide_spatial plot_guide_density_islands; do
+         plot_guide_hypothesis plot_guide_spatial plot_guide_density_islands plot_island_analysis; do
   python3 "$p.py" || true
 done
 
-echo ">> 12/12 per-flower measurement cards + trait overlays"
+echo ">> 13/13 per-flower measurement cards + trait overlays"
 python3 make_overlays.py || true
 python3 make_measure_cards.py
 
