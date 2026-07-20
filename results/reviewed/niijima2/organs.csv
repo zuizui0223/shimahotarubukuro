@@ -1,9 +1,0 @@
-﻿island,sheet,organ_id,nearest_corolla,cx,cy,x1,y1,x2,y2,length_mm,width_mm,aspect,angle_deg,organ_type_auto,organ_type_FILL,exclude_FILL,detection_source,nearest_corolla_hint,association_confirmed,visibility_note
-Niijima,niijima2,1,1,393.0,1040.0,,,,,28.9,1.44,20.03,84.71,unclassified_reproductive_organ,,,,,,
-Niijima,niijima2,2,3,1242.5,1041.0,,,,,32.58,1.44,22.61,36.96,unclassified_reproductive_organ,,,,,,
-Niijima,niijima2,3,4,56.5,1536.5,,,,,28.23,1.43,19.68,-86.93,unclassified_reproductive_organ,,,,,,
-Niijima,niijima2,4,4,490.0,1861.0,,,,,27.95,1.46,19.11,-55.1,unclassified_reproductive_organ,,,,,,
-Niijima,niijima2,5,8,1770.98,2110.53,,,,,34.08,1.94,17.54,81.07,unclassified_reproductive_organ,,,,,,
-Niijima,niijima2,6,11,1019.01,2469.0,,,,,26.07,1.45,18.02,-61.86,unclassified_reproductive_organ,,,,,,
-Niijima,niijima2,7,12,1631.5,2684.0,,,,,34.21,2.46,13.93,-90.0,unclassified_reproductive_organ,,,,,,
-Niijima,niijima2,8,13,146.45,3035.52,,,,,28.33,1.44,19.63,-77.12,unclassified_reproductive_organ,,,,,,

@@ -1,3 +1,0 @@
-# Review app extras (on top of requirements.txt)
-streamlit>=1.57
-streamlit-image-coordinates>=0.1.9

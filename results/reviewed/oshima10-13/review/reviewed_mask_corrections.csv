@@ -1,3 +1,0 @@
-﻿island,sheet,corolla_id,correction,reason,kept_area_px,removed_noise_px,removed_fraction,mask_geometry
-Oshima,oshima10~13,17,remove_horizontal_noise,horizontal_bottom_crease_noise,120396,5035,0.0401,corolla_body_retained
-Oshima,oshima10~13,18,remove_horizontal_noise,horizontal_bottom_crease_noise,112704,3725,0.032,corolla_body_retained

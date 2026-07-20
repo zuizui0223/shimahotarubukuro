@@ -1,8 +1,10 @@
-# Core pipeline + review app. Keep native image packages on the mature 2025
-# wheels; the July 2026 NumPy/OpenCV releases caused native SIGSEGV on Community Cloud.
+# Reproducible measurement pipeline for Campanula microdonta floral traits.
+# Native image packages pinned to the mature 2025 wheels (the July 2026
+# NumPy/OpenCV releases caused native SIGSEGV in CI).
 numpy==2.2.6
 opencv-python-headless==4.11.0.86
+scipy>=1.11
+scikit-image>=0.22
+matplotlib>=3.8
 pillow>=10.0
-openpyxl>=3.1
-streamlit==1.57.0
-streamlit-image-coordinates>=0.1.9
+pillow-heif>=0.16
