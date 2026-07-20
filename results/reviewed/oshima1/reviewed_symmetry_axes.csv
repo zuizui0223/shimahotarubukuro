@@ -1,5 +1,0 @@
-corolla_id,symmetry_iou,axis_angle_deg_from_x,axis_offset_px,base_x,base_y,tip_x,tip_y,human_axis_review,human_fold_state,human_corolla_mask_review,review_note
-1,0.8353,91.5,-1.0,643.0,789.0,662.97,1304.575,ACCEPT,PENDING,ACCEPT_AFTER_TINY_TOP_RIGHT_NOISE_REMOVAL,Accepted after removing only the tiny top-right mask noise spur.
-2,0.8802,81.75,-1.0,1409.0,865.0,1474.462,1349.243,ACCEPT,PENDING,PENDING,End point retained; start moved slightly right toward the visual centre.
-3,0.8928,87.0,-1.0,662.366,1649.097,688.79,2153.293,ACCEPT,PENDING,PENDING,Accepted unchanged from PRE-QC.
-4,0.8224,86.054,7.0,1635.58,1698.427,1607.659,2186.048,ACCEPT,PENDING,PENDING,Original PRE-QC start retained; reviewed end follows the central/third-petal guide direction.
