@@ -1,0 +1,2 @@
+corollas=7 organs=7 spots=1614 weak_recovered=22 scale=0.0846667mm/px (fallback_verified_300dpi) -> results_shimask_all/sheets/niijiama2-4
+shimask-input QC done: corollas=7 organs=7 mode=raw_shimask_difference -> results_shimask_all/sheets/niijiama2-4

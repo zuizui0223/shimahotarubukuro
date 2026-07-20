@@ -1,0 +1,214 @@
+﻿sheet,corolla_id,iphone_file,match_iou,corolla_length_mm,corolla_width_obs_mm,corolla_area_obs_mm2,corolla_width_fulleq_mm,corolla_area_fulleq_mm2,fold_state
+kozu1,1,HEIF画像.heic,0.917,21.17,29.38,477.4,29.38,477.4,opened_full
+kozu1,2,HEIF画像 2.heic,0.954,22.52,28.36,481.7,28.36,481.7,opened_full
+kozu1,3,HEIF画像 3.heic,0.893,16.93,25.65,330.5,25.65,330.5,opened_full
+kozu1,4,HEIF画像 4.heic,0.894,16.43,28.96,365.3,28.96,365.3,opened_full
+kozu1,5,HEIF画像 6.heic,0.928,15.83,23.11,289.9,23.11,289.9,opened_full
+kozu1,6,HEIF画像 5.heic,0.93,23.79,31.24,547.3,31.24,547.3,opened_full
+kozu1,7,HEIF画像 7.heic,0.915,21.42,30.56,506.9,30.56,506.9,opened_full
+kozu1,8,HEIF画像 8.heic,0.898,24.21,31.24,580.0,31.24,580.0,opened_full
+kozu1,9,HEIF画像 9.heic,0.913,20.15,27.86,407.6,27.86,407.6,opened_full
+kozu1,10,HEIF画像 10.heic,0.888,18.97,27.86,411.4,27.86,411.4,opened_full
+kozu2,1,HEIF画像 9.heic,0.888,26.25,41.66,768.6,41.66,768.6,opened_full
+kozu2,2,HEIF画像.heic,0.913,26.08,41.74,808.3,41.74,808.3,opened_full
+kozu2,3,HEIF画像 4.heic,0.916,25.74,40.72,718.7,40.72,718.7,opened_full
+kozu2,4,HEIF画像 3.heic,0.917,22.78,43.18,718.0,43.18,718.0,opened_full
+kozu2,5,HEIF画像 5.heic,0.914,32.34,45.89,1080.1,45.89,1080.1,opened_full
+kozu2,6,HEIF画像 6.heic,0.931,32.43,49.7,1092.3,49.7,1092.3,opened_full
+kozu2,7,HEIF画像 7.heic,0.9,26.84,41.49,824.2,41.49,824.2,opened_full
+kozu2,8,HEIF画像 8.heic,0.923,26.5,43.43,800.5,43.43,800.5,opened_full
+kozu2,9,HEIF画像 2.heic,0.796,27.09,43.69,1005.7,43.69,1005.7,opened_full
+niijiama1-2,1,HEIF画像.heic,0.919,32.77,23.54,577.9,47.07,1155.9,folded_half
+niijiama1-2,2,HEIF画像 2.heic,0.923,33.95,25.57,679.2,51.14,1358.3,folded_half
+niijiama1-2,3,HEIF画像 3.heic,0.938,31.67,24.64,581.7,49.28,1163.3,folded_half
+niijiama1-2,4,HEIF画像 15.heic,0.838,27.77,23.62,544.6,47.24,1089.3,folded_half
+niijiama1-2,5,HEIF画像 5.heic,0.944,28.7,26.59,575.2,53.17,1150.3,folded_half
+niijiama1-2,6,HEIF画像 6.heic,0.948,31.33,25.99,610.6,51.99,1221.3,folded_half
+niijiama1-2,7,HEIF画像 12.heic,0.882,29.72,25.15,628.4,50.29,1256.7,folded_half
+niijiama1-2,8,HEIF画像 8.heic,0.911,27.86,25.23,525.2,50.46,1050.4,folded_half
+niijiama1-2,9,HEIF画像 9.heic,0.899,25.74,21.42,432.2,42.84,864.4,folded_half
+niijiama1-2,10,HEIF画像 10.heic,0.906,32.77,30.48,744.8,60.96,1489.7,folded_half
+niijiama1-2,11,HEIF画像 11.heic,0.939,29.72,24.55,565.9,49.11,1131.8,folded_half
+niijiama1-2,12,HEIF画像 7.heic,0.919,26.33,25.4,535.9,50.8,1071.7,folded_half
+niijiama1-2,13,HEIF画像 13.heic,0.929,24.98,23.45,450.1,46.91,900.2,folded_half
+niijiama1-2,14,HEIF画像 14.heic,0.937,28.53,23.37,507.3,46.74,1014.6,folded_half
+niijiama1-2,15,HEIF画像 4.heic,0.881,27.26,22.44,472.3,44.87,944.7,folded_half
+niijiama1-2,16,HEIF画像 16.heic,0.94,24.81,22.69,449.4,45.38,898.9,folded_half
+niijiama1-2,17,HEIF画像 17.heic,0.809,32.0,51.39,1378.9,51.39,1378.9,opened_full
+niijiama2-4,1,HEIF画像.heic,0.931,25.15,20.4,435.1,40.81,870.1,folded_half
+niijiama2-4,2,HEIF画像 3.heic,0.888,24.81,19.98,365.5,39.96,731.1,folded_half
+niijiama2-4,3,HEIF画像 2.heic,0.933,25.32,17.1,361.7,34.21,723.3,folded_half
+niijiama2-4,4,HEIF画像 4.heic,0.943,24.98,19.56,401.2,39.12,802.4,folded_half
+niijiama2-4,5,HEIF画像 5.heic,0.93,27.16,24.61,479.7,49.22,959.4,folded_half
+niijiama2-4,6,HEIF画像 7.heic,0.914,24.72,19.3,399.0,38.61,797.9,folded_half
+niijiama2-4,7,HEIF画像 6.heic,0.905,24.55,21.51,457.9,43.01,915.8,folded_half
+niijima2,1,HEIF画像 5.heic,0.933,29.04,25.65,565.9,51.31,1131.7,folded_half
+niijima2,2,HEIF画像 7.heic,0.928,29.21,24.13,555.1,48.26,1110.1,folded_half
+niijima2,3,HEIF画像 3.heic,0.902,32.09,22.86,544.9,45.72,1089.8,folded_half
+niijima2,4,HEIF画像 9.heic,0.922,38.02,31.67,915.7,63.33,1831.4,folded_half
+niijima2,5,HEIF画像 6.heic,0.934,31.24,29.63,676.8,59.27,1353.6,folded_half
+niijima2,6,HEIF画像.heic,0.608,61.89,33.53,1723.7,67.06,3447.3,folded_half
+niijima2,7,HEIF画像 4.heic,0.904,32.85,26.42,657.5,52.83,1315.1,folded_half
+niijima2,8,HEIF画像 13.heic,0.92,30.99,29.29,705.5,58.59,1411.0,folded_half
+niijima2,9,HEIF画像 17.heic,0.683,53.51,29.38,1388.5,58.76,2776.9,folded_half
+niijima2,10,HEIF画像 12.heic,0.909,31.41,27.35,634.8,54.69,1269.7,folded_half
+niijima2,11,HEIF画像 10.heic,0.898,31.24,26.33,623.9,52.66,1247.7,folded_half
+niijima2,12,HEIF画像 14.heic,0.931,27.69,23.71,546.8,47.41,1093.6,folded_half
+niijima2,13,HEIF画像 15.heic,0.939,28.87,22.94,493.0,45.89,986.0,folded_half
+niijima2,14,HEIF画像 16.heic,0.92,28.53,25.57,533.1,51.14,1066.1,folded_half
+niijima2,15,HEIF画像 8.heic,0.92,26.84,23.79,487.5,47.58,975.1,folded_half
+oshima1,1,HEIF画像.heic,0.925,49.95,34.63,1335.3,69.26,2670.7,folded_half
+oshima1,2,HEIF画像 2.heic,0.91,47.41,34.21,1255.9,68.41,2511.7,folded_half
+oshima1,3,HEIF画像 3.heic,0.902,45.13,36.58,1304.0,73.15,2608.0,folded_half
+oshima1,4,HEIF画像 4.heic,0.916,45.21,30.73,1098.0,61.47,2196.0,folded_half
+oshima1(2),1,HEIF画像 2.heic,0.909,35.48,25.4,700.9,50.8,1401.8,folded_half
+oshima1(2),2,HEIF画像.heic,0.911,35.64,26.75,713.2,53.51,1426.3,folded_half
+oshima1(2),3,HEIF画像 3.heic,0.942,47.16,32.68,1212.2,65.36,2424.4,folded_half
+oshima1(2),4,HEIF画像 4.heic,0.858,40.3,31.24,968.3,62.48,1936.5,folded_half
+oshima1(2),5,HEIF画像 5.heic,0.939,37.93,29.63,921.5,59.27,1843.0,folded_half
+oshima10-13,1,133.JPG,0.931,33.87,21.84,571.9,43.69,1143.8,folded_half
+oshima10-13,2,134.JPG,0.921,39.03,26.25,805.7,52.49,1611.4,folded_half
+oshima10-13,3,135.JPG,0.949,39.29,26.92,855.2,53.85,1710.3,folded_half
+oshima10-13,4,136.JPG,0.949,39.71,26.75,859.4,53.51,1718.7,folded_half
+oshima10-13,5,137.JPG,0.962,35.9,27.52,813.7,55.03,1627.3,folded_half
+oshima10-13,6,138.JPG,0.898,38.18,24.81,741.0,49.61,1482.0,folded_half
+oshima10-13,7,149.JPG,0.854,38.86,25.91,815.9,51.82,1631.9,folded_half
+oshima10-13,8,140.JPG,0.937,24.05,21.08,417.6,42.16,835.3,folded_half
+oshima10-13,9,141.JPG,0.92,23.71,21.0,393.1,41.99,786.2,folded_half
+oshima10-13,10,142.JPG,0.915,31.24,22.44,583.2,44.87,1166.3,folded_half
+oshima10-13,11,143.JPG,0.849,34.12,22.35,572.9,44.7,1145.8,folded_half
+oshima10-13,12,145.JPG,0.943,32.26,23.11,628.6,46.23,1257.2,folded_half
+oshima10-13,13,139.JPG,0.945,36.83,23.2,688.3,46.4,1376.6,folded_half
+oshima10-13,14,146.JPG,0.932,41.57,26.42,897.3,52.83,1794.7,folded_half
+oshima10-13,15,147.JPG,0.944,39.37,24.98,858.4,49.95,1716.8,folded_half
+oshima10-13,16,148.JPG,0.901,34.8,22.18,599.3,44.37,1198.6,folded_half
+oshima10-13,17,144.JPG,0.923,36.58,27.69,921.6,55.37,1843.3,folded_half
+oshima10-13,18,150.JPG,0.924,32.09,26.16,673.4,52.32,1346.8,folded_half
+oshima13-15,1,125.JPG,0.911,32.0,23.88,584.7,47.75,1169.3,folded_half
+oshima13-15,2,122.JPG,0.873,40.64,30.73,902.9,61.47,1805.9,folded_half
+oshima13-15,3,123.JPG,0.901,33.87,26.08,702.5,52.15,1405.0,folded_half
+oshima13-15,4,121.JPG,0.929,29.46,26.16,628.8,52.32,1257.7,folded_half
+oshima13-15,5,124.JPG,0.964,37.42,28.7,878.4,57.4,1756.9,folded_half
+oshima13-15,6,131.JPG,0.904,43.26,31.41,1056.8,62.82,2113.6,folded_half
+oshima13-15,7,126.JPG,0.932,37.34,26.25,803.5,52.49,1607.0,folded_half
+oshima13-15,8,120.JPG,0.878,41.99,28.62,1029.3,57.23,2058.6,folded_half
+oshima13-15,9,128.JPG,0.933,42.08,32.17,1099.0,64.35,2198.0,folded_half
+oshima13-15,10,129.JPG,0.916,47.92,27.52,1034.3,55.03,2068.7,folded_half
+oshima13-15,11,130.JPG,0.925,48.68,31.16,1145.8,62.31,2291.7,folded_half
+oshima13-15,12,127.JPG,0.928,44.11,30.73,1078.2,61.47,2156.5,folded_half
+oshima13-15,13,132.JPG,0.922,42.5,29.72,1013.7,59.44,2027.4,folded_half
+oshima4,1,HEIF画像.heic,0.942,44.79,31.75,1159.7,63.5,2319.5,folded_half
+oshima4,2,HEIF画像 5.heic,0.923,34.37,28.02,760.1,56.05,1520.1,folded_half
+oshima4,3,HEIF画像 6.heic,0.94,34.63,27.26,763.9,54.53,1527.8,folded_half
+oshima4,4,HEIF画像 2.heic,0.949,44.96,32.0,1093.8,64.01,2187.6,folded_half
+oshima4,5,HEIF画像 3.heic,0.959,38.61,33.61,1066.4,67.23,2132.8,folded_half
+oshima4,6,HEIF画像 7.heic,0.919,33.53,25.4,695.8,50.8,1391.6,folded_half
+oshima4,7,HEIF画像 4.heic,0.934,37.34,30.99,932.4,61.98,1864.9,folded_half
+oshima4,8,HEIF画像 8.heic,0.582,52.32,31.75,1549.0,63.5,3097.9,folded_half
+oshima5,1,HEIF画像.heic,0.913,31.75,25.99,661.0,51.99,1322.0,folded_half
+oshima5,2,HEIF画像 2.heic,0.891,31.83,23.96,635.4,47.92,1270.7,folded_half
+oshima5,3,HEIF画像 3.heic,0.943,31.07,22.35,562.2,44.7,1124.5,folded_half
+oshima5,4,HEIF画像 4.heic,0.927,33.44,27.01,766.8,54.02,1533.6,folded_half
+oshima5,5,HEIF画像 5.heic,0.942,32.6,28.7,754.5,57.4,1508.9,folded_half
+oshima6,1,HEIF画像.heic,0.934,34.88,27.26,726.6,54.53,1453.1,folded_half
+oshima6,2,HEIF画像 4.heic,0.91,31.33,23.11,587.0,46.23,1174.0,folded_half
+oshima6,3,HEIF画像 3.heic,0.939,33.61,25.57,665.9,51.14,1331.8,folded_half
+oshima6,4,HEIF画像 2.heic,0.921,31.41,24.13,631.0,48.26,1262.0,folded_half
+oshima6,5,HEIF画像 5.heic,0.911,30.23,21.84,533.0,43.69,1065.9,folded_half
+oshima6,6,HEIF画像 6.heic,0.918,29.38,24.3,556.5,48.6,1113.0,folded_half
+oshima7,1,HEIF画像 2.heic,0.931,27.35,24.64,535.6,49.28,1071.3,folded_half
+oshima7,2,HEIF画像.heic,0.923,28.53,23.62,536.2,47.24,1072.5,folded_half
+oshima7,3,HEIF画像 4.heic,0.921,26.75,24.72,531.1,49.45,1062.2,folded_half
+oshima7,4,HEIF画像 5.heic,0.843,27.6,25.48,560.9,50.97,1121.9,folded_half
+oshima7,5,HEIF画像 3.heic,0.774,27.6,26.92,559.6,53.85,1119.2,folded_half
+oshima7,6,HEIF画像 6.heic,0.923,32.43,25.57,689.3,51.14,1378.6,folded_half
+oshima8,1,167.JPG,0.934,28.45,20.57,472.6,41.15,945.2,folded_half
+oshima8,2,166.JPG,0.938,32.85,25.4,721.3,50.8,1442.5,folded_half
+oshima8,3,168.JPG,0.91,35.9,24.38,689.6,48.77,1379.2,folded_half
+oshima8,4,169.JPG,0.959,29.97,21.59,594.5,43.18,1188.9,folded_half
+oshima8,5,170.JPG,0.938,39.37,27.94,916.5,55.88,1833.0,folded_half
+oshima8,6,171.JPG,0.884,36.07,23.62,724.2,47.24,1448.5,folded_half
+oshima8,7,172.JPG,0.904,36.37,28.7,755.6,57.39,1511.2,folded_half
+oshima8,8,173.JPG,0.941,40.13,28.28,912.5,56.56,1824.9,folded_half
+oshima8-9,1,163.JPG,0.896,30.31,19.9,540.9,39.79,1081.8,folded_half
+oshima8-9,2,152.JPG,0.934,33.61,21.51,569.7,43.01,1139.3,folded_half
+oshima8-9,3,160.JPG,0.912,32.09,22.52,614.3,45.04,1228.7,folded_half
+oshima8-9,4,154.JPG,0.937,33.78,28.28,759.5,56.56,1519.0,folded_half
+oshima8-9,5,155.JPG,0.933,28.79,20.57,458.0,41.15,916.0,folded_half
+oshima8-9,6,161.JPG,0.916,33.78,23.28,672.2,46.57,1344.4,folded_half
+oshima8-9,7,151.JPG,0.799,31.75,22.94,657.9,45.89,1315.8,folded_half
+oshima8-9,8,157.JPG,0.927,30.56,25.15,588.5,50.29,1177.1,folded_half
+oshima8-9,9,156.JPG,0.86,42.5,26.5,922.9,53.0,1845.8,folded_half
+oshima8-9,10,158.JPG,0.913,34.21,29.21,787.9,58.42,1575.8,folded_half
+oshima8-9,11,159.JPG,0.933,33.44,26.67,718.5,53.34,1437.0,folded_half
+oshima8-9,12,162.JPG,0.914,42.16,28.28,974.8,56.56,1949.6,folded_half
+oshima8-9,13,164.JPG,0.931,43.86,29.46,1039.0,58.93,2078.0,folded_half
+oshima8-9,14,165.JPG,0.923,38.35,21.84,727.1,43.69,1454.1,folded_half
+shikine1,2,115.JPG,0.833,26.84,20.57,381.9,41.15,763.8,folded_half
+shikine1,3,116.JPG,0.92,23.71,19.56,363.5,39.12,726.9,folded_half
+shikine1,4,117.JPG,0.683,22.97,40.9,594.9,40.9,594.9,opened_full
+shikine1,5,119.JPG,0.609,26.5,40.13,730.1,40.13,730.1,opened_full
+shikine1,6,118.JPG,0.523,43.1,55.71,1304.7,55.71,1304.7,opened_full
+toshima1-2,1,HEIF画像.heic,0.916,27.94,18.12,451.0,36.24,901.9,folded_half
+toshima1-2,2,HEIF画像 2.heic,0.943,24.38,15.83,320.5,31.67,640.9,folded_half
+toshima1-2,3,HEIF画像 6.heic,0.91,28.53,19.98,456.9,39.96,913.9,folded_half
+toshima1-2,4,HEIF画像 4.heic,0.939,29.29,17.61,426.2,35.22,852.3,folded_half
+toshima1-2,5,HEIF画像 5.heic,0.91,25.4,16.26,333.9,32.51,667.8,folded_half
+toshima1-2,6,HEIF画像 11.heic,0.925,28.36,20.66,479.6,41.32,959.3,folded_half
+toshima1-2,7,HEIF画像 7.heic,0.936,31.75,23.11,537.6,46.23,1075.2,folded_half
+toshima1-2,8,HEIF画像 8.heic,0.945,24.21,18.97,377.0,37.93,754.0,folded_half
+toshima1-2,9,HEIF画像 9.heic,0.944,30.48,20.66,490.9,41.32,981.8,folded_half
+toshima1-2,10,HEIF画像 10.heic,0.899,32.17,26.33,747.5,52.66,1494.9,folded_half
+toshima1-2,11,HEIF画像 3.heic,0.852,32.43,23.2,617.8,46.4,1235.6,folded_half
+toshima1-2,12,HEIF画像 12.heic,0.934,26.84,18.8,392.7,37.59,785.3,folded_half
+toshima1-2,13,HEIF画像 13.heic,0.92,33.1,24.13,579.6,48.26,1159.2,folded_half
+toshima1-2,14,HEIF画像 16.heic,0.828,24.64,21.25,408.5,42.5,816.9,folded_half
+toshima1-2,15,HEIF画像 15.heic,0.95,32.0,28.28,692.3,56.56,1384.5,folded_half
+toshima1-2,16,HEIF画像 17.heic,0.87,26.67,24.47,496.9,48.94,993.7,folded_half
+toshima1-2,17,HEIF画像 14.heic,0.923,28.19,26.5,575.6,53.0,1151.2,folded_half
+toshima2-3,1,HEIF画像 5.heic,0.931,29.04,22.86,561.4,45.72,1122.7,folded_half
+toshima2-3,2,HEIF画像 2.heic,0.912,33.78,24.21,658.7,48.43,1317.5,folded_half
+toshima2-3,3,HEIF画像 10.heic,0.805,30.48,22.61,533.0,45.21,1066.1,folded_half
+toshima2-3,4,HEIF画像 4.heic,0.948,21.76,18.46,302.4,36.91,604.9,folded_half
+toshima2-3,5,HEIF画像.heic,0.915,19.47,15.41,242.7,30.82,485.3,folded_half
+toshima2-3,6,HEIF画像 6.heic,0.92,34.12,22.69,637.7,45.38,1275.5,folded_half
+toshima2-3,7,HEIF画像 7.heic,0.903,33.36,22.18,633.4,44.37,1266.9,folded_half
+toshima2-3,8,HEIF画像 8.heic,0.92,36.15,22.94,655.1,45.89,1310.1,folded_half
+toshima2-3,9,HEIF画像 9.heic,0.887,34.54,24.55,643.9,49.11,1287.9,folded_half
+toshima2-3,10,HEIF画像 15.heic,0.914,28.19,22.78,508.1,45.55,1016.2,folded_half
+toshima2-3,11,HEIF画像 11.heic,0.903,27.6,21.34,422.4,42.67,844.8,folded_half
+toshima2-3,12,HEIF画像 14.heic,0.874,28.36,24.13,523.7,48.26,1047.4,folded_half
+toshima2-3,13,HEIF画像 12.heic,0.902,28.11,24.13,501.5,48.26,1003.0,folded_half
+toshima2-3,14,HEIF画像 13.heic,0.896,30.65,25.06,592.4,50.12,1184.8,folded_half
+toshima2-3,15,HEIF画像 3.heic,0.928,32.85,25.99,637.3,51.99,1274.5,folded_half
+toshima2-3,16,HEIF画像 16.heic,0.922,30.06,24.89,584.3,49.78,1168.6,folded_half
+toshima3-6,1,HEIF画像 7.heic,0.928,24.72,22.01,457.2,44.03,914.4,folded_half
+toshima3-6,2,HEIF画像 2.heic,0.91,27.43,19.9,432.4,39.79,864.8,folded_half
+toshima3-6,3,HEIF画像 3.heic,0.93,21.0,16.68,291.9,33.36,583.8,folded_half
+toshima3-6,4,HEIF画像 4.heic,0.917,24.72,17.53,351.0,35.05,702.1,folded_half
+toshima3-6,5,HEIF画像 5.heic,0.892,26.92,41.57,729.9,41.57,729.9,opened_full
+toshima3-6,6,HEIF画像 6.heic,0.926,19.13,15.58,243.6,31.16,487.2,folded_half
+toshima3-6,7,HEIF画像.heic,0.856,32.26,26.42,676.8,52.83,1353.7,folded_half
+toshima3-6,8,HEIF画像 8.heic,0.928,32.43,25.91,612.7,51.82,1225.4,folded_half
+toshima3-6,9,HEIF画像 9.heic,0.911,35.73,26.16,760.6,52.32,1521.2,folded_half
+toshima3-6,10,HEIF画像 10.heic,0.939,31.07,23.45,538.9,46.91,1077.9,folded_half
+toshima3-6,11,HEIF画像 11.heic,0.96,31.33,27.18,701.9,54.36,1403.9,folded_half
+toshima3-6,12,HEIF画像 12.heic,0.952,34.46,26.08,760.1,52.15,1520.3,folded_half
+toshima3-6,13,HEIF画像 13.heic,0.935,31.07,19.56,515.3,39.12,1030.6,folded_half
+toshima3-6,14,HEIF画像 14.heic,0.94,26.84,18.46,419.3,36.91,838.6,folded_half
+toshima3-6,15,HEIF画像 15.heic,0.954,28.45,22.94,498.6,45.89,997.1,folded_half
+toshima6-8,1,HEIF画像.heic,0.892,26.67,21.51,445.6,43.01,891.3,folded_half
+toshima6-8,2,HEIF画像 16.heic,0.897,25.82,21.67,437.4,43.35,874.7,folded_half
+toshima6-8,3,HEIF画像 3.heic,0.946,26.92,38.61,747.3,38.61,747.3,opened_full
+toshima6-8,4,HEIF画像 4.heic,0.933,26.59,19.3,424.3,38.61,848.6,folded_half
+toshima6-8,5,HEIF画像 5.heic,0.926,28.11,23.11,524.2,46.23,1048.5,folded_half
+toshima6-8,6,HEIF画像 6.heic,0.924,32.51,24.72,679.8,49.45,1359.7,folded_half
+toshima6-8,7,HEIF画像 9.heic,0.898,28.96,24.21,577.7,48.43,1155.5,folded_half
+toshima6-8,8,HEIF画像 2.heic,0.889,23.71,21.0,404.6,41.99,809.2,folded_half
+toshima6-8,9,HEIF画像 13.heic,0.87,32.34,26.08,671.5,52.15,1343.1,folded_half
+toshima6-8,10,HEIF画像 10.heic,0.819,31.16,34.04,766.7,68.07,1533.4,folded_half
+toshima6-8,11,HEIF画像 11.heic,0.888,32.68,29.13,721.2,58.25,1442.4,folded_half
+toshima6-8,12,HEIF画像 8.heic,0.505,58.59,34.46,1678.7,68.92,3357.4,folded_half
+toshima6-8,13,HEIF画像 7.heic,0.811,32.51,26.08,714.8,52.15,1429.6,folded_half
+toshima6-8,14,HEIF画像 15.heic,0.88,35.98,26.92,826.0,53.85,1652.0,folded_half
+toshima6-8,15,HEIF画像 14.heic,0.875,28.87,22.18,487.4,44.37,974.9,folded_half

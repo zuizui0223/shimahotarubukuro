@@ -9,6 +9,10 @@ shimahotarubukuro/
 # QC overlays embed the specimen scans — regenerate locally
 results/overlays/
 
+# Shimask-input all-sheet run: overlay/mask PNGs embed the specimen scans —
+# keep the measured CSV/text outputs, regenerate the imagery locally
+results_shimask_all/**/*.png
+
 # Review-app runtime state & caches (regenerated locally)
 results/review_state/
 results/review_cache/
@@ -21,3 +25,4 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+mask/

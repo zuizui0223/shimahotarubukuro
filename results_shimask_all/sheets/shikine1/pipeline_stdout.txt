@@ -1,0 +1,2 @@
+corollas=6 organs=4 spots=2021 weak_recovered=29 scale=0.0848826mm/px (ruler_1cm_ticks) -> results_shimask_all/sheets/shikine1
+shimask-input QC done: corollas=6 organs=4 mode=raw_shimask_difference -> results_shimask_all/sheets/shikine1

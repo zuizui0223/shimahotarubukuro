@@ -1,0 +1,2 @@
+corollas=10 organs=10 spots=4142 weak_recovered=95 scale=0.085017mm/px (ruler_1cm_ticks) -> results_shimask_all/sheets/kozu1
+shimask-input QC done: corollas=10 organs=10 mode=raw_shimask_difference -> results_shimask_all/sheets/kozu1
