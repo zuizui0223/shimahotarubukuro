@@ -28,6 +28,8 @@ from run_all_shimask_confirmed import find_raw
 ORGAN_ASSIGN: dict[tuple[str, str], tuple[float, float]] = {
     ("niijiama1-2", "16"): (1219, 2890),  # #168's own vertical stamen, just to its right
     ("niijiama1-2", "17"): (1410, 2821),  # #169's horizontal stamen, drawn above-left
+    ("kozu1", "9"): (1562, 2138),         # #208's stamen, drawn just below it (was labelled 209)
+    ("kozu1", "10"): (641, 2238),         # #209's own stamen, to its right (was discarded)
 }
 
 
