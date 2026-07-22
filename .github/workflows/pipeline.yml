@@ -1,21 +1,9 @@
 name: reproduce-pipeline
 
-# Reproduce the floral-trait results from the committed inputs, with no local
-# dependency. Runs on demand and on pushes that touch the pipeline or its inputs,
-# and uploads the measured CSVs and figures as build artifacts.
+# Temporarily manual-only on the publication-cleanup branch while the pipeline is
+# changed as one coherent unit. Push validation is restored before the PR is opened.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "*.py"
-      - "run_pipeline.sh"
-      - "withlocation.csv"
-      - "mask.zip"
-      - "shimask/**"
-      - "shimahotarubukuro/**"
-      - "requirements.txt"
-      - ".github/workflows/pipeline.yml"
 
 jobs:
   run:
