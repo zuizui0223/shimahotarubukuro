@@ -1,9 +1,25 @@
 name: reproduce-pipeline
 
-# Temporarily manual-only on the publication-cleanup branch while the pipeline is
-# changed as one coherent unit. Push validation is restored before the PR is opened.
+# Temporary publication-cleanup validation: run the complete pipeline once on the
+# cleanup branch and commit the regenerated CSV snapshots. This auto-commit step is
+# removed after the refresh succeeds.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - agent/publication-pipeline-cleanup
+    paths:
+      - "*.py"
+      - "run_pipeline.sh"
+      - "withlocation.csv"
+      - "mask.zip"
+      - "shimask/**"
+      - "shimahotarubukuro/**"
+      - "requirements.txt"
+      - ".github/workflows/pipeline.yml"
+
+permissions:
+  contents: write
 
 jobs:
   run:
@@ -18,8 +34,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run pipeline
+      - name: Run publication pipeline
         run: bash run_pipeline.sh
+      - name: Refresh tracked result tables
+        if: github.actor != 'github-actions[bot]'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A results_shimask_all
+          if git diff --cached --quiet; then
+            echo "Tracked result tables are already current."
+          else
+            git commit -m "Refresh publication result tables"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
       - name: Upload measured tables
         uses: actions/upload-artifact@v4
         with:
