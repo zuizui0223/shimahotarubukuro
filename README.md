@@ -10,6 +10,23 @@ site-corrected global and pairwise Pst. Trial automatic segmentation, flower-lev
 island tests, dried-specimen colour measurements and the confounded Oshima-versus-
 other-islands Bombus contrast are not part of the publication pipeline.
 
+## Repository layout
+
+```text
+src/shimaflora/
+├── core/          shared scan, annotation, island and file-discovery utilities
+├── measurement/   corolla, guide and reproductive-organ measurements
+├── metadata/      authoritative field-metadata integration
+├── analysis/      guide spatial tests and global/pairwise Pst
+├── figures/       manuscript figures and tables
+└── audit/         numbered indexes, overlays and measurement cards
+```
+
+`run_pipeline.sh` remains the single stable entry point. It configures the source
+search path and executes the modules in publication order, so the directory cleanup
+does not change the measurements or output schemas. See `src/shimaflora/README.md`
+for the responsibility of each package.
+
 ## Authoritative inputs
 
 | Path | Role |
@@ -109,10 +126,12 @@ is not, by itself, evidence of selection.
 
 ## Pipeline order
 
-`remeasure_medial` -> `register_iphone_masks` -> `guide_traits` -> `organ_traits` ->
-`merge_traits` -> `pollination_traits` -> `make_numbered_index` ->
-`integrate_metadata` -> `guide_spatial` -> `island_analysis` -> publication figures
-and measurement cards.
+`measurement/remeasure_medial` -> `measurement/register_iphone_masks` ->
+`measurement/guide_traits` -> `measurement/organ_traits` ->
+`measurement/merge_traits` -> `measurement/pollination_traits` ->
+`audit/make_numbered_index` -> `metadata/integrate_metadata` ->
+`analysis/guide_spatial` -> `analysis/island_analysis` -> publication figures and
+audit cards.
 
 The morphometric rationale follows Nagano et al. (2014, *Ecology and Evolution*
 4:3819; doi:10.1002/ece3.1191), restricted here to measurements supported by the

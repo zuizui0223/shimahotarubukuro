@@ -8,7 +8,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "*.py"
+      - "src/**/*.py"
       - "run_pipeline.sh"
       - "withlocation.csv"
       - "mask.zip"
@@ -19,7 +19,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "*.py"
+      - "src/**/*.py"
       - "run_pipeline.sh"
       - "withlocation.csv"
       - "mask.zip"
