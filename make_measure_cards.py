@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
-"""Per-flower measurement cards: what is measured on each corolla, and how.
+"""Per-flower cards documenting the retained measurements.
 
-For every corolla each card shows the silhouette turned upright (base at top) with
-the measurement constructs drawn on it:
-  - corolla length  : the vertical extent, base -> tip (amber)
-  - corolla width   : the widest cross-section (blue)
-  - throat width    : median ROI width in the proximal tube band (cyan)
-  - mouth width     : median ROI width in the distal rim band (teal)
-  - nectar guide    : the detected purple spots (magenta)
-and a caption lists every trait value including the ones that are ratios or live off
-the ROI (lobe incision, aspect, guide reach/contrast, organ length, style ratio) and
-the field sexual phase (s = male, p = female). Cards are laid out per sheet, so the
-20 sheets document flower-by-flower how each trait is measured.
+Each card shows the reviewed corolla upright with corolla length, full-equivalent
+width, proximal throat width, distal mouth width and the area-based nectar-guide mask.
+The caption adds the retained ratios, lobe incision, reproductive-organ length and
+field sexual phase. No spot count, guide colour, chromatic contrast or guide-reach
+value is displayed because those quantities are not part of the publication pipeline.
 
-Writes results_shimask_all/measure_cards/<sheet>.png and a single annotated key
-results_shimask_all/measure_cards/_methods_key.png.
+Writes ``results_shimask_all/measure_cards/<sheet>.png`` and
+``measure_cards/_methods_key.png``.
 """
 from __future__ import annotations
 
@@ -32,45 +26,78 @@ import matplotlib.pyplot as plt  # noqa: E402
 import measure_guides as base
 import shimask_input
 import remeasure_medial as rm
-import pollination_traits as pt
+import guide_traits as gt
 from run_all_shimask_confirmed import find_raw
 
-MM = float(base.MM_PX)
 OUT = Path("results_shimask_all/measure_cards")
-COL = {"len": "#f0a020", "wid": "#2878ff", "throat": "#12b5c9",
-       "mouth": "#0d8a6a", "guide": "#c93cc9"}
+COLOUR = {
+    "length": "#f0a020",
+    "width": "#2878ff",
+    "throat": "#12b5c9",
+    "mouth": "#0d8a6a",
+    "guide": "#c93cc9",
+}
 
 
-def master_by_gid() -> dict:
-    m = {}
-    p = Path("results_shimask_all/corolla_master.csv")
-    if p.exists():
-        for r in csv.DictReader(p.open(encoding="utf-8-sig")):
-            m[int(r["collar"])] = r
-    return m
+def master_by_global_id() -> dict:
+    master = {}
+    path = Path("results_shimask_all/corolla_master.csv")
+    if path.exists():
+        for row in csv.DictReader(path.open(encoding="utf-8-sig")):
+            master[int(row["collar"])] = row
+    return master
 
 
-def gid_lookup() -> dict:
-    g = {}
-    for r in csv.DictReader(Path("results_shimask_all/global_index.csv").open(encoding="utf-8-sig")):
-        g[(r["sheet"], r["sheet_corolla_id"])] = int(r["global_id"])
-    return g
+def global_id_lookup() -> dict:
+    lookup = {}
+    path = Path("results_shimask_all/global_index.csv")
+    for row in csv.DictReader(path.open(encoding="utf-8-sig")):
+        lookup[(row["sheet"], row["sheet_corolla_id"])] = int(row["global_id"])
+    return lookup
 
 
 def upright_pair(mask_local, raw_crop, angle):
-    """Rotate mask and its raw crop to upright; return cropped (mask, raw, bbox0)."""
-    h, w = mask_local.shape
-    cx, cy = w / 2.0, h / 2.0
-    pad = int(max(h, w))
-    M = cv2.getRotationMatrix2D((cx + pad, cy + pad), angle - 90.0, 1.0)
-    bm = cv2.copyMakeBorder(mask_local, pad, pad, pad, pad, cv2.BORDER_CONSTANT, 0)
-    br = cv2.copyMakeBorder(raw_crop, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=(255, 255, 255))
-    rm_ = cv2.warpAffine(bm, M, (bm.shape[1], bm.shape[0]), flags=cv2.INTER_NEAREST)
-    rr = cv2.warpAffine(br, M, (br.shape[1], br.shape[0]), flags=cv2.INTER_LINEAR,
-                        borderValue=(255, 255, 255))
-    ys, xs = np.where(rm_ > 0)
+    """Rotate a mask and matching raw crop to the mounted base-up orientation."""
+    height, width = mask_local.shape
+    centre_x, centre_y = width / 2.0, height / 2.0
+    pad = int(max(height, width))
+    transform = cv2.getRotationMatrix2D(
+        (centre_x + pad, centre_y + pad), angle - 90.0, 1.0
+    )
+    mask_big = cv2.copyMakeBorder(
+        mask_local, pad, pad, pad, pad, cv2.BORDER_CONSTANT, 0
+    )
+    raw_big = cv2.copyMakeBorder(
+        raw_crop,
+        pad,
+        pad,
+        pad,
+        pad,
+        cv2.BORDER_CONSTANT,
+        value=(255, 255, 255),
+    )
+    mask_rotated = cv2.warpAffine(
+        mask_big,
+        transform,
+        (mask_big.shape[1], mask_big.shape[0]),
+        flags=cv2.INTER_NEAREST,
+    )
+    raw_rotated = cv2.warpAffine(
+        raw_big,
+        transform,
+        (raw_big.shape[1], raw_big.shape[0]),
+        flags=cv2.INTER_LINEAR,
+        borderValue=(255, 255, 255),
+    )
+    ys, xs = np.where(mask_rotated > 0)
     y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
-    return rm_[y0:y1, x0:x1], rr[y0:y1, x0:x1], M, (x0, y0), pad
+    return (
+        mask_rotated[y0:y1, x0:x1],
+        raw_rotated[y0:y1, x0:x1],
+        transform,
+        (x0, y0),
+        pad,
+    )
 
 
 def row_extent(mask, y):
@@ -78,118 +105,204 @@ def row_extent(mask, y):
     return (xs.min(), xs.max()) if xs.size else (None, None)
 
 
-def draw_card(ax, raw, comps, sheet, cid, gid, meta):
-    # locate the piece for this cid (handles a/b split ids)
-    base_id = cid.rstrip("ab")
-    comp = comps[int(base_id) - 1]
-    parts = rm.split_merged_pair(comp["mask"].astype(np.uint8))
+def draw_card(axis, raw, components, sheet, corolla_id, global_id, metadata):
+    base_id = corolla_id.rstrip("ab")
+    component = components[int(base_id) - 1]
+    parts = rm.split_merged_pair(component["mask"].astype(np.uint8))
     suffixes = [""] if len(parts) == 1 else ["a", "b"]
-    piece = parts[suffixes.index(cid[len(base_id):] or "")]
+    piece = parts[suffixes.index(corolla_id[len(base_id):] or "")]
     ys, xs = np.where(piece)
     y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
     raw_crop = raw[y0:y1, x0:x1].copy()
-    trimmed = (sheet, cid) in rm.TRIM_TO_PETAL
+    trimmed = (sheet, corolla_id) in rm.TRIM_TO_PETAL
     mask_local = rm.crop_to_petal(raw, piece) if trimmed else rm.crop_to_mask(piece)
     solid, _ = rm._solid_roi((mask_local > 0).astype(np.uint8))
-    m = rm.medial_axis(mask_local)
-    angle = float(m["angle_deg"])
+    measured = rm.medial_axis(mask_local)
+    angle = float(measured["angle_deg"])
 
-    umask, uraw, M, off, pad = upright_pair(solid, raw_crop, angle)
-    H, W = umask.shape
-    prof = np.array([(umask[y] > 0).sum() for y in range(H)], float)
+    upright_mask, upright_raw, transform, offset, pad = upright_pair(
+        solid, raw_crop, angle
+    )
+    height, width = upright_mask.shape
+    profile = np.array([(upright_mask[y] > 0).sum() for y in range(height)], float)
 
-    ax.imshow(cv2.cvtColor(uraw, cv2.COLOR_BGR2RGB))
-    cont, _ = cv2.findContours(umask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    for c in cont:
-        ax.plot(c[:, 0, 0], c[:, 0, 1], color="#2ca02c", lw=1.2)
+    axis.imshow(cv2.cvtColor(upright_raw, cv2.COLOR_BGR2RGB))
+    contours, _ = cv2.findContours(
+        upright_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    for contour in contours:
+        axis.plot(contour[:, 0, 0], contour[:, 0, 1], color="#2ca02c", lw=1.2)
 
-    def band_row(lo, hi):
-        seg = range(int(lo * H), max(int(lo * H) + 1, int(hi * H)))
-        widths = [(umask[y] > 0).sum() for y in seg]
-        yy = list(seg)[int(np.argmin([abs(w - np.median(widths)) for w in widths]))]
-        return yy
+    def representative_band_row(lower, upper):
+        rows = list(range(int(lower * height), max(int(lower * height) + 1, int(upper * height))))
+        widths = [(upright_mask[y] > 0).sum() for y in rows]
+        return rows[int(np.argmin([abs(value - np.median(widths)) for value in widths]))]
 
-    # length (base->tip) at the tube-base-centre column
-    top_xs = np.where(umask[:max(2, int(0.06 * H))].sum(0) > 0)[0]
-    xc = float(top_xs.mean()) if top_xs.size else W / 2
-    ax.annotate("", xy=(xc, H - 2), xytext=(xc, 1),
-                arrowprops=dict(arrowstyle="<->", color=COL["len"], lw=1.8))
-    # width (widest row)
-    yw = int(np.argmax(prof))
-    a, b = row_extent(umask, yw)
-    ax.plot([a, b], [yw, yw], color=COL["wid"], lw=2.2)
-    # throat (proximal band 4-16%) and mouth (distal band 72-88%)
-    for lo, hi, key in ((0.04, 0.16, "throat"), (0.72, 0.88, "mouth")):
-        yy = band_row(lo, hi)
-        a, b = row_extent(umask, yy)
-        if a is not None:
-            ax.plot([a, b], [yy, yy], color=COL[key], lw=2.0)
-    # nectar-guide spots
-    spot, (bx0, by0), _c, _s = pt.guide_and_color(raw, piece)
-    if int(spot.sum()) > 0:
-        gloc = np.zeros_like(mask_local)
-        gy, gx = np.where(spot)
-        yy, xx = gy + (by0 - y0), gx + (bx0 - x0)
-        ok = (yy >= 0) & (yy < gloc.shape[0]) & (xx >= 0) & (xx < gloc.shape[1])
-        gloc[yy[ok], xx[ok]] = 1
-        bg = cv2.copyMakeBorder(gloc, pad, pad, pad, pad, cv2.BORDER_CONSTANT, 0)
-        gr = cv2.warpAffine(bg, M, (bg.shape[1], bg.shape[0]), flags=cv2.INTER_NEAREST)
-        gr = gr[off[1]:off[1] + H, off[0]:off[0] + W]
-        yy, xx = np.where(gr > 0)
-        ax.scatter(xx, yy, s=1.2, color=COL["guide"], alpha=0.5, linewidths=0)
+    top_columns = np.where(
+        upright_mask[:max(2, int(0.06 * height))].sum(0) > 0
+    )[0]
+    centre_x = float(top_columns.mean()) if top_columns.size else width / 2
+    axis.annotate(
+        "",
+        xy=(centre_x, height - 2),
+        xytext=(centre_x, 1),
+        arrowprops=dict(arrowstyle="<->", color=COLOUR["length"], lw=1.8),
+    )
 
-    ax.set_xlim(-6, W + 6)
-    ax.set_ylim(H + 6, -6)
-    ax.axis("off")
-    status = {"s": "male", "p": "female", "na": "-"}.get(meta.get("status", ""), "?")
-    title = f"#{gid}  ({sheet} C{cid})  [{status}]"
-    ax.set_title(title, fontsize=8, fontweight="bold", pad=3)
-    cap = (f"L {meta.get('corolla_length_mm','')}  W {meta.get('corolla_width_obs_mm','')} mm\n"
-           f"throat {meta.get('throat_width_mm','')}  mouth {meta.get('mouth_width_mm','')}\n"
-           f"aspect {meta.get('corolla_aspect_L_W','')}  lobe {meta.get('lobe_incision_mm','')}\n"
-           f"guide {meta.get('guide_coverage_pct','')}%  reach {meta.get('guide_reach_frac','')}\n"
-           f"organ {meta.get('organ_length_mm','')}  style/cor {meta.get('style_corolla_ratio','')}")
-    ax.text(0.5, -0.02, cap, transform=ax.transAxes, ha="center", va="top",
-            fontsize=6.6, family="DejaVu Sans", color="#222")
+    widest_row = int(np.argmax(profile))
+    left, right = row_extent(upright_mask, widest_row)
+    axis.plot([left, right], [widest_row, widest_row], color=COLOUR["width"], lw=2.2)
+
+    for lower, upper, key in (
+        (0.04, 0.16, "throat"),
+        (0.72, 0.88, "mouth"),
+    ):
+        y = representative_band_row(lower, upper)
+        left, right = row_extent(upright_mask, y)
+        if left is not None:
+            axis.plot([left, right], [y, y], color=COLOUR[key], lw=2.0)
+
+    guide, (guide_x0, guide_y0), _roi_pixels = gt.guide_mask(raw, piece)
+    if int(guide.sum()) > 0:
+        local_guide = np.zeros_like(mask_local)
+        gy, gx = np.where(guide)
+        yy, xx = gy + (guide_y0 - y0), gx + (guide_x0 - x0)
+        valid = (
+            (yy >= 0) & (yy < local_guide.shape[0]) &
+            (xx >= 0) & (xx < local_guide.shape[1])
+        )
+        local_guide[yy[valid], xx[valid]] = 1
+        guide_big = cv2.copyMakeBorder(
+            local_guide, pad, pad, pad, pad, cv2.BORDER_CONSTANT, 0
+        )
+        guide_rotated = cv2.warpAffine(
+            guide_big,
+            transform,
+            (guide_big.shape[1], guide_big.shape[0]),
+            flags=cv2.INTER_NEAREST,
+        )
+        guide_rotated = guide_rotated[
+            offset[1]:offset[1] + height,
+            offset[0]:offset[0] + width,
+        ]
+        guide_y, guide_x = np.where(guide_rotated > 0)
+        axis.scatter(
+            guide_x,
+            guide_y,
+            s=1.2,
+            color=COLOUR["guide"],
+            alpha=0.5,
+            linewidths=0,
+        )
+
+    axis.set_xlim(-6, width + 6)
+    axis.set_ylim(height + 6, -6)
+    axis.axis("off")
+    phase = {"s": "male", "p": "female", "na": "-"}.get(
+        metadata.get("status", ""), "?"
+    )
+    axis.set_title(
+        f"#{global_id}  ({sheet} C{corolla_id})  [{phase}]",
+        fontsize=8,
+        fontweight="bold",
+        pad=3,
+    )
+    caption = (
+        f"L {metadata.get('corolla_length_mm', '')}  "
+        f"W {metadata.get('corolla_width_fulleq_mm', '')} mm\n"
+        f"throat {metadata.get('throat_width_mm', '')}  "
+        f"mouth {metadata.get('mouth_width_mm', '')}\n"
+        f"aspect {metadata.get('corolla_aspect_L_W', '')}  "
+        f"lobe {metadata.get('lobe_incision_mm', '')}\n"
+        f"guide coverage {metadata.get('guide_coverage_pct', '')}%\n"
+        f"organ {metadata.get('organ_length_mm', '')}  "
+        f"organ/cor {metadata.get('organ_corolla_ratio', '')}"
+    )
+    axis.text(
+        0.5,
+        -0.02,
+        caption,
+        transform=axis.transAxes,
+        ha="center",
+        va="top",
+        fontsize=6.6,
+        family="DejaVu Sans",
+        color="#222",
+    )
 
 
-def sheet_cards(sheet, master, glookup):
+def sheet_cards(sheet, master, global_lookup):
     _, raw_path = find_raw(sheet, Path("shimahotarubukuro"))
     raw = base.load_bgr(str(raw_path))
     ann = base.load_bgr(str(Path("shimask") / (sheet + ".jpg")))
     strokes = shimask_input.stroke_masks(raw, ann)
-    comps = shimask_input.red_corolla_components(raw, ann, strokes=strokes)
+    components = shimask_input.red_corolla_components(raw, ann, strokes=strokes)
     ids = []
-    for cid0, comp in enumerate(comps):
-        parts = rm.split_merged_pair(comp["mask"].astype(np.uint8))
-        sufs = [""] if len(parts) == 1 else ["a", "b"]
-        ids += [f"{cid0 + 1}{s}" for s in sufs]
+    for index, component in enumerate(components):
+        parts = rm.split_merged_pair(component["mask"].astype(np.uint8))
+        suffixes = [""] if len(parts) == 1 else ["a", "b"]
+        ids += [f"{index + 1}{suffix}" for suffix in suffixes]
 
-    n = len(ids)
-    ncol = min(5, n)
-    nrow = math.ceil(n / ncol)
-    fig, axes = plt.subplots(nrow, ncol, figsize=(ncol * 2.5, nrow * 3.1 + 0.5))
+    n_columns = min(5, len(ids))
+    n_rows = math.ceil(len(ids) / n_columns)
+    fig, axes = plt.subplots(
+        n_rows, n_columns, figsize=(n_columns * 2.5, n_rows * 3.1 + 0.5)
+    )
     axes = np.atleast_1d(axes).ravel()
-    for ax in axes:
-        ax.axis("off")
-    for k, cid in enumerate(ids):
-        gid = glookup[(sheet, cid)]
-        draw_card(axes[k], raw, comps, sheet, cid, gid, master.get(gid, {}))
-    lo = min(glookup[(sheet, c)] for c in ids)
-    hi = max(glookup[(sheet, c)] for c in ids)
-    fig.suptitle(f"{sheet}  -  per-flower measurement cards  (#{lo}-{hi})",
-                 fontsize=12, fontweight="bold", y=0.998)
-    handles = [plt.Line2D([0], [0], color=COL["len"], lw=2.4, label="corolla length (base->tip)"),
-               plt.Line2D([0], [0], color=COL["wid"], lw=2.4, label="corolla width (widest)"),
-               plt.Line2D([0], [0], color=COL["throat"], lw=2.4, label="throat width (proximal)"),
-               plt.Line2D([0], [0], color=COL["mouth"], lw=2.4, label="mouth width (distal)"),
-               plt.Line2D([0], [0], marker="o", color="none", markerfacecolor=COL["guide"],
-                          markersize=7, label="nectar-guide spots")]
-    fig.legend(handles=handles, loc="lower center", ncol=5, frameon=False, fontsize=8.5,
-               bbox_to_anchor=(0.5, 0.0))
-    fig.text(0.5, 0.028, "Widths are full-flower-equivalent (folded x2); caption also lists lobe incision, "
-             "aspect, guide reach/coverage, organ length, style/corolla ratio, and [sex phase].",
-             ha="center", fontsize=7.2, color="#666")
+    for axis in axes:
+        axis.axis("off")
+    for index, corolla_id in enumerate(ids):
+        global_id = global_lookup[(sheet, corolla_id)]
+        draw_card(
+            axes[index],
+            raw,
+            components,
+            sheet,
+            corolla_id,
+            global_id,
+            master.get(global_id, {}),
+        )
+
+    lower = min(global_lookup[(sheet, corolla_id)] for corolla_id in ids)
+    upper = max(global_lookup[(sheet, corolla_id)] for corolla_id in ids)
+    fig.suptitle(
+        f"{sheet}  -  per-flower measurement cards  (#{lower}-{upper})",
+        fontsize=12,
+        fontweight="bold",
+        y=0.998,
+    )
+    handles = [
+        plt.Line2D([0], [0], color=COLOUR["length"], lw=2.4, label="corolla length"),
+        plt.Line2D([0], [0], color=COLOUR["width"], lw=2.4, label="full-eq width"),
+        plt.Line2D([0], [0], color=COLOUR["throat"], lw=2.4, label="throat width"),
+        plt.Line2D([0], [0], color=COLOUR["mouth"], lw=2.4, label="mouth width"),
+        plt.Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="none",
+            markerfacecolor=COLOUR["guide"],
+            markersize=7,
+            label="guide area",
+        ),
+    ]
+    fig.legend(
+        handles=handles,
+        loc="lower center",
+        ncol=5,
+        frameon=False,
+        fontsize=8.5,
+        bbox_to_anchor=(0.5, 0.0),
+    )
+    fig.text(
+        0.5,
+        0.028,
+        "Transverse widths are full-flower-equivalent for folded flowers (x2). "
+        "Captions list only retained publication traits and field phase.",
+        ha="center",
+        fontsize=7.2,
+        color="#666",
+    )
     fig.tight_layout(rect=(0, 0.05, 1, 0.98))
     OUT.mkdir(parents=True, exist_ok=True)
     out = OUT / f"{sheet}.png"
@@ -198,51 +311,120 @@ def sheet_cards(sheet, master, glookup):
     return out
 
 
-DEFS = [
-    ("corolla length", COL["len"], "Longer side of the minimum-area box round the ROI "
-     "(base->tip; upright-mounted). mm."),
-    ("corolla width", COL["wid"], "Shorter box side = widest cross-section. Folded flowers x2 "
-     "for a full-flower-equivalent width. mm."),
-    ("throat width", COL["throat"], "Median ROI width in the proximal 4-16% band (tube region); "
-     "a corolla-entrance proxy. Full-eq. mm."),
-    ("mouth width", COL["mouth"], "Median ROI width in the distal 72-88% band (rim below the "
-     "lobe tips); the other CE proxy. Full-eq. mm."),
-    ("nectar-guide spots", COL["guide"], "Purple pixels inside the ROI ((r-g)>18 etc.). Give "
-     "coverage %, spot count, reach along length, CIELab contrast."),
-    ("lobe incision", "#a0620a", "Depth of the scalloped distal margin (98th-15th percentile of "
-     "the tip-most edge over the distal half). mm."),
-    ("corolla aspect", "#555", "length / full-eq width. Tube flare = width / throat."),
-    ("reproductive organ", "#d02020", "Reviewer's green stroke measured end to end (chord). Style/"
-     "corolla = organ length / corolla length. Field phase s=male, p=female."),
+DEFINITIONS = [
+    (
+        "corolla length",
+        COLOUR["length"],
+        "Base-to-tip side of the minimum-area oriented box around the reviewed ROI (mm).",
+    ),
+    (
+        "corolla width",
+        COLOUR["width"],
+        "Transverse box side; folded flowers are multiplied by two for a full-flower-equivalent width (mm).",
+    ),
+    (
+        "throat width",
+        COLOUR["throat"],
+        "Median flattened ROI width in the proximal 4-16% band; a 2-D entrance proxy (mm).",
+    ),
+    (
+        "mouth width",
+        COLOUR["mouth"],
+        "Median flattened ROI width in the distal 72-88% band below the lobe tips (mm).",
+    ),
+    (
+        "nectar-guide coverage",
+        COLOUR["guide"],
+        "Area fraction of the reviewed ROI classified as purple/magenta guide pixels (%). No spot count or colour value is reported.",
+    ),
+    (
+        "lobe incision",
+        "#a0620a",
+        "Depth of the scalloped distal margin from the tip-edge distribution (mm).",
+    ),
+    (
+        "shape ratios",
+        "#555",
+        "Corolla aspect = length/full-equivalent width; tube flare = width/throat.",
+    ),
+    (
+        "reproductive organ",
+        "#d02020",
+        "Reviewer's green trace measured end to end; organ/corolla = organ length / corolla length. Field phase s=male, p=female.",
+    ),
 ]
 
 
-def make_methods_key(master, glookup):
+def make_methods_key(master, global_lookup):
     fig = plt.figure(figsize=(12.5, 6.2))
-    gs = fig.add_gridspec(1, 2, width_ratios=[1, 1.5], wspace=0.05, left=0.02, right=0.98,
-                          top=0.9, bottom=0.05)
-    sheet, cid = "oshima1", "1"
+    grid = fig.add_gridspec(
+        1,
+        2,
+        width_ratios=[1, 1.5],
+        wspace=0.05,
+        left=0.02,
+        right=0.98,
+        top=0.9,
+        bottom=0.05,
+    )
+    sheet, corolla_id = "oshima1", "1"
     _, raw_path = find_raw(sheet, Path("shimahotarubukuro"))
     raw = base.load_bgr(str(raw_path))
     ann = base.load_bgr(str(Path("shimask") / (sheet + ".jpg")))
-    comps = shimask_input.red_corolla_components(
-        raw, ann, strokes=shimask_input.stroke_masks(raw, ann))
-    axf = fig.add_subplot(gs[0, 0])
-    draw_card(axf, raw, comps, sheet, cid, glookup[(sheet, cid)], master.get(1, {}))
+    components = shimask_input.red_corolla_components(
+        raw, ann, strokes=shimask_input.stroke_masks(raw, ann)
+    )
+    flower_axis = fig.add_subplot(grid[0, 0])
+    draw_card(
+        flower_axis,
+        raw,
+        components,
+        sheet,
+        corolla_id,
+        global_lookup[(sheet, corolla_id)],
+        master.get(1, {}),
+    )
 
-    axt = fig.add_subplot(gs[0, 1])
-    axt.axis("off")
+    text_axis = fig.add_subplot(grid[0, 1])
+    text_axis.axis("off")
     y = 0.98
-    for name, col, desc in DEFS:
-        axt.plot([0.0, 0.045], [y, y], color=col, lw=3.2, transform=axt.transAxes,
-                 clip_on=False)
-        axt.text(0.065, y, name, transform=axt.transAxes, fontsize=10.5, fontweight="bold",
-                 va="center", color="#111")
-        axt.text(0.065, y - 0.045, desc, transform=axt.transAxes, fontsize=8.6, va="top",
-                 color="#333", wrap=True)
+    for name, colour, description in DEFINITIONS:
+        text_axis.plot(
+            [0.0, 0.045],
+            [y, y],
+            color=colour,
+            lw=3.2,
+            transform=text_axis.transAxes,
+            clip_on=False,
+        )
+        text_axis.text(
+            0.065,
+            y,
+            name,
+            transform=text_axis.transAxes,
+            fontsize=10.5,
+            fontweight="bold",
+            va="center",
+            color="#111",
+        )
+        text_axis.text(
+            0.065,
+            y - 0.045,
+            description,
+            transform=text_axis.transAxes,
+            fontsize=8.6,
+            va="top",
+            color="#333",
+            wrap=True,
+        )
         y -= 0.125
-    fig.suptitle("How each floral trait is measured  -  Campanula microdonta",
-                 x=0.02, ha="left", fontsize=13.5, fontweight="bold")
+    fig.suptitle(
+        "How the retained floral traits are measured - Campanula microdonta",
+        x=0.02,
+        ha="left",
+        fontsize=13.5,
+        fontweight="bold",
+    )
     out = OUT / "_methods_key.png"
     OUT.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=140)
@@ -252,19 +434,26 @@ def make_methods_key(master, glookup):
 
 def main() -> None:
     import argparse
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--sheet", default=None, help="one sheet only (for testing)")
-    ap.add_argument("--key-only", action="store_true")
-    args = ap.parse_args()
-    master, glookup = master_by_gid(), gid_lookup()
-    make_methods_key(master, glookup)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--sheet", default=None, help="one sheet only (for testing)")
+    parser.add_argument("--key-only", action="store_true")
+    args = parser.parse_args()
+    master = master_by_global_id()
+    global_lookup = global_id_lookup()
+    make_methods_key(master, global_lookup)
     if args.key_only:
         return
-    sheets = ([args.sheet] if args.sheet else
-              sorted(p.stem for p in Path("shimask").iterdir()
-                     if p.suffix.lower() in (".jpg", ".jpeg", ".png")))
+    sheets = (
+        [args.sheet]
+        if args.sheet
+        else sorted(
+            p.stem for p in Path("shimask").iterdir()
+            if p.suffix.lower() in (".jpg", ".jpeg", ".png")
+        )
+    )
     for sheet in sheets:
-        out = sheet_cards(sheet, master, glookup)
+        out = sheet_cards(sheet, master, global_lookup)
         print(f"[{sheet}] wrote {out}", flush=True)
 
 

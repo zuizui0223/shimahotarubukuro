@@ -1,8 +1,8 @@
 name: reproduce-pipeline
 
-# Reproduce the floral-trait results from the committed inputs, with no local
-# dependency. Runs on demand and on pushes that touch the pipeline or its inputs,
-# and uploads the measured CSVs and figures as build artifacts.
+# Reproduce the publication measurements, global Pst and pairwise Pst from the
+# committed reviewed inputs. The workflow is read-only: generated tables and figures
+# are uploaded as artifacts and must match the tracked publication snapshots.
 on:
   workflow_dispatch:
   push:
@@ -16,6 +16,20 @@ on:
       - "shimahotarubukuro/**"
       - "requirements.txt"
       - ".github/workflows/pipeline.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "*.py"
+      - "run_pipeline.sh"
+      - "withlocation.csv"
+      - "mask.zip"
+      - "shimask/**"
+      - "shimahotarubukuro/**"
+      - "requirements.txt"
+      - ".github/workflows/pipeline.yml"
+
+permissions:
+  contents: read
 
 jobs:
   run:
@@ -30,8 +44,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run pipeline
+      - name: Run publication pipeline
         run: bash run_pipeline.sh
+      - name: Verify tracked publication tables
+        run: |
+          git diff --exit-code -- results_shimask_all/*.csv
+          test ! -e results_shimask_all/guide_divergence_stats.csv
       - name: Upload measured tables
         uses: actions/upload-artifact@v4
         with:

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Among-island divergence figure: Pst forest + latitudinal clines.
+"""Publication figures and table for the final island-divergence analysis.
 
-Panel A: Pst (plant-level) for every trait with its 95 % bootstrap CI, sorted, and
-coloured by trait group (size / reproductive / nectar-guide). Pst is a phenotypic
-surrogate for Qst - it ranks how strongly traits diverge among islands, not proof of
-selection.
-Panel B: the three most-diverged traits against latitude (one point per plant,
-coloured by island), showing the north-south cline (Oshima largest).
+Outputs:
+* ``island_divergence.png``: Pst forest for site-corrected significant traits and
+  plant-level latitude plots for the three most-diverged traits.
+* ``island_divergence_table.csv/.png``: manuscript table of significant traits.
+* ``island_pst_pairwise.png``: pairwise-Pst heatmaps for those traits plus their mean.
 
-Reads results_shimask_all/island_analysis_stats.csv and plant_means.csv.
+Pst is a phenotypic divergence surrogate used to rank traits, not evidence by itself
+for selection and not a Qst-Fst test.
 """
 from __future__ import annotations
 
@@ -28,141 +28,227 @@ from plot_island_traits import COLOUR, INK, MUTED, GRID  # noqa: E402
 
 RESULTS = Path("results_shimask_all")
 ISLANDS = ["oshima", "toshima", "niijima", "shikine", "kozu"]
-LABEL = {"oshima": "Oshima", "toshima": "Toshima", "niijima": "Niijima",
-         "shikine": "Shikinejima", "kozu": "Kozushima"}
-ICOL = {i: COLOUR[LABEL[i]] for i in ISLANDS}
-
-GROUP = {  # trait key -> group
-    **{k: "size" for k in ["corolla_length_mm", "corolla_width_fulleq_mm", "corolla_area_fulleq_mm2",
-                           "throat_width_mm", "mouth_width_mm", "corolla_aspect_L_W",
-                           "tube_flare_W_throat", "lobe_incision_mm"]},
-    **{k: "repro" for k in ["style_length_mm", "style_corolla_ratio"]},
-    **{k: "guide" for k in ["guide_coverage_pct", "guide_basal_frac", "guide_midline_ratio"]},
+LABEL = {
+    "oshima": "Oshima",
+    "toshima": "Toshima",
+    "niijima": "Niijima",
+    "shikine": "Shikinejima",
+    "kozu": "Kozushima",
 }
-GCOL = {"size": "#2878ff", "repro": "#d1495b", "guide": "#7B2D8E"}
-GNAME = {"size": "corolla size/shape", "repro": "reproductive organ", "guide": "nectar guide"}
+ISLAND_COLOUR = {key: COLOUR[value] for key, value in LABEL.items()}
+
+GROUP = {
+    **{
+        key: "size"
+        for key in [
+            "corolla_length_mm",
+            "corolla_width_fulleq_mm",
+            "corolla_area_fulleq_mm2",
+            "throat_width_mm",
+            "mouth_width_mm",
+            "corolla_aspect_L_W",
+            "tube_flare_W_throat",
+            "lobe_incision_mm",
+        ]
+    },
+    **{key: "repro" for key in ["organ_length_mm", "organ_corolla_ratio"]},
+    **{
+        key: "guide"
+        for key in ["guide_coverage_pct", "guide_basal_frac", "guide_midline_ratio"]
+    },
+}
+GROUP_COLOUR = {"size": "#2878ff", "repro": "#d1495b", "guide": "#7B2D8E"}
+GROUP_NAME = {
+    "size": "corolla size/shape",
+    "repro": "reproductive organ",
+    "guide": "nectar guide",
+}
+
+UNIT = {
+    "reproductive-organ length": "mm",
+    "mouth width": "mm",
+    "corolla area": "mm2",
+    "corolla length": "mm",
+    "corolla width": "mm",
+    "guide coverage": "%",
+    "throat width": "mm",
+}
+ISLAND_LABELS = ["Oshima", "Toshima", "Niijima", "Shikinejima", "Kozushima"]
+ISLAND_MEAN_KEYS = [
+    "mean_oshima",
+    "mean_toshima",
+    "mean_niijima",
+    "mean_shikine",
+    "mean_kozu",
+]
 
 
-UNIT = {"organ/style length": "mm", "mouth width": "mm", "corolla area": "mm2",
-        "corolla length": "mm", "corolla width": "mm", "guide coverage": "%",
-        "throat width": "mm"}
-ILAB = ["Oshima", "Toshima", "Niijima", "Shikinejima", "Kozushima"]
-IKEY = ["mean_oshima", "mean_toshima", "mean_niijima", "mean_shikine", "mean_kozu"]
+def significant_traits(statistics):
+    return [
+        row for row in statistics
+        if row.get("site_p_adj", "") not in ("", None)
+        and float(row["site_p_adj"]) < 0.05
+    ]
 
 
-def make_table(stat_all):
-    """Paper Table 1: the significantly-diverged traits, as a CSV and a rendered PNG."""
-    sig = [r for r in stat_all if r.get("site_p_adj", "") not in ("", None)
-           and float(r["site_p_adj"]) < 0.05]
-    sig.sort(key=lambda r: -float(r["pst"]))
+def make_table(statistics):
+    """Write the manuscript table of site-corrected significant traits."""
+    significant = significant_traits(statistics)
+    significant.sort(key=lambda row: -float(row["pst"]))
 
-    # CSV
-    fields = ["trait", "unit", "pst", "pst_ci", "site_p_adj", "lat_rho"] + ILAB
-    with (RESULTS / "island_divergence_table.csv").open("w", newline="", encoding="utf-8-sig") as fh:
-        w = csv.writer(fh)
-        w.writerow(fields)
-        for r in sig:
-            w.writerow([r["trait"], UNIT.get(r["trait"], ""), r["pst"],
-                        f"{r['pst_lo']}-{r['pst_hi']}", r["site_p_adj"], r["lat_rho"]]
-                       + [r[k] for k in IKEY])
-    print(f"wrote {RESULTS/'island_divergence_table.csv'}")
+    fields = ["trait", "unit", "pst", "pst_ci", "site_p_adj", "lat_rho"] + ISLAND_LABELS
+    with (RESULTS / "island_divergence_table.csv").open(
+        "w", newline="", encoding="utf-8-sig"
+    ) as fh:
+        writer = csv.writer(fh)
+        writer.writerow(fields)
+        for row in significant:
+            writer.writerow([
+                row["trait"],
+                UNIT.get(row["trait"], ""),
+                row["pst"],
+                f"{row['pst_lo']}-{row['pst_hi']}",
+                row["site_p_adj"],
+                row["lat_rho"],
+            ] + [row[key] for key in ISLAND_MEAN_KEYS])
+    print(f"wrote {RESULTS / 'island_divergence_table.csv'}")
 
-    # rendered PNG
-    header = ["Trait (unit)", "Pst", "95% CI", "p (site-corr.)", "lat rho"] + ILAB
+    header = ["Trait (unit)", "Pst", "95% CI", "p (site-corr.)", "lat rho"] + ISLAND_LABELS
     cells, colours = [], []
-    for r in sig:
-        cells.append([f"{r['trait']} ({UNIT.get(r['trait'],'')})", r["pst"],
-                      f"{r['pst_lo']}-{r['pst_hi']}", f"{float(r['site_p_adj']):.1e}",
-                      f"{float(r['lat_rho']):+.2f}"] + [r[k] for k in IKEY])
-        g = GROUP[r["key"]]
-        colours.append(GCOL.get(g if g in GCOL else "size", "#2878ff"))
+    for row in significant:
+        cells.append([
+            f"{row['trait']} ({UNIT.get(row['trait'], '')})",
+            row["pst"],
+            f"{row['pst_lo']}-{row['pst_hi']}",
+            f"{float(row['site_p_adj']):.1e}",
+            f"{float(row['lat_rho']):+.2f}",
+        ] + [row[key] for key in ISLAND_MEAN_KEYS])
+        colours.append(GROUP_COLOUR[GROUP[row["key"]]])
 
-    fig, ax = plt.subplots(figsize=(12.4, 0.52 * (len(sig) + 1) + 0.8))
+    fig, ax = plt.subplots(figsize=(12.4, 0.52 * (len(significant) + 1) + 0.8))
     ax.axis("off")
-    tbl = ax.table(cellText=cells, colLabels=header, loc="center", cellLoc="center")
-    tbl.auto_set_font_size(False)
-    tbl.set_fontsize(9)
-    tbl.scale(1, 1.5)
-    ncol = len(header)
-    widths = [0.185, 0.058, 0.10, 0.10, 0.072] + [0.097] * 5  # wide trait column
-    for (row, col), cell in tbl.get_celld().items():
-        cell.set_width(widths[col])
+    table = ax.table(cellText=cells, colLabels=header, loc="center", cellLoc="center")
+    table.auto_set_font_size(False)
+    table.set_fontsize(9)
+    table.scale(1, 1.5)
+    n_columns = len(header)
+    widths = [0.185, 0.058, 0.10, 0.10, 0.072] + [0.097] * 5
+    for (row_index, column_index), cell in table.get_celld().items():
+        cell.set_width(widths[column_index])
         cell.set_edgecolor("#dddddd")
-        if row == 0:
-            cell.set_facecolor("#33324a"); cell.set_text_props(color="white", fontweight="bold")
+        if row_index == 0:
+            cell.set_facecolor("#33324a")
+            cell.set_text_props(color="white", fontweight="bold")
         else:
-            if col == 0:
-                cell.set_text_props(color=colours[row - 1], fontweight="bold", ha="left")
+            if column_index == 0:
+                cell.set_text_props(
+                    color=colours[row_index - 1], fontweight="bold", ha="left"
+                )
                 cell.PAD = 0.03
-            if col >= ncol - 5:  # island-mean columns, light shade
+            if column_index >= n_columns - 5:
                 cell.set_facecolor("#f4f4fa")
-    ax.set_title("Table 1  Floral traits that diverge significantly among Izu islands "
-                 "(site-corrected, BH p < 0.05; 125 plants)",
-                 fontsize=11.5, fontweight="bold", loc="left", pad=12)
-    ax.text(0, -0.04, "Pst = among-island divergence (phenotypic surrogate, not Qst-Fst); lat rho = Spearman "
-            "with latitude; last five columns = island means (mm, mm2 or %).",
-            transform=ax.transAxes, fontsize=7.6, color=MUTED)
+    ax.set_title(
+        "Table 1  Floral traits that diverge significantly among Izu islands "
+        "(site-corrected, BH p < 0.05; 125 plants)",
+        fontsize=11.5,
+        fontweight="bold",
+        loc="left",
+        pad=12,
+    )
+    ax.text(
+        0,
+        -0.04,
+        "Pst = phenotypic among-island divergence (not Qst-Fst); lat rho = Spearman "
+        "correlation with latitude; last five columns are island means.",
+        transform=ax.transAxes,
+        fontsize=7.6,
+        color=MUTED,
+    )
     fig.savefig(RESULTS / "island_divergence_table.png", dpi=160, bbox_inches="tight")
     plt.close(fig)
-    print(f"wrote {RESULTS/'island_divergence_table.png'}")
+    print(f"wrote {RESULTS / 'island_divergence_table.png'}")
 
 
-def make_pairwise(stat_all):
-    """Grid of pairwise-Pst heatmaps for the significantly-diverged traits (+ mean)."""
+def make_pairwise(statistics):
+    """Plot pairwise Pst for each significant trait and their mean."""
     from matplotlib.colors import LinearSegmentedColormap
-    pw = list(csv.DictReader((RESULTS / "island_pst_pairwise.csv").open(encoding="utf-8-sig")))
-    sig = [r for r in stat_all if r.get("site_p_adj", "") not in ("", None)
-           and float(r["site_p_adj"]) < 0.05]
-    sig.sort(key=lambda r: -float(r["pst"]))
-    order = ["Oshima", "Toshima", "Niijima", "Shikinejima", "Kozushima"]
+
+    pairwise = list(
+        csv.DictReader((RESULTS / "island_pst_pairwise.csv").open(encoding="utf-8-sig"))
+    )
+    significant = significant_traits(statistics)
+    significant.sort(key=lambda row: -float(row["pst"]))
+    order = ISLAND_LABELS
     short = ["Osh", "Tos", "Nii", "Shi", "Koz"]
-    idx = {n: i for i, n in enumerate(order)}
+    index = {name: i for i, name in enumerate(order)}
 
     def matrix(key):
-        m = np.full((5, 5), np.nan)
-        for r in pw:
-            if r["key"] == key and r["pst"] != "":
-                i, j = idx[r["island_a"]], idx[r["island_b"]]
-                m[max(i, j), min(i, j)] = float(r["pst"])  # lower triangle
-        return m
+        values = np.full((5, 5), np.nan)
+        for row in pairwise:
+            if row["key"] == key and row["pst"] != "":
+                i, j = index[row["island_a"]], index[row["island_b"]]
+                values[max(i, j), min(i, j)] = float(row["pst"])
+        return values
 
-    mats = [(r["trait"], matrix(r["key"])) for r in sig]
+    matrices = [(row["trait"], matrix(row["key"])) for row in significant]
     with np.errstate(invalid="ignore"), warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
-        mean_m = np.nanmean(np.dstack([m for _, m in mats]), axis=2)
-    panels = mats + [("MEAN (7 traits)", mean_m)]
-    vmax = max(np.nanmax(m) for _, m in panels)
-    cmap = LinearSegmentedColormap.from_list("pst", ["#f7f4fb", "#c9a5d6", "#7B2D8E", "#2a0a33"])
-    cmap.set_bad("white")
+        mean_matrix = np.nanmean(np.dstack([values for _name, values in matrices]), axis=2)
+    panels = matrices + [(f"MEAN ({len(matrices)} traits)", mean_matrix)]
+    maximum = max(np.nanmax(values) for _name, values in panels)
+    colour_map = LinearSegmentedColormap.from_list(
+        "pst", ["#f7f4fb", "#c9a5d6", "#7B2D8E", "#2a0a33"]
+    )
+    colour_map.set_bad("white")
 
-    ncol = 4
-    nrow = int(np.ceil(len(panels) / ncol))
-    fig, axes = plt.subplots(nrow, ncol, figsize=(3.05 * ncol, 3.0 * nrow))
+    n_columns = 4
+    n_rows = int(np.ceil(len(panels) / n_columns))
+    fig, axes = plt.subplots(n_rows, n_columns, figsize=(3.05 * n_columns, 3.0 * n_rows))
     axes = np.atleast_1d(axes).ravel()
-    for ax in axes:
-        ax.axis("off")
-    im = None
-    for ax, (name, m) in zip(axes, panels):
-        ax.axis("on")
-        im = ax.imshow(m, cmap=cmap, vmin=0, vmax=vmax)
+    for axis in axes:
+        axis.axis("off")
+    image = None
+    for axis, (name, values) in zip(axes, panels):
+        axis.axis("on")
+        image = axis.imshow(values, cmap=colour_map, vmin=0, vmax=maximum)
         for i in range(5):
             for j in range(5):
-                if not np.isnan(m[i, j]):
-                    ax.text(j, i, f"{m[i, j]:.2f}", ha="center", va="center", fontsize=7.5,
-                            color="white" if m[i, j] > vmax * 0.55 else INK)
-        ax.set_xticks(range(5)); ax.set_yticks(range(5))
-        ax.set_xticklabels(short, fontsize=7.5); ax.set_yticklabels(short, fontsize=7.5)
-        ax.set_title(name, fontsize=9.5, fontweight="bold", pad=4)
-        for s in ("top", "right", "left", "bottom"):
-            ax.spines[s].set_visible(False)
-        ax.tick_params(length=0)
-    fig.suptitle("Pairwise Pst between islands (per significant trait; islands ordered N->S)",
-                 fontsize=12.5, fontweight="bold", x=0.02, ha="left")
-    cb = fig.colorbar(im, ax=axes.tolist(), fraction=0.015, pad=0.02)
-    cb.set_label("pairwise Pst", fontsize=8)
-    fig.text(0.02, 0.005, "Each cell = Pst for that island pair alone (plant means). Higher = more "
-             "differentiated; note the N-S extremes (Oshima vs Kozushima) are largest.",
-             fontsize=7.4, color=MUTED, ha="left")
+                if not np.isnan(values[i, j]):
+                    axis.text(
+                        j,
+                        i,
+                        f"{values[i, j]:.2f}",
+                        ha="center",
+                        va="center",
+                        fontsize=7.5,
+                        color="white" if values[i, j] > maximum * 0.55 else INK,
+                    )
+        axis.set_xticks(range(5))
+        axis.set_yticks(range(5))
+        axis.set_xticklabels(short, fontsize=7.5)
+        axis.set_yticklabels(short, fontsize=7.5)
+        axis.set_title(name, fontsize=9.5, fontweight="bold", pad=4)
+        for spine in ("top", "right", "left", "bottom"):
+            axis.spines[spine].set_visible(False)
+        axis.tick_params(length=0)
+    fig.suptitle(
+        "Pairwise Pst between islands (site-corrected significant traits; N to S order)",
+        fontsize=12.5,
+        fontweight="bold",
+        x=0.02,
+        ha="left",
+    )
+    colour_bar = fig.colorbar(image, ax=axes.tolist(), fraction=0.015, pad=0.02)
+    colour_bar.set_label("pairwise Pst", fontsize=8)
+    fig.text(
+        0.02,
+        0.005,
+        "Each cell is Pst calculated from plant means for that island pair alone. "
+        "Higher values indicate stronger phenotypic differentiation.",
+        fontsize=7.4,
+        color=MUTED,
+        ha="left",
+    )
     out = RESULTS / "island_pst_pairwise.png"
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -170,93 +256,182 @@ def make_pairwise(stat_all):
 
 
 def main() -> None:
-    stat_all = list(csv.DictReader((RESULTS / "island_analysis_stats.csv").open(encoding="utf-8-sig")))
+    statistics = list(
+        csv.DictReader((RESULTS / "island_analysis_stats.csv").open(encoding="utf-8-sig"))
+    )
     plants = list(csv.DictReader((RESULTS / "plant_means.csv").open(encoding="utf-8-sig")))
-    # keep only traits that diverge significantly among islands after site correction
-    stat = [r for r in stat_all if r.get("site_p_adj", "") not in ("", None)
-            and float(r["site_p_adj"]) < 0.05]
-    stat.sort(key=lambda r: float(r["pst"]))
+    significant = significant_traits(statistics)
+    significant.sort(key=lambda row: float(row["pst"]))
 
     plt.rcParams.update({
-        "font.family": "DejaVu Sans", "font.size": 10, "text.color": INK,
-        "axes.edgecolor": MUTED, "axes.labelcolor": INK, "xtick.color": INK,
-        "ytick.color": INK, "axes.linewidth": 0.8, "figure.facecolor": "white",
+        "font.family": "DejaVu Sans",
+        "font.size": 10,
+        "text.color": INK,
+        "axes.edgecolor": MUTED,
+        "axes.labelcolor": INK,
+        "xtick.color": INK,
+        "ytick.color": INK,
+        "axes.linewidth": 0.8,
+        "figure.facecolor": "white",
         "axes.facecolor": "white",
     })
     fig = plt.figure(figsize=(13.6, 6.6))
-    gs = fig.add_gridspec(3, 2, width_ratios=[1.25, 1], wspace=0.28, hspace=0.55,
-                          left=0.16, right=0.985, top=0.9, bottom=0.09)
+    grid = fig.add_gridspec(
+        3,
+        2,
+        width_ratios=[1.25, 1],
+        wspace=0.28,
+        hspace=0.55,
+        left=0.16,
+        right=0.985,
+        top=0.9,
+        bottom=0.09,
+    )
 
-    # -- A: Pst forest --
-    axa = fig.add_subplot(gs[:, 0])
-    y = np.arange(len(stat))
-    for i, r in enumerate(stat):
-        c = GCOL[GROUP[r["key"]]]
-        lo, hi, p = float(r["pst_lo"]), float(r["pst_hi"]), float(r["pst"])
-        axa.plot([lo, hi], [i, i], color=c, lw=2.4, alpha=0.6, solid_capstyle="round")
-        axa.scatter([p], [i], s=52, color=c, edgecolor="white", linewidth=0.8, zorder=3)
-        axa.text(hi + 0.012, i, f"{p:.2f}", va="center", fontsize=8, color=MUTED)
-    axa.set_yticks(y)
-    axa.set_yticklabels([r["trait"] for r in stat], fontsize=8.8)
-    axa.set_xlim(0, max(float(r["pst_hi"]) for r in stat) * 1.12)
-    axa.set_xlabel("Pst  (among-island divergence, plant-level; 95% bootstrap CI)")
-    axa.set_title("A  Traits that diverge significantly among islands\n"
-                  "    (site-corrected mixed model, BH p < 0.05)", fontsize=10.5,
-                  fontweight="bold", loc="left", pad=8)
-    axa.xaxis.grid(True, color=GRID, lw=0.8)
-    axa.set_axisbelow(True)
-    for s in ("top", "right"):
-        axa.spines[s].set_visible(False)
-    axa.legend(handles=[Line2D([0], [0], marker="o", color="none", markerfacecolor=GCOL[g],
-                               markeredgecolor="white", markersize=9, label=GNAME[g])
-                        for g in ("size", "repro", "guide")],
-               fontsize=8, loc="lower right", frameon=False, title="trait group", title_fontsize=8.5)
+    forest = fig.add_subplot(grid[:, 0])
+    y_positions = np.arange(len(significant))
+    for index, row in enumerate(significant):
+        colour = GROUP_COLOUR[GROUP[row["key"]]]
+        lower, upper, value = float(row["pst_lo"]), float(row["pst_hi"]), float(row["pst"])
+        forest.plot(
+            [lower, upper],
+            [index, index],
+            color=colour,
+            lw=2.4,
+            alpha=0.6,
+            solid_capstyle="round",
+        )
+        forest.scatter(
+            [value], [index], s=52, color=colour, edgecolor="white", linewidth=0.8, zorder=3
+        )
+        forest.text(upper + 0.012, index, f"{value:.2f}", va="center", fontsize=8, color=MUTED)
+    forest.set_yticks(y_positions)
+    forest.set_yticklabels([row["trait"] for row in significant], fontsize=8.8)
+    forest.set_xlim(0, max(float(row["pst_hi"]) for row in significant) * 1.12)
+    forest.set_xlabel("Pst (plant-level phenotypic divergence; 95% bootstrap CI)")
+    forest.set_title(
+        "A  Traits that diverge significantly among islands\n"
+        "    (site-corrected mixed model, BH p < 0.05)",
+        fontsize=10.5,
+        fontweight="bold",
+        loc="left",
+        pad=8,
+    )
+    forest.xaxis.grid(True, color=GRID, lw=0.8)
+    forest.set_axisbelow(True)
+    for spine in ("top", "right"):
+        forest.spines[spine].set_visible(False)
+    forest.legend(
+        handles=[
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="none",
+                markerfacecolor=GROUP_COLOUR[group],
+                markeredgecolor="white",
+                markersize=9,
+                label=GROUP_NAME[group],
+            )
+            for group in ("size", "repro", "guide")
+        ],
+        fontsize=8,
+        loc="lower right",
+        frameon=False,
+        title="trait group",
+        title_fontsize=8.5,
+    )
 
-    # -- B: latitudinal clines for the 3 top-Pst traits --
-    top3 = [r["key"] for r in sorted(stat, key=lambda r: -float(r["pst"]))[:3]]
-    names = {r["key"]: r["trait"] for r in stat}
-    for row, key in enumerate(top3):
-        ax = fig.add_subplot(gs[row, 1])
-        if row == 0:
-            ax.set_title("B  Latitudinal cline (top-3 diverged traits)", fontsize=11,
-                         fontweight="bold", loc="left", pad=8)
-        xs, ys, cs = [], [], []
-        for p in plants:
-            if p[key] in ("", "nan"):
+    top_three = [
+        row["key"] for row in sorted(significant, key=lambda item: -float(item["pst"]))[:3]
+    ]
+    names = {row["key"]: row["trait"] for row in significant}
+    for plot_row, key in enumerate(top_three):
+        axis = fig.add_subplot(grid[plot_row, 1])
+        if plot_row == 0:
+            axis.set_title(
+                "B  Latitudinal cline (top-3 diverged traits)",
+                fontsize=11,
+                fontweight="bold",
+                loc="left",
+                pad=8,
+            )
+        x_values, y_values, colours = [], [], []
+        for plant in plants:
+            if plant[key] in ("", "nan"):
                 continue
-            xs.append(float(p["lat"])); ys.append(float(p[key])); cs.append(ICOL[p["island"]])
-        xs, ys = np.array(xs), np.array(ys)
-        ax.scatter(xs, ys, s=20, c=cs, edgecolor="white", linewidth=0.4, alpha=0.9, zorder=3)
-        a, b = np.polyfit(xs, ys, 1)
-        xr = np.array([xs.min(), xs.max()])
-        ax.plot(xr, a * xr + b, color=INK, lw=1.3, ls="--", zorder=2)
-        rho, _ = stats.spearmanr(xs, ys)
-        ax.text(0.03, 0.95, f"{names[key]}\nrho={rho:+.2f}", transform=ax.transAxes,
-                va="top", fontsize=8.2, color=INK)
-        ax.set_ylabel("mm" if key.endswith("mm") else ("mm2" if "area" in key else "%"),
-                      fontsize=8)
-        if row == 2:
-            ax.set_xlabel("Latitude (degN)   S <-- --> N")
-        ax.grid(True, color=GRID, lw=0.7)
-        ax.set_axisbelow(True)
-        for s in ("top", "right"):
-            ax.spines[s].set_visible(False)
-        ax.tick_params(labelsize=8)
+            x_values.append(float(plant["lat"]))
+            y_values.append(float(plant[key]))
+            colours.append(ISLAND_COLOUR[plant["island"]])
+        x_values, y_values = np.array(x_values), np.array(y_values)
+        axis.scatter(
+            x_values,
+            y_values,
+            s=20,
+            c=colours,
+            edgecolor="white",
+            linewidth=0.4,
+            alpha=0.9,
+            zorder=3,
+        )
+        slope, intercept = np.polyfit(x_values, y_values, 1)
+        x_range = np.array([x_values.min(), x_values.max()])
+        axis.plot(x_range, slope * x_range + intercept, color=INK, lw=1.3, ls="--", zorder=2)
+        rho, _ = stats.spearmanr(x_values, y_values)
+        axis.text(
+            0.03,
+            0.95,
+            f"{names[key]}\nrho={rho:+.2f}",
+            transform=axis.transAxes,
+            va="top",
+            fontsize=8.2,
+            color=INK,
+        )
+        axis.set_ylabel(
+            "mm" if key.endswith("mm") else ("mm2" if "area" in key else "%"),
+            fontsize=8,
+        )
+        if plot_row == 2:
+            axis.set_xlabel("Latitude (degN)   S <-- --> N")
+        axis.grid(True, color=GRID, lw=0.7)
+        axis.set_axisbelow(True)
+        for spine in ("top", "right"):
+            axis.spines[spine].set_visible(False)
+        axis.tick_params(labelsize=8)
 
-    fig.suptitle("Among-island divergence of floral traits - Izu-island Campanula microdonta "
-                 "(125 plants)", x=0.16, ha="left", fontsize=13, fontweight="bold")
-    fig.text(0.16, 0.02, "Plant means; island test = mixed model with site as random effect (uneven sites "
-             "corrected). Pst = Vb/(Vb+2Vw), a phenotypic surrogate, not Qst-Fst.", fontsize=7.3,
-             color=MUTED, ha="left")
-    fig.text(0.16, 0.005, "Guide colour/contrast excluded (unreliable on dried specimens); guide spatial "
-             "structure (basal / petal-midline concentration) included.", fontsize=7.3, color=MUTED, ha="left")
+    fig.suptitle(
+        "Among-island divergence of floral traits - Izu-island Campanula microdonta "
+        "(125 plants)",
+        x=0.16,
+        ha="left",
+        fontsize=13,
+        fontweight="bold",
+    )
+    fig.text(
+        0.16,
+        0.02,
+        "Plant means; island test = mixed model with site as random effect. "
+        "Pst = Vb/(Vb+2Vw), a phenotypic surrogate, not Qst-Fst.",
+        fontsize=7.3,
+        color=MUTED,
+        ha="left",
+    )
+    fig.text(
+        0.16,
+        0.005,
+        "Guide spot counts, density and dried-specimen colour values are excluded; "
+        "area coverage and colour-free spatial structure are retained.",
+        fontsize=7.3,
+        color=MUTED,
+        ha="left",
+    )
 
     out = RESULTS / "island_divergence.png"
     fig.savefig(out, dpi=150)
     print(f"wrote {out}")
 
-    make_table(stat_all)
-    make_pairwise(stat_all)
+    make_table(statistics)
+    make_pairwise(statistics)
 
 
 if __name__ == "__main__":
