@@ -1,26 +1,71 @@
 # *Campanula microdonta* floral-trait pipeline
 
-Reproducible image-analysis pipeline that measures pollination-relevant floral traits
-from flattened, pressed *Campanula microdonta* corollas scanned across five Izu
-Islands (Oshima, Toshima, Niijima, Shikinejima, Kozushima; 20 sheets, 218 corollas).
+Publication-ready, reproducible measurement and island-divergence pipeline for
+flattened, pressed *Campanula microdonta* corollas from five Izu Islands: Oshima,
+Toshima, Niijima, Shikinejima and Kozushima (20 scan sheets, 218 corollas, 125
+individual plants).
 
-Everything needed to reproduce the results is committed to the repository, so the
-whole analysis runs from a clean checkout with no local dependencies (see
-[Reproduce](#reproduce)).
+The repository follows one final route from reviewed image annotations to plant-level,
+site-corrected global and pairwise Pst. Trial automatic segmentation, flower-level
+island tests, dried-specimen colour measurements and the confounded Oshima-versus-
+other-islands Bombus contrast are not part of the publication pipeline.
 
-## Inputs
+## Authoritative inputs
 
-| Path | What it is |
+| Path | Role |
 | --- | --- |
-| `shimahotarubukuro/<island>/<sheet>.jpg` | raw specimen scans (ruler-calibrated) |
-| `shimask/<sheet>.jpg` | reviewer's hand annotations — corolla outlines in red, reproductive-organ strokes in green |
-| `mask.zip` | iPhone-lifted clean per-corolla silhouettes (subject masks) |
-| `withlocation.csv` | field table: date, island, site, lat/lon, individual plant, corolla number (`collar` = the continuous 1–218 number), organ number, and sexual phase (`s` = staminate/male, `p` = pistillate/female) |
+| `shimahotarubukuro/<island>/<sheet>.jpg` | 300-DPI, ruler-calibrated specimen scans |
+| `shimask/<sheet>.jpg` | reviewed red corolla outlines and green reproductive-organ traces |
+| `mask.zip` | clean iPhone-lifted corolla silhouettes used only to refine the size ROI |
+| `withlocation.csv` | field provenance, island/site, coordinates, plant identity, corolla number and sexual phase |
 
-The hand annotations are the backbone (corolla identification and numbering, organ
-strokes, nectar-guide detection, and the registration target). The iPhone silhouettes
-refine only the corolla-size ROI; the pipeline runs without them by falling back to
-the hand ROI.
+The reviewed annotations define which corolla and organ are measured. The iPhone
+silhouette replaces the hand boundary for corolla size only when it registers to the
+reviewed ROI; the scan ruler remains the metric scale. Unmatched objects use the hand
+ROI.
+
+## Retained measurements
+
+### Corolla size and shape
+
+- corolla length
+- observed and full-flower-equivalent width
+- observed and full-flower-equivalent area
+- flattened proximal throat width
+- flattened distal mouth width
+- corolla aspect ratio
+- tube-flare ratio
+- lobe-incision depth and ratio
+
+Half-folded corollas retain their observed length; transverse width and area are
+multiplied by two for full-flower-equivalent comparisons. Throat and mouth widths are
+2-D proxies from equally flattened specimens, not reconstructed 3-D entrance
+diameters.
+
+### Reproductive organ
+
+The reviewed green trace is measured end to end and reported as
+`organ_length_mm`. Image analysis does not reclassify it as style or stamen. Sexual
+phase (`s`/`p`) comes from the field table. `organ_corolla_ratio` is organ length
+divided by corolla length.
+
+### Nectar guide
+
+The retained amount metric is `guide_coverage_pct`, the area percentage of the
+reviewed corolla ROI classified as purple/magenta guide pixels. Colour-free spatial
+metrics test basal and petal-midline concentration against random pixels from the same
+ROI.
+
+The following are intentionally **not measured or analysed**:
+
+- discrete guide spot count
+- spot density derived from that count
+- dried-specimen guide colour, saturation or chromatic contrast
+- guide reach or colour-based conspicuousness
+- a causal Bombus-present versus Bombus-absent island effect
+
+These quantities are unstable under spot merging/splitting, scan threshold and
+specimen fading, or are inseparable from island geography in this dataset.
 
 ## Reproduce
 
@@ -29,36 +74,46 @@ pip install -r requirements.txt
 bash run_pipeline.sh
 ```
 
-This regenerates `results_shimask_all/` — the measured tables and the figures /
-per-flower measurement cards. The same run happens automatically on GitHub
-(`.github/workflows/pipeline.yml`), which uploads the tables and figures as
-artifacts.
+The same pipeline runs in GitHub Actions and uploads tables and figures as artifacts.
+
+## Final analysis design
+
+1. Measure 218 reviewed corollas.
+2. Join the authoritative field metadata without renumbering.
+3. Average the 1-2 flowers from each plant to one plant mean (`n = 125`).
+4. Test the island effect with island as a fixed effect and site as a random intercept.
+5. Correct trait-wise p-values with Benjamini-Hochberg.
+6. Estimate global Pst with a plant bootstrap 95% CI.
+7. Estimate Pst separately for every island pair.
+
+Pst is used as a phenotypic divergence surrogate for ranking traits. It is not Qst and
+is not, by itself, evidence of selection.
 
 ## Key outputs (`results_shimask_all/`)
 
 | File | Contents |
 | --- | --- |
-| **`corolla_master.csv`** | **final integrated table** — field metadata (locality, individual, sexual phase) joined to every measured trait, one row per corolla |
-| `corolla_traits_final.csv` | corolla length / width / area (iPhone-registered ROI, hand fallback) + nectar-guide + organ |
-| `pollination_traits.csv` | throat & mouth width (corolla-entrance proxies), lobe incision, aspect, tube flare, style/corolla ratio, guide conspicuousness |
-| `organ_traits.csv` | reproductive-organ length from the reviewer's green strokes |
-| `guide_traits.csv` | nectar-guide coverage, spot count, density |
-| `guide_divergence_stats.csv` | bumblebee-absence test (Oshima has *Bombus ardens*; others do not) |
-| `guide_spatial.csv` | non-random basal + petal-midline concentration of the guide spots |
-| `global_index.csv` | the continuous 1–218 corolla numbering ↔ sheet / corolla id |
-| `measure_cards/<sheet>.png` | per-flower cards showing how each trait is measured |
-| `numbered_index/<sheet>.png` | each sheet with corollas and organs numbered 1–218 |
+| **`corolla_master.csv`** | final field metadata × retained measurements, one row per corolla |
+| `corolla_traits_final.csv` | final corolla size, guide coverage and organ length |
+| `pollination_traits.csv` | supported flattened 2-D morphometrics and ratios |
+| `guide_spatial.csv` | colour-free guide spatial metrics per sufficiently guided corolla |
+| **`plant_means.csv`** | one row per individual plant, used for inference |
+| **`island_analysis_stats.csv`** | global Pst, bootstrap CI, site-corrected test, KW comparison and latitude correlation |
+| **`island_pst_pairwise.csv`** | pairwise Pst for every retained trait and island pair |
+| `island_divergence_table.csv` | paper table of site-corrected significant traits |
+| `island_divergence.png` | significant-trait Pst forest and top latitude plots |
+| `island_pst_pairwise.png` | pairwise-Pst heatmaps for significant traits |
+| `guide_spatial_structure.png` | guide placement versus within-ROI random null |
+| `measure_cards/<sheet>.png` | flower-by-flower visual measurement audit |
+| `numbered_index/<sheet>.png` | continuous 1-218 corolla/organ index |
 
-Traits follow Nagano et al. 2014 (*Ecol. Evol.* 4:3819,
-[doi:10.1002/ece3.1191](https://doi.org/10.1002/ece3.1191)) for the bumblebee-fit
-morphometrics, extended with nectar-guide and reproductive-phase traits.
+## Pipeline order
 
-## Pipeline stages
+`remeasure_medial` -> `register_iphone_masks` -> `guide_traits` -> `organ_traits` ->
+`merge_traits` -> `pollination_traits` -> `make_numbered_index` ->
+`integrate_metadata` -> `guide_spatial` -> `island_analysis` -> publication figures
+and measurement cards.
 
-`remeasure_medial` → `register_iphone_masks` → `guide_traits` → `organ_traits` →
-`merge_traits` → `pollination_traits` → `make_numbered_index` → `integrate_metadata`
-→ `guide_divergence` → `guide_spatial` → figures (`plot_*`, `make_overlays`,
-`make_measure_cards`). `run_pipeline.sh` runs them in this order.
-
-Figures embed the specimen scans and are git-ignored; regenerate them locally or from
-the CI artifacts.
+The morphometric rationale follows Nagano et al. (2014, *Ecology and Evolution*
+4:3819; doi:10.1002/ece3.1191), restricted here to measurements supported by the
+flattened specimens.
