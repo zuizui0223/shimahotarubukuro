@@ -1,12 +1,12 @@
 name: reproduce-pipeline
 
-# Temporary publication-cleanup validation. The branch push refreshes tracked CSV
-# snapshots; the pull-request event exposes a normal review check and logs.
+# Reproduce the publication measurements, global Pst and pairwise Pst from the
+# committed reviewed inputs. The workflow is read-only: generated tables and figures
+# are uploaded as artifacts and must match the tracked publication snapshots.
 on:
   workflow_dispatch:
   push:
-    branches:
-      - agent/publication-pipeline-cleanup
+    branches: [main]
     paths:
       - "*.py"
       - "run_pipeline.sh"
@@ -17,8 +17,7 @@ on:
       - "requirements.txt"
       - ".github/workflows/pipeline.yml"
   pull_request:
-    branches:
-      - main
+    branches: [main]
     paths:
       - "*.py"
       - "run_pipeline.sh"
@@ -30,7 +29,7 @@ on:
       - ".github/workflows/pipeline.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   run:
@@ -47,18 +46,10 @@ jobs:
           pip install -r requirements.txt
       - name: Run publication pipeline
         run: bash run_pipeline.sh
-      - name: Refresh tracked result tables
-        if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
+      - name: Verify tracked publication tables
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A results_shimask_all
-          if git diff --cached --quiet; then
-            echo "Tracked result tables are already current."
-          else
-            git commit -m "Refresh publication result tables"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
+          git diff --exit-code -- results_shimask_all/*.csv
+          test ! -e results_shimask_all/guide_divergence_stats.csv
       - name: Upload measured tables
         uses: actions/upload-artifact@v4
         with:
