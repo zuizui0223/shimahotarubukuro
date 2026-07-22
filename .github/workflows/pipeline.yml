@@ -1,13 +1,24 @@
 name: reproduce-pipeline
 
-# Temporary publication-cleanup validation: run the complete pipeline once on the
-# cleanup branch and commit the regenerated CSV snapshots. This auto-commit step is
-# removed after the refresh succeeds.
+# Temporary publication-cleanup validation. The branch push refreshes tracked CSV
+# snapshots; the pull-request event exposes a normal review check and logs.
 on:
   workflow_dispatch:
   push:
     branches:
       - agent/publication-pipeline-cleanup
+    paths:
+      - "*.py"
+      - "run_pipeline.sh"
+      - "withlocation.csv"
+      - "mask.zip"
+      - "shimask/**"
+      - "shimahotarubukuro/**"
+      - "requirements.txt"
+      - ".github/workflows/pipeline.yml"
+  pull_request:
+    branches:
+      - main
     paths:
       - "*.py"
       - "run_pipeline.sh"
@@ -37,7 +48,7 @@ jobs:
       - name: Run publication pipeline
         run: bash run_pipeline.sh
       - name: Refresh tracked result tables
-        if: github.actor != 'github-actions[bot]'
+        if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
