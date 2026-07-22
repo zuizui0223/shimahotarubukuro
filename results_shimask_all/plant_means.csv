@@ -1,4 +1,4 @@
-﻿island,no,id,lat,n_flowers,frac_female,corolla_length_mm,corolla_width_fulleq_mm,corolla_area_fulleq_mm2,throat_width_mm,mouth_width_mm,corolla_aspect_L_W,tube_flare_W_throat,lobe_incision_mm,style_length_mm,style_corolla_ratio,guide_coverage_pct,guide_basal_frac,guide_midline_ratio
+﻿island,no,id,lat,n_flowers,frac_female,corolla_length_mm,corolla_width_fulleq_mm,corolla_area_fulleq_mm2,throat_width_mm,mouth_width_mm,corolla_aspect_L_W,tube_flare_W_throat,lobe_incision_mm,organ_length_mm,organ_corolla_ratio,guide_coverage_pct,guide_basal_frac,guide_midline_ratio
 oshima,1,1,34.767,2,0.5,48.68,68.84,2591.2,37.845,65.535,0.705,1.82,7.44,29.145,0.6,10.25,0.918,2.077
 oshima,1,2,34.767,2,0.5,45.17,67.31,2402.0,39.62,64.6,0.68,1.7,6.185,29.27,0.645,9.21,0.9375,1.1
 oshima,1,3,34.767,2,1.0,35.56,52.15,1414.1,28.705,50.63,0.685,1.82,5.305,24.42,0.685,1.675,0.998,

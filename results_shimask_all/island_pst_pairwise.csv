@@ -79,26 +79,26 @@ lobe incision,lobe_incision_mm,Toshima,Kozushima,0.029,38,12
 lobe incision,lobe_incision_mm,Niijima,Shikinejima,0.197,23,5
 lobe incision,lobe_incision_mm,Niijima,Kozushima,0.0,23,12
 lobe incision,lobe_incision_mm,Shikinejima,Kozushima,0.0,5,12
-organ/style length,style_length_mm,Oshima,Toshima,0.429,47,38
-organ/style length,style_length_mm,Oshima,Niijima,0.505,47,23
-organ/style length,style_length_mm,Oshima,Shikinejima,0.516,47,4
-organ/style length,style_length_mm,Oshima,Kozushima,0.675,47,12
-organ/style length,style_length_mm,Toshima,Niijima,0.046,38,23
-organ/style length,style_length_mm,Toshima,Shikinejima,0.089,38,4
-organ/style length,style_length_mm,Toshima,Kozushima,0.431,38,12
-organ/style length,style_length_mm,Niijima,Shikinejima,0.0,23,4
-organ/style length,style_length_mm,Niijima,Kozushima,0.229,23,12
-organ/style length,style_length_mm,Shikinejima,Kozushima,0.146,4,12
-style / corolla,style_corolla_ratio,Oshima,Toshima,0.016,47,38
-style / corolla,style_corolla_ratio,Oshima,Niijima,0.163,47,23
-style / corolla,style_corolla_ratio,Oshima,Shikinejima,0.17,47,4
-style / corolla,style_corolla_ratio,Oshima,Kozushima,0.0,47,12
-style / corolla,style_corolla_ratio,Toshima,Niijima,0.084,38,23
-style / corolla,style_corolla_ratio,Toshima,Shikinejima,0.095,38,4
-style / corolla,style_corolla_ratio,Toshima,Kozushima,0.0,38,12
-style / corolla,style_corolla_ratio,Niijima,Shikinejima,0.0,23,4
-style / corolla,style_corolla_ratio,Niijima,Kozushima,0.108,23,12
-style / corolla,style_corolla_ratio,Shikinejima,Kozushima,0.115,4,12
+reproductive-organ length,organ_length_mm,Oshima,Toshima,0.429,47,38
+reproductive-organ length,organ_length_mm,Oshima,Niijima,0.505,47,23
+reproductive-organ length,organ_length_mm,Oshima,Shikinejima,0.516,47,4
+reproductive-organ length,organ_length_mm,Oshima,Kozushima,0.675,47,12
+reproductive-organ length,organ_length_mm,Toshima,Niijima,0.046,38,23
+reproductive-organ length,organ_length_mm,Toshima,Shikinejima,0.089,38,4
+reproductive-organ length,organ_length_mm,Toshima,Kozushima,0.431,38,12
+reproductive-organ length,organ_length_mm,Niijima,Shikinejima,0.0,23,4
+reproductive-organ length,organ_length_mm,Niijima,Kozushima,0.229,23,12
+reproductive-organ length,organ_length_mm,Shikinejima,Kozushima,0.146,4,12
+organ / corolla,organ_corolla_ratio,Oshima,Toshima,0.016,47,38
+organ / corolla,organ_corolla_ratio,Oshima,Niijima,0.163,47,23
+organ / corolla,organ_corolla_ratio,Oshima,Shikinejima,0.17,47,4
+organ / corolla,organ_corolla_ratio,Oshima,Kozushima,0.0,47,12
+organ / corolla,organ_corolla_ratio,Toshima,Niijima,0.084,38,23
+organ / corolla,organ_corolla_ratio,Toshima,Shikinejima,0.095,38,4
+organ / corolla,organ_corolla_ratio,Toshima,Kozushima,0.0,38,12
+organ / corolla,organ_corolla_ratio,Niijima,Shikinejima,0.0,23,4
+organ / corolla,organ_corolla_ratio,Niijima,Kozushima,0.108,23,12
+organ / corolla,organ_corolla_ratio,Shikinejima,Kozushima,0.115,4,12
 guide coverage,guide_coverage_pct,Oshima,Toshima,0.303,47,38
 guide coverage,guide_coverage_pct,Oshima,Niijima,0.116,47,23
 guide coverage,guide_coverage_pct,Oshima,Shikinejima,0.223,47,5

@@ -1,5 +1,5 @@
 ﻿trait,unit,pst,pst_ci,site_p_adj,lat_rho,Oshima,Toshima,Niijima,Shikinejima,Kozushima
-organ/style length,mm,0.475,0.378-0.596,2.04e-05,0.74,22.68,17.89,16.73,16.15,14.07
+reproductive-organ length,mm,0.475,0.378-0.596,2.04e-05,0.74,22.68,17.89,16.73,16.15,14.07
 mouth width,mm,0.374,0.313-0.483,2.33e-04,0.47,50.99,43.7,48.56,34.71,28.67
 corolla area,mm2,0.37,0.292-0.48,3.51e-04,0.6,1553.78,1063.82,1140.79,772.43,611.94
 corolla length,mm,0.332,0.248-0.468,3.89e-04,0.58,35.92,29.26,29.27,27.92,22.88
