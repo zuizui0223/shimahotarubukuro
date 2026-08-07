@@ -1,15 +1,17 @@
 """Unsupervised colour model for nectar-guide pixels.
 
-The reviewed corolla ROI is unchanged.  This module only classifies pixels *inside*
-that ROI.  A global three-component Gaussian mixture is fitted in CIELAB chromatic
-coordinates (a*, b*) using an equal-sized random sample from every corolla.  This
+The reviewed corolla ROI is unchanged. This module only classifies pixels *inside*
+that ROI. A global three-component Gaussian mixture is fitted in CIELAB chromatic
+coordinates (a*, b*) using an equal-sized random sample from every corolla. This
 lets the data separate pale petal tissue, yellow/brown oxidation and purple/magenta
 guide tissue without hand-painting hundreds of tiny spot boundaries.
 
-Guide pixels use a conservative posterior-majority rule: P(guide) >= 0.5.  Coverage
+Guide pixels use a conservative posterior-majority rule: P(guide) >= 0.5. Coverage
 therefore has no hand-tuned RGB/HSV cut-off, while pixels that are ambiguous between
-guide and non-guide remain excluded.  The fit is deterministic for the committed
-inputs and fixed random seed.
+guide and non-guide remain excluded. The fit is deterministic for the committed
+inputs and fixed random seed. GMM labels are canonicalized after fitting to
+petal=0, guide=1, oxidation=2 so arbitrary mixture-component permutations never
+change the saved model or audit table.
 """
 from __future__ import annotations
 
@@ -37,6 +39,11 @@ RANDOM_SEED = 20260807
 POSTERIOR_CUTOFF = 0.50
 N_INIT = 6
 REG_COVAR = 0.35
+
+# Canonical component IDs after fitting.
+PETAL_IDX = 0
+GUIDE_IDX = 1
+OXIDATION_IDX = 2
 
 _MODEL_CACHE: dict[str, np.ndarray | int] | None = None
 
@@ -74,7 +81,7 @@ def lab_features(sub_bgr: np.ndarray, roi: np.ndarray) -> np.ndarray:
     """CIELAB chromatic coordinates (a*, b*) for pixels inside ``roi``.
 
     L* is deliberately omitted: scanner brightness, folds and shading should not
-    define the guide class.  OpenCV stores a and b with a +128 offset, removed here.
+    define the guide class. OpenCV stores a and b with a +128 offset, removed here.
     """
     lab = cv2.cvtColor(sub_bgr, cv2.COLOR_BGR2LAB).astype(np.float64)
     a_star = lab[:, :, 1][roi] - 128.0
@@ -83,7 +90,7 @@ def lab_features(sub_bgr: np.ndarray, roi: np.ndarray) -> np.ndarray:
 
 
 def _roles(means: np.ndarray) -> tuple[int, int, int]:
-    """Identify guide, oxidation and petal components from their Lab centres."""
+    """Identify raw GMM indices for guide, oxidation and petal from Lab centres."""
     magenta_score = means[:, 0] - means[:, 1]
     guide = int(np.argmax(magenta_score))
     remaining = [i for i in range(len(means)) if i != guide]
@@ -105,16 +112,13 @@ def _roles(means: np.ndarray) -> tuple[int, int, int]:
 def _write_component_table(params: dict[str, np.ndarray | int]) -> None:
     means = np.asarray(params["means"], float)
     weights = np.asarray(params["weights"], float)
-    guide = int(params["guide_idx"])
-    oxidation = int(params["oxidation_idx"])
-    petal = int(params["petal_idx"])
-    role = {guide: "guide", oxidation: "oxidation", petal: "petal"}
+    roles = ["petal", "guide", "oxidation"]
     rows = []
-    for i, (mean, weight) in enumerate(zip(means, weights)):
+    for component, (role, mean, weight) in enumerate(zip(roles, means, weights)):
         a, b = map(float, mean)
         rows.append({
-            "component": i,
-            "role": role[i],
+            "component": component,
+            "role": role,
             "weight": round(float(weight), 6),
             "mean_a_star": round(a, 4),
             "mean_b_star": round(b, 4),
@@ -154,14 +158,16 @@ def fit_global_model() -> dict[str, np.ndarray | int]:
         reg_covar=REG_COVAR,
         random_state=RANDOM_SEED,
     ).fit(training)
-    guide, oxidation, petal = _roles(model.means_)
+
+    raw_guide, raw_oxidation, raw_petal = _roles(model.means_)
+    canonical_order = [raw_petal, raw_guide, raw_oxidation]
     params: dict[str, np.ndarray | int] = {
-        "weights": model.weights_.astype(np.float64),
-        "means": model.means_.astype(np.float64),
-        "covariances": model.covariances_.astype(np.float64),
-        "guide_idx": guide,
-        "oxidation_idx": oxidation,
-        "petal_idx": petal,
+        "weights": model.weights_[canonical_order].astype(np.float64),
+        "means": model.means_[canonical_order].astype(np.float64),
+        "covariances": model.covariances_[canonical_order].astype(np.float64),
+        "guide_idx": GUIDE_IDX,
+        "oxidation_idx": OXIDATION_IDX,
+        "petal_idx": PETAL_IDX,
     }
     RESULTS.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
@@ -169,14 +175,14 @@ def fit_global_model() -> dict[str, np.ndarray | int]:
         weights=params["weights"],
         means=params["means"],
         covariances=params["covariances"],
-        guide_idx=np.array(guide, dtype=np.int16),
-        oxidation_idx=np.array(oxidation, dtype=np.int16),
-        petal_idx=np.array(petal, dtype=np.int16),
+        guide_idx=np.array(GUIDE_IDX, dtype=np.int16),
+        oxidation_idx=np.array(OXIDATION_IDX, dtype=np.int16),
+        petal_idx=np.array(PETAL_IDX, dtype=np.int16),
     )
     _write_component_table(params)
     print(
         f"fitted guide GMM on {len(training):,} sampled pixels from "
-        f"{n_corollas} corollas; guide={guide}, oxidation={oxidation}, petal={petal}",
+        f"{n_corollas} corollas; canonical roles petal=0, guide=1, oxidation=2",
         flush=True,
     )
     global _MODEL_CACHE
