@@ -1,55 +1,53 @@
 #!/usr/bin/env python3
 """Area-based nectar-guide measurement per reviewed corolla.
 
-Purple/magenta guide pixels are detected inside each human-reviewed corolla ROI on
-the ruler-calibrated raw scan. The publication pipeline retains only guide coverage
-(the guide area as a percentage of the corolla ROI): discrete spot counts and their
-derived density are intentionally not measured because adjacent spots merge and
-single spots split with threshold, resolution and fading.
+Only the guide-pixel classifier lives here; corolla ROIs and all size/organ
+measurements are unchanged.  Guide colour is learned without manual spot outlines by
+a global three-component CIELAB Gaussian mixture (petal / oxidation / purple guide).
+A pixel contributes to guide area when P(guide) >= 0.5.  This conservative posterior
+majority rule retains faint small purple marks while rejecting ambiguous or oxidised
+pixels, and avoids hand-tuned RGB/HSV thresholds.
 
-Writes ``results_shimask_all/guide_traits.csv``.
+Writes ``results_shimask_all/guide_traits.csv``.  The fitted component centres are
+written to ``guide_gmm_components.csv`` for an auditable Methods record.
 """
 from __future__ import annotations
 
 import csv
 from pathlib import Path
 
-import cv2
 import numpy as np
 
+import guide_colour_model as gcm
 import measure_guides as base
-import shimask_input
 import remeasure_medial as rm
+import shimask_input
 from run_all_shimask_confirmed import find_raw
+
+# Preserve the pre-existing minimum pixel count used only for the binary
+# has_nectar_guide convenience flag. Continuous guide coverage is the analysis trait.
+GUIDE_PRESENT_MIN_PX = 150
 
 
 def guide_mask(raw: np.ndarray, piece: np.ndarray) -> tuple[np.ndarray, tuple[int, int], int]:
-    """Return (guide mask, bbox origin, reviewed ROI area in pixels)."""
-    ys, xs = np.where(piece)
-    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
-    sub = raw[y0:y1, x0:x1]
-    roi = piece[y0:y1, x0:x1] > 0
-    b, g, r = cv2.split(sub.astype(int))
-    hsv = cv2.cvtColor(sub, cv2.COLOR_BGR2HSV)
-    guide = (((r - g) > 18) & ((b - g) > -10) &
-             (hsv[:, :, 1] > 60) & (hsv[:, :, 2] < 205) & roi)
-    guide = cv2.morphologyEx(
-        guide.astype(np.uint8), cv2.MORPH_OPEN, np.ones((2, 2), np.uint8)
-    )
-    return guide, (x0, y0), int(roi.sum())
+    """Return (GMM guide mask, bbox origin, reviewed ROI area in pixels)."""
+    return gcm.segment_piece(raw, piece)
 
 
 def main() -> None:
+    # Fit once across all 218 reviewed corollas, equally sampling each flower. Later
+    # stages load the saved parameters and therefore use exactly the same classifier.
+    params = gcm.fit_global_model()
     labels = sorted(
         p for p in Path("shimask").iterdir()
         if p.suffix.lower() in (".jpg", ".jpeg", ".png")
     )
     rows = []
-    for lp in labels:
-        sheet = lp.stem
+    for label_path in labels:
+        sheet = label_path.stem
         _, raw_path = find_raw(sheet, Path("shimahotarubukuro"))
         raw = base.load_bgr(str(raw_path))
-        ann = base.load_bgr(str(lp))
+        ann = base.load_bgr(str(label_path))
         comps = shimask_input.red_corolla_components(
             raw, ann, strokes=shimask_input.stroke_masks(raw, ann)
         )
@@ -57,21 +55,27 @@ def main() -> None:
             pieces = rm.split_merged_pair(comp["mask"].astype(np.uint8))
             suffixes = [""] if len(pieces) == 1 else ["a", "b"]
             for suffix, piece in zip(suffixes, pieces):
-                guide, _origin, roi_px = guide_mask(raw, piece)
-                n_px = int(guide.sum())
+                guide, _origin, roi_pixels = gcm.segment_piece(raw, piece, params)
+                guide_pixels = int(guide.sum())
                 rows.append({
                     "sheet": sheet,
                     "corolla_id": f"{cid}{suffix}",
-                    "guide_coverage_pct": round(100.0 * n_px / roi_px, 2) if roi_px else 0.0,
+                    "guide_coverage_pct": (
+                        round(100.0 * guide_pixels / roi_pixels, 2) if roi_pixels else 0.0
+                    ),
+                    "has_nectar_guide": int(guide_pixels >= GUIDE_PRESENT_MIN_PX),
                 })
-        print(f"[{sheet}] {sum(1 for r in rows if r['sheet'] == sheet)} corollas", flush=True)
+        print(
+            f"[{sheet}] {sum(1 for row in rows if row['sheet'] == sheet)} corollas",
+            flush=True,
+        )
 
     out = Path("results_shimask_all/guide_traits.csv")
     with out.open("w", newline="", encoding="utf-8-sig") as fh:
         writer = csv.DictWriter(fh, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
-    print(f"wrote {out}  ({len(rows)} corollas; coverage only)")
+    print(f"wrote {out}  ({len(rows)} corollas; adaptive GMM coverage)")
 
 
 if __name__ == "__main__":
