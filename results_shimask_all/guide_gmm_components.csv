@@ -1,0 +1,4 @@
+﻿component,role,weight,mean_a_star,mean_b_star,chroma,hue_deg,magenta_score_a_minus_b,yellow_red_score_a_plus_b
+0,petal,0.630242,0.3672,17.7042,17.708,88.812,-17.337,18.0714
+1,guide,0.216743,18.7887,9.1382,20.8931,25.937,9.6505,27.9269
+2,oxidation,0.153015,5.5098,33.0715,33.5273,80.541,-27.5617,38.5813
