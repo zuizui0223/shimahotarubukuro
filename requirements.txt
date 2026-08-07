@@ -5,6 +5,7 @@ numpy==2.2.6
 opencv-python-headless==4.11.0.86
 scipy>=1.11
 scikit-image>=0.22
+scikit-learn==1.7.2
 matplotlib>=3.8
 statsmodels>=0.14
 pillow>=10.0

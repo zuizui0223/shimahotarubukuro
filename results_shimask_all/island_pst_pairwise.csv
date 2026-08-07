@@ -99,33 +99,33 @@ organ / corolla,organ_corolla_ratio,Toshima,Kozushima,0.0,38,12
 organ / corolla,organ_corolla_ratio,Niijima,Shikinejima,0.0,23,4
 organ / corolla,organ_corolla_ratio,Niijima,Kozushima,0.108,23,12
 organ / corolla,organ_corolla_ratio,Shikinejima,Kozushima,0.115,4,12
-guide coverage,guide_coverage_pct,Oshima,Toshima,0.303,47,38
-guide coverage,guide_coverage_pct,Oshima,Niijima,0.116,47,23
-guide coverage,guide_coverage_pct,Oshima,Shikinejima,0.223,47,5
-guide coverage,guide_coverage_pct,Oshima,Kozushima,0.259,47,12
-guide coverage,guide_coverage_pct,Toshima,Niijima,0.149,38,23
-guide coverage,guide_coverage_pct,Toshima,Shikinejima,0.019,38,5
-guide coverage,guide_coverage_pct,Toshima,Kozushima,0.029,38,12
-guide coverage,guide_coverage_pct,Niijima,Shikinejima,0.109,23,5
-guide coverage,guide_coverage_pct,Niijima,Kozushima,0.151,23,12
-guide coverage,guide_coverage_pct,Shikinejima,Kozushima,0.0,5,12
-guide basal concentration,guide_basal_frac,Oshima,Toshima,0.0,47,33
-guide basal concentration,guide_basal_frac,Oshima,Niijima,0.0,47,18
+guide coverage,guide_coverage_pct,Oshima,Toshima,0.33,47,38
+guide coverage,guide_coverage_pct,Oshima,Niijima,0.101,47,23
+guide coverage,guide_coverage_pct,Oshima,Shikinejima,0.309,47,5
+guide coverage,guide_coverage_pct,Oshima,Kozushima,0.277,47,12
+guide coverage,guide_coverage_pct,Toshima,Niijima,0.13,38,23
+guide coverage,guide_coverage_pct,Toshima,Shikinejima,0.068,38,5
+guide coverage,guide_coverage_pct,Toshima,Kozushima,0.0,38,12
+guide coverage,guide_coverage_pct,Niijima,Shikinejima,0.154,23,5
+guide coverage,guide_coverage_pct,Niijima,Kozushima,0.103,23,12
+guide coverage,guide_coverage_pct,Shikinejima,Kozushima,0.046,5,12
+guide basal concentration,guide_basal_frac,Oshima,Toshima,0.0,47,37
+guide basal concentration,guide_basal_frac,Oshima,Niijima,0.069,47,21
 guide basal concentration,guide_basal_frac,Oshima,Shikinejima,,47,1
-guide basal concentration,guide_basal_frac,Oshima,Kozushima,0.149,47,10
-guide basal concentration,guide_basal_frac,Toshima,Niijima,0.0,33,18
-guide basal concentration,guide_basal_frac,Toshima,Shikinejima,,33,1
-guide basal concentration,guide_basal_frac,Toshima,Kozushima,0.141,33,10
-guide basal concentration,guide_basal_frac,Niijima,Shikinejima,,18,1
-guide basal concentration,guide_basal_frac,Niijima,Kozushima,0.144,18,10
-guide basal concentration,guide_basal_frac,Shikinejima,Kozushima,,1,10
-guide midline concentration,guide_midline_ratio,Oshima,Toshima,0.024,45,31
-guide midline concentration,guide_midline_ratio,Oshima,Niijima,0.054,45,18
-guide midline concentration,guide_midline_ratio,Oshima,Shikinejima,,45,1
-guide midline concentration,guide_midline_ratio,Oshima,Kozushima,0.01,45,10
-guide midline concentration,guide_midline_ratio,Toshima,Niijima,0.0,31,18
-guide midline concentration,guide_midline_ratio,Toshima,Shikinejima,,31,1
-guide midline concentration,guide_midline_ratio,Toshima,Kozushima,0.0,31,10
-guide midline concentration,guide_midline_ratio,Niijima,Shikinejima,,18,1
-guide midline concentration,guide_midline_ratio,Niijima,Kozushima,0.0,18,10
-guide midline concentration,guide_midline_ratio,Shikinejima,Kozushima,,1,10
+guide basal concentration,guide_basal_frac,Oshima,Kozushima,0.216,47,11
+guide basal concentration,guide_basal_frac,Toshima,Niijima,0.081,37,21
+guide basal concentration,guide_basal_frac,Toshima,Shikinejima,,37,1
+guide basal concentration,guide_basal_frac,Toshima,Kozushima,0.284,37,11
+guide basal concentration,guide_basal_frac,Niijima,Shikinejima,,21,1
+guide basal concentration,guide_basal_frac,Niijima,Kozushima,0.069,21,11
+guide basal concentration,guide_basal_frac,Shikinejima,Kozushima,,1,11
+guide midline concentration,guide_midline_ratio,Oshima,Toshima,0.019,46,36
+guide midline concentration,guide_midline_ratio,Oshima,Niijima,0.097,46,21
+guide midline concentration,guide_midline_ratio,Oshima,Shikinejima,,46,1
+guide midline concentration,guide_midline_ratio,Oshima,Kozushima,0.0,46,11
+guide midline concentration,guide_midline_ratio,Toshima,Niijima,0.021,36,21
+guide midline concentration,guide_midline_ratio,Toshima,Shikinejima,,36,1
+guide midline concentration,guide_midline_ratio,Toshima,Kozushima,0.019,36,11
+guide midline concentration,guide_midline_ratio,Niijima,Shikinejima,,21,1
+guide midline concentration,guide_midline_ratio,Niijima,Kozushima,0.069,21,11
+guide midline concentration,guide_midline_ratio,Shikinejima,Kozushima,,1,11

@@ -3,8 +3,9 @@
 
 The iPhone-registered silhouette is the primary size ROI wherever it matched a
 corolla. The reviewed hand ROI is the fallback for unmatched corollas and split
-merged pairs. Fold state and guide presence come from the reviewed hand table;
-area-based guide coverage comes from ``guide_traits.csv``.
+merged pairs. Fold state comes from the reviewed hand table; guide coverage and the
+binary guide-presence convenience flag come from the common guide pixel classifier
+in ``guide_traits.csv``.
 
 Writes ``results_shimask_all/corolla_traits_final.csv`` with one row per corolla.
 """
@@ -75,7 +76,10 @@ def main() -> None:
             "corolla_area_fulleq_mm2": round(area * factor, 1),
             "roi_source": source,
             "match_iou": iou,
-            "has_nectar_guide": h["has_nectar_guide"],
+            "has_nectar_guide": (
+                g["has_nectar_guide"] if g and "has_nectar_guide" in g
+                else h["has_nectar_guide"]
+            ),
             "guide_coverage_pct": g["guide_coverage_pct"] if g else "",
             "organ_length_mm": o["organ_length_mm"] if o else "",
             "qc_flag": "|".join(qc),

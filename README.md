@@ -23,9 +23,8 @@ src/shimaflora/
 ```
 
 `run_pipeline.sh` remains the single stable entry point. It configures the source
-search path and executes the modules in publication order, so the directory cleanup
-does not change the measurements or output schemas. See `src/shimaflora/README.md`
-for the responsibility of each package.
+search path and executes the modules in publication order. See
+`src/shimaflora/README.md` for the responsibility of each package.
 
 ## Authoritative inputs
 
@@ -68,10 +67,27 @@ divided by corolla length.
 
 ### Nectar guide
 
-The retained amount metric is `guide_coverage_pct`, the area percentage of the
-reviewed corolla ROI classified as purple/magenta guide pixels. Colour-free spatial
-metrics test basal and petal-midline concentration against random pixels from the same
-ROI.
+`guide_coverage_pct` is the percentage of the unchanged reviewed corolla ROI
+classified as nectar-guide pigment. Because the guide consists of many small dots,
+its boundaries are **not** hand-painted and no fixed RGB/HSV colour threshold is
+used.
+
+The classifier is an unsupervised, global three-component Gaussian mixture fitted to
+CIELAB chromatic coordinates `(a*, b*)` from all 218 corollas. Up to 900 pixels are
+sampled from every flower so a strongly pigmented island cannot dominate the fit.
+Lightness `L*` is omitted so scanner brightness, folds and shadow do not define the
+classes. The fitted components correspond to pale petal tissue, yellow/brown
+oxidation and purple/magenta guide pigment; their centres are written to
+`guide_gmm_components.csv` for audit.
+
+A pixel is counted as guide only when its posterior probability for the guide
+component is at least 0.5: guide is therefore more likely than all non-guide
+components combined. No morphological opening is applied after classification,
+because such cleaning can delete genuine tiny guide dots. The same mask is reused for
+coverage, guide spatial analysis, measurement cards and overlays.
+
+Colour-free spatial metrics test basal and petal-midline concentration against random
+pixels from the same ROI.
 
 The following are intentionally **not measured or analysed**:
 
@@ -80,9 +96,6 @@ The following are intentionally **not measured or analysed**:
 - dried-specimen guide colour, saturation or chromatic contrast
 - guide reach or colour-based conspicuousness
 - a causal Bombus-present versus Bombus-absent island effect
-
-These quantities are unstable under spot merging/splitting, scan threshold and
-specimen fading, or are inseparable from island geography in this dataset.
 
 ## Reproduce
 
@@ -113,6 +126,8 @@ is not, by itself, evidence of selection.
 | **`corolla_master.csv`** | final field metadata × retained measurements, one row per corolla |
 | `corolla_traits_final.csv` | final corolla size, guide coverage and organ length |
 | `pollination_traits.csv` | supported flattened 2-D morphometrics and ratios |
+| `guide_traits.csv` | GMM guide coverage and binary guide-presence convenience flag |
+| `guide_gmm_components.csv` | fitted petal / guide / oxidation component centres and weights |
 | `guide_spatial.csv` | colour-free guide spatial metrics per sufficiently guided corolla |
 | **`plant_means.csv`** | one row per individual plant, used for inference |
 | **`island_analysis_stats.csv`** | global Pst, bootstrap CI, site-corrected test, KW comparison and latitude correlation |
