@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - "src/**/*.py"
+      - "tests/test_campanula_regression.py"
       - "run_pipeline.sh"
       - "withlocation.csv"
       - "mask.zip"
@@ -20,6 +21,7 @@ on:
     branches: [main]
     paths:
       - "src/**/*.py"
+      - "tests/test_campanula_regression.py"
       - "run_pipeline.sh"
       - "withlocation.csv"
       - "mask.zip"
@@ -43,13 +45,15 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.txt pytest
       - name: Run publication pipeline
         run: bash run_pipeline.sh
       - name: Verify tracked publication tables
         run: |
           git diff --exit-code -- results_shimask_all/*.csv
           test ! -e results_shimask_all/guide_divergence_stats.csv
+      - name: Verify reusable package against all 218 corollas
+        run: pytest -q tests/test_campanula_regression.py
       - name: Upload measured tables
         uses: actions/upload-artifact@v4
         with:
