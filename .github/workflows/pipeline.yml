@@ -1,8 +1,7 @@
 name: reproduce-pipeline
 
-# Reproduce the publication measurements, global Pst and pairwise Pst from the
-# committed reviewed inputs. The workflow is read-only: generated tables and figures
-# are uploaded as artifacts and must match the tracked publication snapshots.
+# First validate the reusable package against every reviewed corolla, then reproduce
+# publication measurements and require generated tables to match tracked snapshots.
 on:
   workflow_dispatch:
   push:
@@ -46,14 +45,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest
+      - name: Verify reusable package against all 218 corollas
+        run: pytest -q tests/test_campanula_regression.py
       - name: Run publication pipeline
         run: bash run_pipeline.sh
       - name: Verify tracked publication tables
         run: |
           git diff --exit-code -- results_shimask_all/*.csv
           test ! -e results_shimask_all/guide_divergence_stats.csv
-      - name: Verify reusable package against all 218 corollas
-        run: pytest -q tests/test_campanula_regression.py
       - name: Upload measured tables
         uses: actions/upload-artifact@v4
         with:
