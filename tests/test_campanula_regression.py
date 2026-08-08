@@ -50,9 +50,18 @@ def test_all_218_corollas_match_published_mounted_axis_geometry():
             )
             generic = measure_shape(solid, scale_mm_per_px=float(base.MM_PX))
 
-            assert round(current["corolla_length_mm"], 2) == float(row["corolla_length_mm"]), key
-            assert round(current["corolla_width_mm"], 2) == float(row["corolla_width_fulleq_mm"]), key
-            assert round(generic["area_mm2"], 1) == float(row["corolla_area_obs_mm2"]), key
+            # Published dimensions are stored to 0.01 mm. For folded corollas the
+            # legacy table rounded observed width first and then multiplied by two,
+            # so an otherwise identical raw measurement can differ by exactly 0.01 mm.
+            assert np.isclose(
+                current["corolla_length_mm"], float(row["corolla_length_mm"]), atol=0.011
+            ), key
+            assert np.isclose(
+                current["corolla_width_mm"], float(row["corolla_width_fulleq_mm"]), atol=0.011
+            ), key
+            assert np.isclose(
+                generic["area_mm2"], float(row["corolla_area_obs_mm2"]), atol=0.051
+            ), key
             seen += 1
 
     assert seen == len(legacy) == 218
