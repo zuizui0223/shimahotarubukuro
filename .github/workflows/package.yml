@@ -1,0 +1,28 @@
+name: ShimaFlora package
+
+on:
+  push:
+    branches: [main, "agent/package-shimaflora-v0.1"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install package and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install . pytest
+      - name: Run package smoke tests
+        run: pytest -q tests/test_package_api.py
+      - name: Verify import and version
+        run: python -c "import shimaflora; print(shimaflora.__version__)"

@@ -1,0 +1,46 @@
+name: Publish ShimaFlora v0.1.0
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+      - "PACKAGE_README.md"
+      - "src/shimaflora/**"
+      - "tests/test_package_api.py"
+      - "tests/test_campanula_regression.py"
+      - ".github/workflows/release-shimaflora.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.repository == 'zuizui0223/shimahotarubukuro'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install and test package
+        run: |
+          python -m pip install --upgrade pip
+          pip install . pytest build
+          pytest -q tests/test_package_api.py
+          python -c "import shimaflora; assert shimaflora.__version__ == '0.1.0'"
+      - name: Build wheel and source distribution
+        run: python -m build
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v0.1.0 >/dev/null 2>&1; then
+            echo "v0.1.0 already exists; leaving the published release unchanged"
+          else
+            gh release create v0.1.0 dist/* \
+              --target "$GITHUB_SHA" \
+              --title "ShimaFlora v0.1.0" \
+              --notes "First public ShimaFlora release: reusable 2-D floral morphology and intrafloral colour-pattern phenotyping, with a validated Campanula preset. Install from GitHub with: pip install git+https://github.com/zuizui0223/shimahotarubukuro.git@v0.1.0"
+          fi
