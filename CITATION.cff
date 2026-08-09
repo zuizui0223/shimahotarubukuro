@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use ShimaFlora, please cite the software release used in your analysis."
+title: "ShimaFlora: reproducible floral morphology and intrafloral colour-pattern phenotyping"
+type: software
+authors:
+  - family-names: "ZHANG"
+    given-names: "Ruiqi"
+repository-code: "https://github.com/zuizui0223/shimahotarubukuro"
+url: "https://github.com/zuizui0223/shimahotarubukuro"
+license: MIT
+version: 0.2.0
+date-released: 2026-08-09
+keywords:
+  - floral traits
+  - image phenotyping
+  - morphology
+  - colour pattern
+  - nectar guide
+  - plant ecology

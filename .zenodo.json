@@ -1,0 +1,27 @@
+{
+  "title": "ShimaFlora: reproducible floral morphology and intrafloral colour-pattern phenotyping",
+  "description": "A Python toolkit for reproducible 2-D floral morphology and intrafloral colour-pattern phenotyping from calibrated images and externally defined floral masks.",
+  "creators": [
+    {
+      "name": "ZHANG, Ruiqi"
+    }
+  ],
+  "license": "MIT",
+  "upload_type": "software",
+  "access_right": "open",
+  "keywords": [
+    "floral traits",
+    "image phenotyping",
+    "morphology",
+    "colour pattern",
+    "nectar guide",
+    "plant ecology"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/zuizui0223/shimahotarubukuro",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ]
+}

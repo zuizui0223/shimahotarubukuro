@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shimaflora"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reproducible image phenotyping of floral morphology and intrafloral colour patterns"
 readme = "PACKAGE_README.md"
 requires-python = ">=3.10"
@@ -23,6 +23,8 @@ classifiers = [
 
 [project.urls]
 Repository = "https://github.com/zuizui0223/shimahotarubukuro"
+Documentation = "https://github.com/zuizui0223/shimahotarubukuro/blob/main/PACKAGE_README.md"
+Issues = "https://github.com/zuizui0223/shimahotarubukuro/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

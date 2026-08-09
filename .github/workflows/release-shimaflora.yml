@@ -1,25 +1,25 @@
-name: Publish ShimaFlora v0.1.0
+name: Publish ShimaFlora release
 
 on:
-  push:
+  workflow_run:
+    workflows: ["reproduce-pipeline"]
+    types: [completed]
     branches: [main]
-    paths:
-      - "pyproject.toml"
-      - "PACKAGE_README.md"
-      - "src/shimaflora/**"
-      - "tests/test_package_api.py"
-      - "tests/test_campanula_regression.py"
-      - ".github/workflows/release-shimaflora.yml"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   release:
-    if: github.repository == 'zuizui0223/shimahotarubukuro'
+    if: >-
+      github.repository == 'zuizui0223/shimahotarubukuro' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -28,19 +28,31 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install . pytest build
-          pytest -q tests/test_package_api.py
-          python -c "import shimaflora; assert shimaflora.__version__ == '0.1.0'"
+          pytest -q tests/test_package_api.py tests/test_qc_and_examples.py
+          python - <<'PY'
+          import pathlib, tomllib, shimaflora
+          version = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
+          assert shimaflora.__version__ == version, (shimaflora.__version__, version)
+          print(version)
+          PY
       - name: Build wheel and source distribution
         run: python -m build
-      - name: Publish GitHub release
+      - name: Publish versioned GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
-          if gh release view v0.1.0 >/dev/null 2>&1; then
-            echo "v0.1.0 already exists; leaving the published release unchanged"
+          VERSION=$(python - <<'PY'
+          import pathlib, tomllib
+          print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])
+          PY
+          )
+          TAG="v${VERSION}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists; leaving the published release unchanged"
           else
-            gh release create v0.1.0 dist/* \
-              --target "$GITHUB_SHA" \
-              --title "ShimaFlora v0.1.0" \
-              --notes "First public ShimaFlora release: reusable 2-D floral morphology and intrafloral colour-pattern phenotyping, with a validated Campanula preset. Install from GitHub with: pip install git+https://github.com/zuizui0223/shimahotarubukuro.git@v0.1.0"
+            gh release create "$TAG" dist/* \
+              --target "$TARGET_SHA" \
+              --title "ShimaFlora $TAG" \
+              --generate-notes
           fi
