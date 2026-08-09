@@ -6,13 +6,13 @@ The package separates generic measurements from taxon-specific biological interp
 
 ## Install from GitHub
 
-Stable v0.1.0:
+Versioned release:
 
 ```bash
-pip install "git+https://github.com/zuizui0223/shimahotarubukuro.git@v0.1.0"
+pip install "git+https://github.com/zuizui0223/shimahotarubukuro.git@v0.2.0"
 ```
 
-Current development branch:
+Development branch before the v0.2.0 merge/release:
 
 ```bash
 pip install "git+https://github.com/zuizui0223/shimahotarubukuro.git@agent/shimaflora-v0.2"
@@ -97,7 +97,7 @@ The preset contains the biological assumptions used by the current flattened bel
 - Make assumptions explicit through presets rather than hidden constants in generic functions.
 - Return QC images as arrays so notebooks, apps, and publication pipelines can choose their own output format.
 
-## Current development scope (v0.2)
+## v0.2 scope
 
 In addition to v0.1 morphology and colour-pattern measurement, v0.2 adds reusable QC overlays, a redistributable synthetic flower example, an end-to-end tutorial, software citation metadata, and Zenodo-ready archival metadata.
 
@@ -107,7 +107,11 @@ Still out of scope: automatic flower detection, SAM/YOLO segmentation, multispec
 
 Use the versioned software release used in your analysis. `CITATION.cff` records the software citation independently from the biological *Campanula* manuscript. `.zenodo.json` is provided so tagged GitHub releases can be archived with consistent metadata once the repository is connected to Zenodo.
 
-For reproducible work, record the exact release tag (for example `v0.1.0`) or commit SHA in the Methods or software availability statement.
+For reproducible work, record the exact release tag (for example `v0.2.0`) or commit SHA in the Methods or software availability statement.
+
+## Release safety
+
+GitHub Releases are created only after the `reproduce-pipeline` workflow succeeds on `main`. That workflow first checks the reusable package against all 218 reviewed corollas and then verifies the tracked publication tables, so a package release cannot silently precede the biological regression gate.
 
 ## Research pipeline
 
