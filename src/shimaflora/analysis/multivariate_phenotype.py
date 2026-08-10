@@ -2,14 +2,12 @@
 """Exploratory multivariate phenotypic divergence across Izu islands.
 
 This is deliberately a phenotypic P_ST analogue, not a Q_ST-F_ST test.
-It separates within-island covariance from among-island divergence and tests
-whether nectar-guide reduction and other floral traits depart from the overall
-floral-size axis documented in the Izu system.
+The key null is simple floral miniaturisation: corolla body size is defined
+without mouth, throat, reproductive-organ or guide traits, and those functional
+traits are then tested for island divergence beyond body-size allometry.
 """
 from __future__ import annotations
-
 from pathlib import Path
-
 import numpy as np
 import pandas as pd
 from scipy import linalg, stats
@@ -17,31 +15,25 @@ import statsmodels.formula.api as smf
 
 RESULTS = Path("results_shimask_all")
 ISLAND_ORDER = ["oshima", "toshima", "niijima", "shikine", "kozu"]
-
-# Use absolute dimensions to define the background miniaturisation axis.
-SIZE_TRAITS = [
-    "corolla_length_mm", "corolla_width_fulleq_mm", "mouth_width_mm",
-    "throat_width_mm", "organ_length_mm",
-]
-# Shape traits are dimensionless where possible; lobe incision is retained as the
-# measured absolute trait because plant_means.csv contains lobe_incision_mm.
-SHAPE_TRAITS = [
-    "corolla_aspect_L_W", "tube_flare_W_throat", "lobe_incision_mm",
-    "organ_corolla_ratio",
-]
+BODY_SIZE_TRAITS = ["corolla_length_mm", "corolla_width_fulleq_mm"]
+SHAPE_TRAITS = ["corolla_aspect_L_W", "tube_flare_W_throat", "organ_corolla_ratio"]
 GUIDE = "guide_coverage_pct"
-CORE_TRAITS = SIZE_TRAITS + [GUIDE]
+FUNCTIONAL_TRAITS = [
+    "mouth_width_mm", "throat_width_mm", "organ_length_mm", GUIDE,
+    "organ_corolla_ratio", "corolla_aspect_L_W", "tube_flare_W_throat",
+    "lobe_incision_mm",
+]
+CORE_TRAITS = BODY_SIZE_TRAITS + ["mouth_width_mm", "throat_width_mm", "organ_length_mm", GUIDE]
 
 
-def zscore(frame: pd.DataFrame) -> pd.DataFrame:
+def zscore(frame):
     return (frame - frame.mean()) / frame.std(ddof=1)
 
 
-def pc1_scores(frame: pd.DataFrame, columns: list[str], prefix: str):
+def pc1_scores(frame, columns, prefix):
     clean = frame[columns].dropna()
     z = zscore(clean)
-    cov = np.cov(z.values, rowvar=False, ddof=1)
-    values, vectors = np.linalg.eigh(cov)
+    values, vectors = np.linalg.eigh(np.cov(z.values, rowvar=False, ddof=1))
     order = np.argsort(values)[::-1]
     values, vectors = values[order], vectors[:, order]
     loading = vectors[:, 0].copy()
@@ -49,13 +41,13 @@ def pc1_scores(frame: pd.DataFrame, columns: list[str], prefix: str):
         loading *= -1
     scores = pd.Series(np.nan, index=frame.index, dtype=float)
     scores.loc[clean.index] = z.values @ loading
-    table = pd.DataFrame({"module": prefix, "trait": columns,
-                          "pc1_loading": loading,
-                          "pc1_variance_fraction": values[0] / values.sum()})
-    return scores, table
+    return scores, pd.DataFrame({
+        "module": prefix, "trait": columns, "pc1_loading": loading,
+        "pc1_variance_fraction": values[0] / values.sum(),
+    })
 
 
-def correlation_row(label: str, x: pd.Series, y: pd.Series):
+def correlation_row(label, x, y):
     d = pd.concat([x.rename("x"), y.rename("y")], axis=1).dropna()
     if len(d) < 4:
         return {"comparison": label, "n": len(d), "pearson_r": np.nan,
@@ -66,7 +58,7 @@ def correlation_row(label: str, x: pd.Series, y: pd.Series):
             "pearson_p": pp, "spearman_rho": sr, "spearman_p": sp}
 
 
-def variance_components(z: pd.DataFrame, groups: pd.Series):
+def variance_components(z, groups):
     data = z.copy(); data["_group"] = groups; data = data.dropna()
     cols = list(z.columns)
     group_data = [(g, d[cols].values) for g, d in data.groupby("_group") if len(d) >= 2]
@@ -96,6 +88,9 @@ def directional_pst(b_psd, w, trait_names):
     for j, lam in enumerate(vals):
         v = vecs[:, j].copy()
         if v[np.argmax(np.abs(v))] < 0: v *= -1
+        # Euclidean-normalised coefficients are easier to compare across traits.
+        norm = np.linalg.norm(v)
+        if norm > 0: v /= norm
         row = {"axis": j + 1, "lambda_B_over_W": lam,
                "pst_analogue": lam / (lam + 2.0) if lam >= 0 else np.nan}
         row.update({f"loading_{name}": value for name, value in zip(trait_names, v)})
@@ -118,33 +113,36 @@ def bootstrap_top_axis(df, n_boot=1000, seed=20260811):
         except Exception:
             continue
     if not out: return np.nan, np.nan, 0
-    lo, hi = np.quantile(out, [0.025, 0.975]); return float(lo), float(hi), len(out)
+    lo, hi = np.quantile(out, [0.025, 0.975])
+    return float(lo), float(hi), len(out)
 
 
-def allometry_models(df: pd.DataFrame):
-    """Test whether guide/shape traits differ among islands beyond size scaling."""
-    targets = [GUIDE, "organ_corolla_ratio", "corolla_aspect_L_W",
-               "tube_flare_W_throat", "lobe_incision_mm"]
+def allometry_models(df):
+    """Test functional traits for island divergence beyond corolla body size."""
     rows = []
-    for target in targets:
-        d = df[[target, "size_pc1", "island"]].dropna().copy()
-        if target == GUIDE:
-            d["y"] = np.arcsin(np.sqrt(np.clip(d[target] / 100.0, 0, 1)))
-        else:
-            d["y"] = d[target]
+    for target in FUNCTIONAL_TRAITS:
+        d = df[[target, "size_pc1", "island", "site"]].dropna().copy()
+        d["y"] = (np.arcsin(np.sqrt(np.clip(d[target] / 100.0, 0, 1)))
+                  if target == GUIDE else d[target])
         size_only = smf.ols("y ~ size_pc1", d).fit(cov_type="HC3")
-        island_add = smf.ols("y ~ size_pc1 + C(island)", d).fit(cov_type="HC3")
-        interaction = smf.ols("y ~ size_pc1 * C(island)", d).fit(cov_type="HC3")
+        # Cluster-robust SEs protect against plants sharing a sampling site.
+        island_add = smf.ols("y ~ size_pc1 + C(island)", d).fit(
+            cov_type="cluster", cov_kwds={"groups": d["site"]})
+        interaction = smf.ols("y ~ size_pc1 * C(island)", d).fit(
+            cov_type="cluster", cov_kwds={"groups": d["site"]})
+        levels = sorted(d.island.unique())
+        restrictions = [f"C(island)[T.{x}] = 0" for x in levels if x != levels[0]]
+        try:
+            island_p = float(island_add.f_test(restrictions).pvalue)
+        except Exception:
+            island_p = np.nan
         rows.append({
-            "trait": target, "n": int(len(d)),
-            "size_only_r2": size_only.rsquared,
-            "size_island_r2": island_add.rsquared,
+            "trait": target, "n": len(d), "n_sites": d.site.nunique(),
+            "size_only_r2": size_only.rsquared, "size_island_r2": island_add.rsquared,
             "size_island_delta_r2": island_add.rsquared - size_only.rsquared,
             "common_size_slope": island_add.params.get("size_pc1", np.nan),
-            "common_size_p": island_add.pvalues.get("size_pc1", np.nan),
-            "island_joint_p_given_size": float(island_add.f_test(
-                [f"C(island)[T.{x}] = 0" for x in sorted(d.island.unique()) if x != sorted(d.island.unique())[0]]
-            ).pvalue) if d.island.nunique() > 1 else np.nan,
+            "common_size_p_cluster": island_add.pvalues.get("size_pc1", np.nan),
+            "island_joint_p_given_size_cluster": island_p,
             "aic_size_only": size_only.aic, "aic_size_island": island_add.aic,
             "aic_interaction": interaction.aic,
         })
@@ -154,40 +152,30 @@ def allometry_models(df: pd.DataFrame):
 def main():
     df = pd.read_csv(RESULTS / "plant_means.csv", encoding="utf-8-sig")
     df = df[df.island.isin(ISLAND_ORDER)].copy()
+    df["site"] = df.island.astype(str) + "_" + df.no.astype(str)
     df["guide_asin"] = np.arcsin(np.sqrt(np.clip(df[GUIDE] / 100.0, 0, 1)))
     df["guide_z"] = (df.guide_asin - df.guide_asin.mean()) / df.guide_asin.std(ddof=1)
-    df["size_pc1"], size_load = pc1_scores(df, SIZE_TRAITS, "size")
+    df["size_pc1"], size_load = pc1_scores(df, BODY_SIZE_TRAITS, "corolla_body_size")
     df["shape_pc1"], shape_load = pc1_scores(df, SHAPE_TRAITS, "shape")
-    pd.concat([size_load, shape_load], ignore_index=True).to_csv(RESULTS / "multivariate_module_loadings.csv", index=False)
+    pd.concat([size_load, shape_load], ignore_index=True).to_csv(
+        RESULTS / "multivariate_module_loadings.csv", index=False)
 
     df["size_within"] = df.size_pc1 - df.groupby("island").size_pc1.transform("mean")
     df["guide_within"] = df.guide_z - df.groupby("island").guide_z.transform("mean")
     island_means = df.groupby("island", observed=True)[["size_pc1", "guide_z", "shape_pc1"]].mean()
     corrs = [
-        correlation_row("raw plant-level sizePC1 vs guide", df.size_pc1, df.guide_z),
-        correlation_row("within-island centered sizePC1 vs guide", df.size_within, df.guide_within),
-        correlation_row("between-island mean sizePC1 vs guide", island_means.size_pc1, island_means.guide_z),
+        correlation_row("raw plant-level bodySizePC1 vs guide", df.size_pc1, df.guide_z),
+        correlation_row("within-island centered bodySizePC1 vs guide", df.size_within, df.guide_within),
+        correlation_row("between-island mean bodySizePC1 vs guide", island_means.size_pc1, island_means.guide_z),
         correlation_row("between-island mean shapePC1 vs guide", island_means.shape_pc1, island_means.guide_z),
     ]
     pd.DataFrame(corrs).to_csv(RESULTS / "multivariate_size_guide_correlations.csv", index=False)
 
-    model_data = df[["guide_z", "size_pc1", "island"]].dropna()
-    common = smf.ols("guide_z ~ size_pc1 + C(island)", model_data).fit(cov_type="HC3")
-    interaction = smf.ols("guide_z ~ size_pc1 * C(island)", model_data).fit(cov_type="HC3")
-    pd.DataFrame([{
-        "model": "island-adjusted common slope", "n": int(common.nobs), "r2": common.rsquared,
-        "aic": common.aic, "size_slope": common.params.get("size_pc1", np.nan),
-        "size_p": common.pvalues.get("size_pc1", np.nan)}, {
-        "model": "island-specific slopes", "n": int(interaction.nobs), "r2": interaction.rsquared,
-        "aic": interaction.aic, "size_slope": interaction.params.get("size_pc1", np.nan),
-        "size_p": interaction.pvalues.get("size_pc1", np.nan)}
-    ]).to_csv(RESULTS / "multivariate_size_guide_models.csv", index=False)
-
     allom = allometry_models(df)
     allom.to_csv(RESULTS / "multivariate_allometry_tests.csv", index=False)
 
-    complete = df[["island"] + CORE_TRAITS].dropna(); z = zscore(complete[CORE_TRAITS])
-    b_raw, b_psd, w, n, k = variance_components(z, complete.island)
+    complete = df[["island"] + CORE_TRAITS].dropna()
+    b_raw, b_psd, w, n, k = variance_components(zscore(complete[CORE_TRAITS]), complete.island)
     directional = directional_pst(b_psd, w, CORE_TRAITS)
     lo, hi, n_boot = bootstrap_top_axis(df)
     directional["top_axis_boot_lo"] = np.nan; directional["top_axis_boot_hi"] = np.nan
@@ -200,20 +188,19 @@ def main():
     pd.DataFrame(w, index=CORE_TRAITS, columns=CORE_TRAITS).to_csv(RESULTS / "multivariate_W.csv")
     island_means.to_csv(RESULTS / "multivariate_island_module_means.csv")
 
-    print("\n=== multivariate phenotypic divergence ===")
+    print("\n=== multivariate phenotypic divergence: body-size null ===")
     print(f"plant means: {len(df)}; complete core-trait plants: {n}; islands: {k}")
-    print(f"size PC1 variance explained: {size_load.pc1_variance_fraction.iloc[0]:.3f}")
-    print(f"shape PC1 variance explained: {shape_load.pc1_variance_fraction.iloc[0]:.3f}")
+    print(f"corolla body-size PC1 variance explained: {size_load.pc1_variance_fraction.iloc[0]:.3f}")
     for row in corrs:
         print(f"{row['comparison']}: n={row['n']} r={row['pearson_r']:+.3f} p={row['pearson_p']:.3g}; rho={row['spearman_rho']:+.3f} p={row['spearman_p']:.3g}")
-    print(f"island-adjusted sizePC1 slope on guide: beta={common.params.get('size_pc1', np.nan):+.3f}, p={common.pvalues.get('size_pc1', np.nan):.3g}")
-    print("allometry: island effect after size adjustment")
+    print("functional traits: island effect after body-size adjustment (site-cluster robust)")
     for _, r in allom.iterrows():
-        print(f"  {r.trait:28s} deltaR2={r.size_island_delta_r2:.3f} island p={r.island_joint_p_given_size:.3g}")
+        print(f"  {r.trait:28s} deltaR2={r.size_island_delta_r2:.3f} island p={r.island_joint_p_given_size_cluster:.3g}")
     top = directional.iloc[0]
     print(f"top multivariate P_ST analogue={top.pst_analogue:.3f} (bootstrap 95% CI {lo:.3f}-{hi:.3f}; {n_boot} resamples)")
-    print("top-axis loadings:")
-    for trait in CORE_TRAITS: print(f"  {trait:30s} {top[f'loading_{trait}']:+.3f}")
+    print("top-axis unit-norm loadings:")
+    for trait in CORE_TRAITS:
+        print(f"  {trait:30s} {top[f'loading_{trait}']:+.3f}")
 
 
 if __name__ == "__main__":
