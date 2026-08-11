@@ -20,7 +20,8 @@ rm -f \
   results_shimask_all/island_guide_traits.png \
   results_shimask_all/island_pollination_traits.png \
   results_shimask_all/island_corolla_size.png \
-  results_shimask_all/island_organ_length.png
+  results_shimask_all/island_organ_length.png \
+  results_shimask_all/multivariate_*.csv
 
 echo ">> 1/13 reviewed hand-ROI corolla size     -> medial_traits.csv"
 run_py measurement/remeasure_medial.py
@@ -42,7 +43,7 @@ echo ">> 9/13 colour-free guide spatial tests     -> guide_spatial.csv"
 run_py analysis/guide_spatial.py
 echo ">> 10/13 plant/site-corrected global + pairwise Pst"
 run_py analysis/island_analysis.py
-echo ">> 11/13 multivariate phenotypic divergence"
+echo ">> 11/13 site-aware multivariate phenotypic divergence"
 run_py analysis/multivariate_phenotype.py
 
 echo ">> 12/13 publication figures and tables"
