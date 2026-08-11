@@ -201,8 +201,10 @@ def site_interaction(site, nperm, seed):
 
 def allometry(df, nperm=4999, interaction_perm=1999, loo_perm=1999):
     summary = []; site_rows = []; island_rows = []; loo_rows = []
+    support = df.groupby("island").body_size_mm.agg(["min", "max"])
+    common_lo = float(support["min"].max()); common_hi = float(support["max"].min())
     for i, trait in enumerate(FUNCTIONAL):
-        d = df[[trait, "log_body_size", "island", "site"]].dropna().copy()
+        d = df[[trait, "body_size_mm", "log_body_size", "island", "site"]].dropna().copy()
         d["y"] = transformed(d, trait)
         m0 = smf.ols("y ~ log_body_size", d).fit(cov_type="HC3")
         m1 = smf.ols("y ~ log_body_size + C(island)", d).fit(cov_type="HC3")
@@ -219,6 +221,18 @@ def allometry(df, nperm=4999, interaction_perm=1999, loo_perm=1999):
                                           e, nperm, 20260811 + i)
         anc = site_ancova(site, nperm, 20261811 + i)
         interaction = site_interaction(site, interaction_perm, 20262811 + i)
+        common = d[(d.body_size_mm >= common_lo) & (d.body_size_mm <= common_hi)].copy()
+        if len(common):
+            Xc = np.column_stack([np.ones(len(common)), common.log_body_size.to_numpy(float)])
+            bc, *_ = np.linalg.lstsq(Xc, common.y.to_numpy(float), rcond=None)
+            common["common_support_residual"] = common.y.to_numpy(float) - Xc @ bc
+            common_site = common.groupby(["island", "site"], observed=True).common_support_residual.mean().reset_index()
+            common_eta = eta2(common_site.island.to_numpy(), common_site.common_support_residual.to_numpy())
+            common_p = label_permutation(common_site.island.to_numpy(),
+                                         common_site.common_support_residual.to_numpy(),
+                                         common_eta, nperm, 20264811 + i)
+        else:
+            common_site = pd.DataFrame(); common_eta = np.nan; common_p = np.nan
         for omitted in sorted(site.island.unique()):
             reduced = site[site.island != omitted].copy()
             loo = site_ancova(reduced, loo_perm, 20263811 + i * 10 + ISLANDS.index(omitted))
@@ -241,6 +255,12 @@ def allometry(df, nperm=4999, interaction_perm=1999, loo_perm=1999):
             "delta_aic_interaction_vs_additive_plant": m2.aic - m1.aic,
             "plant_allometry_site_residual_eta2": e,
             "plant_allometry_site_residual_permutation_p": sensitivity_p,
+            "common_support_body_size_lo_mm": common_lo,
+            "common_support_body_size_hi_mm": common_hi,
+            "common_support_n_plants": len(common),
+            "common_support_n_sites": len(common_site),
+            "common_support_site_residual_eta2": common_eta,
+            "common_support_site_residual_permutation_p": common_p,
             **anc, **interaction, "n_permutations": nperm,
             "n_interaction_permutations": interaction_perm})
     tab = pd.DataFrame(summary)
@@ -248,6 +268,8 @@ def allometry(df, nperm=4999, interaction_perm=1999, loo_perm=1999):
     tab["site_interaction_permutation_p_bh"] = bh(tab.site_interaction_permutation_p.tolist())
     tab["plant_allometry_site_residual_permutation_p_bh"] = bh(
         tab.plant_allometry_site_residual_permutation_p.tolist())
+    tab["common_support_site_residual_permutation_p_bh"] = bh(
+        tab.common_support_site_residual_permutation_p.tolist())
     return tab, pd.DataFrame(site_rows), pd.DataFrame(island_rows), pd.DataFrame(loo_rows)
 
 
@@ -318,6 +340,7 @@ def main():
         print(f"  {row.trait:28s} site-ANCOVA partialR2={row.site_ancova_partial_r2:.3f} "
               f"perm p={row.site_ancova_permutation_p:.3g} BH={row.site_ancova_permutation_p_bh:.3g}; "
               f"plant-residual sensitivity p={row.plant_allometry_site_residual_permutation_p:.3g}; "
+              f"common-support p={row.common_support_site_residual_permutation_p:.3g}; "
               f"slope-interaction perm p={row.site_interaction_permutation_p:.3g}; "
               f"deltaAIC(interaction-additive)={row.delta_aic_interaction_vs_additive_plant:+.2f}")
     atop = absolute.iloc[0]; rtop = adjusted.iloc[0]
