@@ -176,8 +176,31 @@ def site_ancova(site, nperm, seed):
             "site_ancova_partial_r2": (s0 - s1) / s0 if s0 > 0 else 0.0}
 
 
-def allometry(df, nperm=4999):
-    summary = []; site_rows = []; island_rows = []
+def site_interaction(site, nperm, seed):
+    """Test island-specific allometric slopes after fitting additive island shifts."""
+    y = site.mean_y.to_numpy(float); x = site.mean_log_body_size.to_numpy(float)
+    levels = sorted(site.island.unique())
+    dummy = np.column_stack([(site.island == lev).to_numpy(float) for lev in levels[1:]])
+    interactions = dummy * x[:, None]
+    X0 = np.column_stack([np.ones(len(site)), x, dummy])
+    X1 = np.column_stack([X0, interactions])
+    H0 = X0 @ np.linalg.pinv(X0); H1 = X1 @ np.linalg.pinv(X1)
+    M0 = np.eye(len(y)) - H0; M1 = np.eye(len(y)) - H1
+    s0 = float(y @ M0 @ y); s1 = float(y @ M1 @ y)
+    dfn = np.linalg.matrix_rank(X1) - np.linalg.matrix_rank(X0)
+    dfd = len(y) - np.linalg.matrix_rank(X1)
+    F = ((s0 - s1) / dfn) / (s1 / dfd); param_p = float(stats.f.sf(max(F, 0), dfn, dfd))
+    fitted = H0 @ y; resid0 = M0 @ y; rng = np.random.default_rng(seed); exceed = 0
+    for _ in range(nperm):
+        yp = fitted + rng.permutation(resid0); a = float(yp @ M0 @ yp); b = float(yp @ M1 @ yp)
+        exceed += (((a - b) / dfn) / (b / dfd)) >= F - 1e-12
+    return {"site_interaction_f": F, "site_interaction_parametric_p": param_p,
+            "site_interaction_permutation_p": (exceed + 1) / (nperm + 1),
+            "site_interaction_partial_r2": (s0 - s1) / s0 if s0 > 0 else 0.0}
+
+
+def allometry(df, nperm=4999, interaction_perm=1999, loo_perm=1999):
+    summary = []; site_rows = []; island_rows = []; loo_rows = []
     for i, trait in enumerate(FUNCTIONAL):
         d = df[[trait, "log_body_size", "island", "site"]].dropna().copy()
         d["y"] = transformed(d, trait)
@@ -195,6 +218,13 @@ def allometry(df, nperm=4999):
                                           site.mean_size_adjusted_residual.to_numpy(),
                                           e, nperm, 20260811 + i)
         anc = site_ancova(site, nperm, 20261811 + i)
+        interaction = site_interaction(site, interaction_perm, 20262811 + i)
+        for omitted in sorted(site.island.unique()):
+            reduced = site[site.island != omitted].copy()
+            loo = site_ancova(reduced, loo_perm, 20263811 + i * 10 + ISLANDS.index(omitted))
+            loo_rows.append({"trait": trait, "omitted_island": omitted,
+                             "n_sites": len(reduced), "n_islands": reduced.island.nunique(),
+                             **loo, "n_permutations": loo_perm})
         for island, di in site.groupby("island", observed=True):
             island_rows.append({"trait": trait, "island": island, "n_sites": len(di),
                 "mean_site_residual": di.mean_size_adjusted_residual.mean(),
@@ -211,12 +241,14 @@ def allometry(df, nperm=4999):
             "delta_aic_interaction_vs_additive_plant": m2.aic - m1.aic,
             "plant_allometry_site_residual_eta2": e,
             "plant_allometry_site_residual_permutation_p": sensitivity_p,
-            **anc, "n_permutations": nperm})
+            **anc, **interaction, "n_permutations": nperm,
+            "n_interaction_permutations": interaction_perm})
     tab = pd.DataFrame(summary)
     tab["site_ancova_permutation_p_bh"] = bh(tab.site_ancova_permutation_p.tolist())
+    tab["site_interaction_permutation_p_bh"] = bh(tab.site_interaction_permutation_p.tolist())
     tab["plant_allometry_site_residual_permutation_p_bh"] = bh(
         tab.plant_allometry_site_residual_permutation_p.tolist())
-    return tab, pd.DataFrame(site_rows), pd.DataFrame(island_rows)
+    return tab, pd.DataFrame(site_rows), pd.DataFrame(island_rows), pd.DataFrame(loo_rows)
 
 
 def write_axes(df, traits, prefix, residualise, seed):
@@ -262,10 +294,11 @@ def main():
                                  keep.size_pc1, keep.guide_z, omitted))
     pd.DataFrame(correlations).to_csv(R / "multivariate_size_guide_correlations.csv", index=False)
 
-    tests, site_resid, island_resid = allometry(df)
+    tests, site_resid, island_resid, loo = allometry(df)
     tests.to_csv(R / "multivariate_allometry_tests.csv", index=False)
     site_resid.to_csv(R / "multivariate_site_residuals.csv", index=False)
     island_resid.to_csv(R / "multivariate_island_residual_means.csv", index=False)
+    loo.to_csv(R / "multivariate_allometry_leave_one_island_out.csv", index=False)
     absolute, alo, ahi, anb, n, k = write_axes(df, ABS_TRAITS, "multivariate_absolute", False, 20260811)
     adjusted, rlo, rhi, rnb, _, _ = write_axes(df, RES_TRAITS, "multivariate_size_adjusted", True, 20260812)
     absolute.to_csv(R / "multivariate_pst_axes.csv", index=False)
@@ -285,6 +318,7 @@ def main():
         print(f"  {row.trait:28s} site-ANCOVA partialR2={row.site_ancova_partial_r2:.3f} "
               f"perm p={row.site_ancova_permutation_p:.3g} BH={row.site_ancova_permutation_p_bh:.3g}; "
               f"plant-residual sensitivity p={row.plant_allometry_site_residual_permutation_p:.3g}; "
+              f"slope-interaction perm p={row.site_interaction_permutation_p:.3g}; "
               f"deltaAIC(interaction-additive)={row.delta_aic_interaction_vs_additive_plant:+.2f}")
     atop = absolute.iloc[0]; rtop = adjusted.iloc[0]
     print(f"absolute-trait multivariate P_ST analogue={atop.pst_analogue:.3f} "
