@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """Colour-free spatial structure of the area-based nectar-guide mask.
 
-A functional guide should not be scattered at random over the corolla. Two patterns
-are tested against matched random pixels drawn from the same reviewed ROI:
+A nectar-guide candidate should not be scattered at random over the corolla. Two
+patterns are tested against matched random pixels drawn from the same reviewed
+corolla region:
 
-1. Basal concentration: the fraction of guide pixels in the proximal third and the
-   mean position along the corolla length (0 = base, 1 = lobe tips).
-2. Petal-midline concentration: distance to the corolla medial skeleton, compared
-   with random pixels within the same along-length bands so the transverse pattern
-   is separated from the basal pattern.
+1. Proximal/base-side concentration: the fraction of guide pixels in the proximal
+   third and the mean position along corolla length (0 = base, 1 = lobe tips).
+2. Petal/corolla-midline concentration: distance to the medial skeleton, compared
+   with random pixels within the same along-length bands so transverse patterning
+   is separated from the proximal/base-side pattern.
+
+These tests provide a morphological defence for calling the purple pattern a
+*nectar-guide candidate*. They do not demonstrate that bumblebees or other
+visitors perceive, learn, or use the natural pattern.
 
 Only corollas with at least 200 guide pixels enter these spatial tests. The metrics
 are based on mask geometry, not dried-specimen colour values. Writes
@@ -216,11 +221,15 @@ def main() -> None:
     print("\n=== pooled guide-vs-random tests ===")
     print(
         f"along-length position: guide {guide_pos.mean():.3f} vs random {random_pos.mean():.3f} "
-        f"(basal, MW p={basal_p:.2e})"
+        f"(proximal/base-side, MW p={basal_p:.2e})"
     )
     print(
         f"distal midline distance: guide {guide_mid.mean():.3f} vs random {random_mid.mean():.3f} "
         f"(midline, MW p={midline_p:.2e})"
+    )
+    print(
+        "Morphological interpretation: non-random proximal + midline placement supports "
+        "a nectar-guide candidate label; behavioural use by pollinators is not tested here."
     )
 
     density_all = np.where(
