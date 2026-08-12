@@ -212,7 +212,8 @@ def sampling_gaps(plant):
 
 def pseudo_f_only(df, cols):
     d = df.dropna(subset=cols)
-    X = zframe(d, cols).to_numpy(float); X -= X.mean(axis=1, keepdims=True)
+    X = zframe(d, cols).to_numpy(float)
+    X = X - X.mean(axis=1, keepdims=True)
     labels = d.island.to_numpy(); groups = np.unique(labels); grand = X.mean(axis=0)
     ssb = 0.; ssw = 0.
     for g in groups:
