@@ -2,17 +2,16 @@
 """Contrast receiver-dependent visual signalling with morphomechanical traits.
 
 This is a synthesis of already validated phenotype outputs. It does not test
-pollinator cognition or genetic regulation directly. Instead, it asks whether
-current floral traits show the contrasting phenotypic signatures predicted by:
+pollinator cognition or genetic regulation directly. It separates three levels
+of evidence for the purple spotted pattern:
 
-1. a receiver-dependent visual-signal hypothesis: guide amount can shift among
-   islands beyond simple body-size allometry while guide spatial architecture
-   remains comparatively conserved; and
-2. a morphomechanical-rematching hypothesis: dimensions that control physical
-   access/contact can change through island-specific allometric relationships.
+1. within-flower spatial placement is non-random (morphological support for a
+   nectar-guide candidate);
+2. guide amount can vary among islands beyond simple body-size allometry; and
+3. direct behavioural use by natural pollinators remains untested.
 
-The output is intended to keep the mechanistic hypotheses and their evidential
-limits explicit for manuscript/grant use.
+The morphomechanical side asks whether dimensions controlling physical access or
+contact change through island-specific allometric relationships.
 """
 from pathlib import Path
 
@@ -50,11 +49,12 @@ def main():
     tests = pd.read_csv(R / "multivariate_allometry_tests.csv")
     corr = pd.read_csv(R / "multivariate_size_guide_correlations.csv")
     guide = pd.read_csv(R / "syndrome_attraction_disassembly.csv")
+    layout = pd.read_csv(R / "guide_functional_layout_summary.csv").iloc[0]
 
     rows = [
         row_for_trait(
             tests, "guide_coverage_pct", "visual_signal_amount",
-            "receiver-dependent signal amount may shift beyond simple floral miniaturisation",
+            "guide amount may shift among populations beyond simple floral miniaturisation",
         ),
         row_for_trait(
             tests, "mouth_width_mm", "morphomechanical_interface",
@@ -73,8 +73,8 @@ def main():
 
     g = guide.set_index("guide_component")
     amount = float(g.loc["signal_amount", "raw_pst"])
-    basal = float(g.loc["spatial_architecture_basal", "raw_pst"])
-    mid = float(g.loc["spatial_architecture_midline", "raw_pst"])
+    basal = float(g.loc["spatial_placement_basal", "raw_pst"])
+    mid = float(g.loc["spatial_placement_midline", "raw_pst"])
 
     within = corr[corr.comparison == "within-island centred plants"].iloc[0]
     between = corr[corr.comparison == "between-island means"].iloc[0]
@@ -85,18 +85,44 @@ def main():
 
     summary = pd.DataFrame([
         {
-            "hypothesis": "receiver_dependent_visual_signal",
+            "hypothesis": "nectar_guide_candidate_spatial_layout",
+            "current_support": "direct_morphological_support",
+            "key_result": (
+                "guide pixels are non-randomly concentrated toward the proximal/base side "
+                "and petal/corolla midline relative to random pixels within the same corolla"
+            ),
+            "metric_1": "mean_guide_fraction_proximal_third",
+            "value_1": float(layout.mean_guide_fraction_in_proximal_third),
+            "metric_2": "mean_random_fraction_proximal_third",
+            "value_2": float(layout.mean_random_fraction_in_proximal_third),
+            "metric_3": "mean_midline_ratio_distal_random_over_guide",
+            "value_3": float(layout.mean_midline_ratio_distal_random_over_guide_distance),
+            "metric_4": "fraction_corollas_distal_midline_ratio_gt_1",
+            "value_4": float(layout.fraction_corollas_midline_ratio_distal_gt_1),
+            "guardrail": (
+                "supports the morphological nectar-guide label but does not demonstrate "
+                "that bumblebees or other visitors perceive or use the natural pattern"
+            ),
+        },
+        {
+            "hypothesis": "receiver_dependent_visual_signal_amount",
             "current_support": "phenotypic_support_only",
-            "key_result": "guide amount diverges beyond body size, while guide spatial architecture is more conserved",
+            "key_result": (
+                "guide amount diverges beyond body size; between-island divergence in amount "
+                "is larger than in basal/midline placement metrics"
+            ),
             "metric_1": "guide_site_ancova_BH_p",
             "value_1": float(guide_test.site_ancova_permutation_p_bh),
             "metric_2": "guide_amount_PST",
             "value_2": amount,
-            "metric_3": "basal_architecture_PST",
+            "metric_3": "basal_placement_PST",
             "value_3": basal,
-            "metric_4": "midline_architecture_PST",
+            "metric_4": "midline_placement_PST",
             "value_4": mid,
-            "guardrail": "does not directly test pollinator perception/cognition or guide gene regulation",
+            "guardrail": (
+                "does not directly test receiver perception/cognition, selective cause, or "
+                "guide gene regulation"
+            ),
         },
         {
             "hypothesis": "signal_not_generic_individual_allometry",
@@ -115,7 +141,10 @@ def main():
         {
             "hypothesis": "morphomechanical_rematching",
             "current_support": "trait_specific_support",
-            "key_result": "mouth width changes through island-specific allometric slopes whereas throat width is closer to common scaling",
+            "key_result": (
+                "mouth width changes through island-specific allometric slopes whereas throat "
+                "width is closer to common scaling"
+            ),
             "metric_1": "mouth_interaction_BH_p",
             "value_1": float(mouth_test.site_interaction_permutation_p_bh),
             "metric_2": "mouth_interaction_partial_R2",
@@ -124,7 +153,10 @@ def main():
             "value_3": float(throat_test.site_ancova_permutation_p_bh),
             "metric_4": "throat_interaction_BH_p",
             "value_4": float(throat_test.site_interaction_permutation_p_bh),
-            "guardrail": "mechanical function is inferred from morphology; visitor size/contact and pollen transfer are not yet measured",
+            "guardrail": (
+                "mechanical function is inferred from morphology; visitor size/contact and "
+                "pollen transfer are not yet measured"
+            ),
         },
         {
             "hypothesis": "pollen_transfer_geometry_reorganisation",
@@ -143,7 +175,10 @@ def main():
         {
             "hypothesis": "genetic_regulation_of_visual_signal",
             "current_support": "not_tested",
-            "key_result": "phenotype pattern motivates a regulatory-expression hypothesis but current neutral SNP/phenotype pipeline cannot identify causal guide loci",
+            "key_result": (
+                "phenotype pattern motivates a regulatory-expression hypothesis but the current "
+                "neutral SNP/phenotype pipeline cannot identify causal guide loci"
+            ),
             "metric_1": "not_applicable",
             "value_1": np.nan,
             "metric_2": "not_applicable",
@@ -159,7 +194,13 @@ def main():
 
     print("\n=== physical matching vs receiver-dependent visual signalling ===")
     print(
-        f"guide: island shift beyond size BH={guide_test.site_ancova_permutation_p_bh:.4g}; "
+        f"guide spatial layout: proximal fraction guide/random="
+        f"{layout.mean_guide_fraction_in_proximal_third:.3f}/"
+        f"{layout.mean_random_fraction_in_proximal_third:.3f}; "
+        f"distal midline ratio={layout.mean_midline_ratio_distal_random_over_guide_distance:.3f}"
+    )
+    print(
+        f"guide amount: island shift beyond size BH={guide_test.site_ancova_permutation_p_bh:.4g}; "
         f"within-island size-guide r={within.pearson_r:+.3f}; "
         f"PST amount/basal/midline={amount:.3f}/{basal:.3f}/{mid:.3f}"
     )
@@ -168,7 +209,10 @@ def main():
         f"throat island BH={throat_test.site_ancova_permutation_p_bh:.4g}; "
         f"organ island BH={organ_test.site_ancova_permutation_p_bh:.4g}"
     )
-    print("Guardrail: receiver cognition and genetic regulation remain hypotheses, not current results.")
+    print(
+        "Guardrail: non-random guide placement supports the nectar-guide candidate label; "
+        "pollinator use, selective cause, and genetic regulation remain hypotheses."
+    )
 
 
 if __name__ == "__main__":
