@@ -58,7 +58,6 @@ def main():
         modes = pd.read_csv(modes_path)[["trait", "response_mode"]]
         uni = uni.merge(modes, on="trait", how="left")
 
-    # Descriptive only: this is not an evolutionary-rate estimate.
     uni["raw_pst_rank_desc"] = uni["raw_pst"].rank(ascending=False, method="min")
     uni["scope_note"] = np.where(
         uni.module_component.eq("reproductive_geometry"),
