@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Summarise differential lability and selective disassembly of floral traits.
+"""Summarise differential lability of floral traits.
 
-This script does not add new causal tests. It integrates already validated
-univariate and body-size-adjusted outputs to expose which parts of the floral
-phenotype are labile versus conserved. In particular, nectar-guide amount is
-kept distinct from the spatial architecture of the guide.
+This script integrates already validated univariate and body-size-adjusted
+outputs to expose which phenotype components vary among islands. For the purple
+nectar-guide candidate, signal amount is kept separate from spatial placement.
+The placement metrics are descriptive between-island traits; the separate
+`guide_functional_layout.py` analysis tests whether the placement itself is
+non-random within flowers.
 """
 from pathlib import Path
 
@@ -17,9 +19,9 @@ MODULE_MAP = {
     "corolla_length_mm": "body_size",
     "corolla_width_fulleq_mm": "body_size",
     "corolla_area_fulleq_mm2": "body_size",
-    "guide_coverage_pct": "attraction_signal_amount",
-    "guide_basal_frac": "attraction_signal_architecture",
-    "guide_midline_ratio": "attraction_signal_architecture",
+    "guide_coverage_pct": "visual_signal_amount",
+    "guide_basal_frac": "visual_signal_spatial_placement",
+    "guide_midline_ratio": "visual_signal_spatial_placement",
     "mouth_width_mm": "pollination_function",
     "throat_width_mm": "pollination_function",
     "tube_flare_W_throat": "pollination_function",
@@ -73,28 +75,29 @@ def main():
     coverage = float(guide.loc[guide.trait == "guide_coverage_pct", "raw_pst"].iloc[0])
     guide["guide_component"] = guide["trait"].map({
         "guide_coverage_pct": "signal_amount",
-        "guide_basal_frac": "spatial_architecture_basal",
-        "guide_midline_ratio": "spatial_architecture_midline",
+        "guide_basal_frac": "spatial_placement_basal",
+        "guide_midline_ratio": "spatial_placement_midline",
     })
     guide["pst_relative_to_coverage"] = guide["raw_pst"] / coverage
     guide["interpretation"] = guide["trait"].map({
         "guide_coverage_pct": "signal amount is comparatively labile among islands",
-        "guide_basal_frac": "basal placement is more conserved than signal amount",
-        "guide_midline_ratio": "midline placement is more conserved than signal amount",
+        "guide_basal_frac": "between-island divergence in basal placement is lower than divergence in amount",
+        "guide_midline_ratio": "between-island divergence in midline placement is lower than divergence in amount",
     })
     guide[["guide_component", "trait", "raw_pst", "raw_pst_lo", "raw_pst_hi",
            "raw_site_p", "raw_site_p_bh", "pst_relative_to_coverage",
            "interpretation"]].to_csv(R / "syndrome_attraction_disassembly.csv", index=False)
 
-    print("\n=== trait lability / selective-disassembly summary ===")
+    print("\n=== trait lability / guide amount-vs-placement summary ===")
     for _, r in guide.iterrows():
         print(
             f"{r.guide_component:30s} P_ST={r.raw_pst:.3f} "
             f"[{r.raw_pst_lo:.3f},{r.raw_pst_hi:.3f}] site-BH={r.raw_site_p_bh:.3g}"
         )
     print(
-        "Interpretation: guide amount is more labile than guide spatial architecture; "
-        "this is selective signal attenuation, not proof of temporal order."
+        "Interpretation: guide amount varies more among islands than the measured "
+        "basal/midline placement metrics. Non-random within-flower placement is tested "
+        "separately by guide_functional_layout.py."
     )
 
 
