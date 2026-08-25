@@ -2,13 +2,13 @@
 
 ## Purpose
 
-This document connects the measured *Campanula microdonta* phenotype to the thesis architecture without turning a phenotypic island contrast into an unsupported pollinator-causation claim.
+This document connects the measured *Campanula microdonta* phenotype to the three-chapter thesis architecture without turning a phenotypic island contrast into an unsupported pollinator-causation claim.
 
-- [`zuizui0223/island`](https://github.com/zuizui0223/island) — **Chapter 1:** identifies where and under what biogeographic conditions floral and reproductive assemblage filtering appears.
-- [`zuizui0223/izu-core`](https://github.com/zuizui0223/izu-core) — **Chapter 2:** asks how changes in pollination function are translated into reproductive and interaction responses and why downstream responses can branch.
+- [`zuizui0223/island`](https://github.com/zuizui0223/island) — **Chapter 1:** identifies when and where floral/reproductive island syndromes differ among biogeographic contexts.
+- [`zuizui0223/izu-core`](https://github.com/zuizui0223/izu-core) — **Chapter 2:** asks why altered ecological interactions generate branching, propagation, buffering or alternative responses.
 - `shimahotarubukuro` — **Chapter 3:** directly measures which floral phenotype axes are differentiated within one focal island lineage.
 
-The Chapter 3 question is therefore:
+The Chapter 3 question is:
 
 > **Which floral and reproductive-interface traits actually diverge among island populations of one lineage, and does the realized phenotype look like one uniform syndrome or a trait-specific multidimensional response?**
 
@@ -45,45 +45,69 @@ Several proportional or shape-composition metrics are much weaker after site cor
 - guide basal concentration — adjusted site p = 0.125;
 - guide midline concentration — adjusted site p = 0.108.
 
-This distinction matters. The current phenotype is **not best summarized as a wholesale redesign of floral shape**. The stronger signal is concentrated in absolute size, access dimensions, guide investment and reproductive-organ length, while several ratios remain comparatively stable.
+The current phenotype is therefore **not best summarized as a wholesale redesign of floral shape**. The stronger signal is concentrated in absolute size, access dimensions, guide investment and reproductive-organ length, while several ratios remain comparatively stable.
 
-That pattern is consistent with a trait-specific or partly coordinated scaling response rather than one universal within-lineage "generalization score".
+That pattern is consistent with a trait-specific or partly coordinated scaling response rather than one universal within-lineage generalization score.
 
 ## Relationship to Chapter 1
 
-Chapter 1 proposes a **Channel-gated island assembly hypothesis**: a classical floral island syndrome should be most likely when isolation disrupts a pollination channel that is regionally available, and should not be expected from pollinator structural absence alone.
+Chapter 1 now tests a **biogeographically contingent floral island syndrome hypothesis** rather than a primary pollinator-deficit model.
 
-Chapter 3 does not retest that global assemblage hypothesis. It provides a focal within-lineage observation that is unavailable to the Chapter 1 cross-sectional composition analysis:
+Its direct result will be a set of region/context-specific floral and reproductive trait vectors after status, lineage/source-pool, climate and observation safeguards.
 
-> island populations of the same lineage can differ strongly in several floral and reproductive-interface traits.
+Chapter 3 provides a different evidence type:
 
-Some Chapter 3 directions are qualitatively compatible with reduced floral display or reduced visual-guidance investment: corolla dimensions and guide coverage are lower toward Kozushima than on Oshima. However, the reductions in mouth and throat width are **not automatically evidence of increased floral accessibility or generalization**. They may partly reflect overall corolla scaling and must not be recoded as a Chapter 1 generalized-form result.
+> island populations of one lineage can differ strongly in multiple floral and reproductive-interface traits.
 
-Accordingly, Chapter 3 should be used as a focused empirical realization of island floral divergence, not as direct confirmation of every Chapter 1 syndrome component.
+The Chapter 3 measurements can later be compared qualitatively with the broader Chapter 1 regional trait directions, but they should not be forced to match one syndrome score.
+
+Some directions are compatible with reduced floral display or reduced visual-guidance investment: corolla dimensions and guide coverage are lower toward Kozushima than on Oshima. However, reductions in mouth and throat width are **not automatically evidence of increased floral accessibility or generalization**; they may partly reflect overall corolla scaling.
+
+## Relationship to pollination-syndrome interpretation
+
+Chapter 1 may discuss regional multivariate trait vectors against literature-defined pollination syndromes only after primary results are fixed.
+
+The same principle applies to Chapter 3:
+
+```text
+observed floral phenotype
+<-> literature-defined syndrome expectation
+= possible ecological concordance
+```
+
+not:
+
+```text
+observed phenotype
+-> inferred pollinator
+-> causal historical explanation
+```
+
+Thus Chapter 3 may contribute high-resolution phenotype context to later discussion, but does not independently identify Bombus, birds, Lepidoptera or any other pollinator as the historical driver.
 
 ## Relationship to Chapter 2
 
-Chapter 2 predicts **response branching**: a shared change in pollination environment need not generate one common downstream trait response across lineages or even across trait channels.
+Chapter 2 predicts **response branching**: a shared ecological perturbation need not generate one common downstream trait response across lineages or trait channels.
 
-Chapter 3 adds a within-lineage version of the same lesson. Different phenotype axes have different divergence magnitudes and different statistical support. Absolute dimensions and guide coverage diverge strongly, whereas several ratios and spatial guide-allocation metrics do not show equally strong site-corrected differences.
+Chapter 3 adds a within-lineage version of that lesson. Different phenotype axes have different divergence magnitudes and different statistical support. Absolute dimensions and guide coverage diverge strongly, whereas several ratios and spatial guide-allocation metrics do not show equally strong site-corrected differences.
 
-This makes Chapter 3 especially useful as the phenotype endpoint of the thesis:
+This makes Chapter 3 especially useful as the phenotype endpoint:
 
 ```text
-Chapter 1: identify conditions under which floral filtering appears
+Chapter 1: identify where regional trait syndromes differ
         ->
-Chapter 2: identify why functional/reproductive responses can branch
+Chapter 2: identify why ecological responses can branch / propagate / buffer
         ->
 Chapter 3: measure which phenotype axes actually carry divergence in one focal lineage
 ```
 
 ## Working Chapter 3 interpretation
 
-The current evidence supports the following statement:
+The current evidence supports:
 
 > *Campanula microdonta* populations across the Izu island series show pronounced, multidimensional floral divergence, but the divergence is concentrated in particular absolute-size, access, reproductive-interface and nectar-guide axes rather than expressed as one uniform change across all floral-shape metrics.
 
-This is stronger and more defensible than either of the following claims:
+This is stronger and more defensible than either:
 
 - "all floral traits become smaller or more generalized with island isolation";
 - "Bombus loss caused the observed phenotype."
@@ -99,13 +123,13 @@ Chapter 3 does **not** establish:
 - that Pst is Qst or evidence of selection; or
 - that phenotypic divergence identifies the historical mechanism that produced it.
 
-Those causal and mechanistic questions remain the responsibility of Chapter 2 and of future direct pollination/reproductive measurements.
+Those mechanistic questions remain the responsibility of Chapter 2 or future direct pollination/reproductive measurements.
 
 ## Immediate analytical priority
 
-The next Chapter 3 analysis should preserve the multidimensional structure rather than create a single island-syndrome index. The key comparison is:
+Preserve the multidimensional structure rather than create a single island-syndrome index. The key comparison remains:
 
 1. **absolute-size / investment axes** — corolla dimensions, mouth/throat width, reproductive-organ length, guide coverage;
 2. **proportional-shape axes** — aspect, tube flare, organ/corolla ratio, guide spatial allocation.
 
-A coherent result in which the first group diverges more strongly than the second would sharpen the biological interpretation from generic "island floral change" to **which components of floral architecture are labile within this lineage**.
+A coherent result in which the first group diverges more strongly than the second would sharpen the biological interpretation from generic island floral change to **which components of floral architecture are labile within this lineage**.
