@@ -10,8 +10,8 @@ The shared dissertation-level question is:
 
 The three empirical levels are intentionally separated:
 
-- [`zuizui0223/island`](https://github.com/zuizui0223/island) — **Chapter 1:** identifies the macroecological and biogeographic conditions under which floral and reproductive assemblage filtering appears.
-- [`zuizui0223/izu-core`](https://github.com/zuizui0223/izu-core) — **Chapter 2:** asks how pollination-regime change is translated into reproductive and interaction responses and applies a stricter causal-identification standard.
+- [`zuizui0223/island`](https://github.com/zuizui0223/island) — **Chapter 1:** identifies when and where floral/reproductive island syndromes differ among biogeographic contexts.
+- [`zuizui0223/izu-core`](https://github.com/zuizui0223/izu-core) — **Chapter 2:** asks why those responses branch, propagate, buffer or decouple under altered ecological interactions.
 - `shimahotarubukuro` — **Chapter 3:** measures the realized within-lineage floral phenotype across a concrete Izu island series in *Campanula microdonta*.
 
 Chapter 3 therefore asks:
@@ -20,23 +20,23 @@ Chapter 3 therefore asks:
 
 ## Why Chapter 3 is needed
 
-Chapter 1 works at the assemblage level and cannot by itself demonstrate that an extant lineage changes its phenotype across islands. Chapter 2 resolves mechanisms and response branching, but it deliberately refuses to infer morphology from pollinator identity alone.
+Chapter 1 works at the assemblage level and tests context dependence; it cannot demonstrate that an extant lineage changes its phenotype across islands. Chapter 2 addresses mechanisms and response branching, but it deliberately refuses to infer morphology from pollinator identity alone.
 
-Chapter 3 supplies a different kind of evidence: a direct, reproducible measurement of the phenotype itself within a focal lineage.
+Chapter 3 supplies a different kind of evidence: direct, reproducible measurement of the phenotype itself within a focal lineage.
 
 ```text
-Chapter 1: where / when does filtering appear?
+Chapter 1: when / where do different regional trait syndromes appear?
         ↓
-Chapter 2: how can pollination-regime change generate different biological responses?
+Chapter 2: why can altered ecological interactions generate different responses?
         ↓
-Chapter 3: what floral phenotype is actually differentiated within a focal island lineage?
+Chapter 3: what floral phenotype is actually differentiated within one lineage?
 ```
 
-It is therefore an **empirical realization / focal-case chapter**, not a third global test and not a substitute for the Chapter 2 causal measurements.
+It is therefore an **empirical realization / focal-case chapter**, not a third global test and not a substitute for Chapter 2 mechanistic evidence.
 
 ## Empirical system
 
-The current publication pipeline measures flattened, pressed *Campanula microdonta* corollas from five Izu Islands:
+The publication pipeline measures flattened, pressed *Campanula microdonta* corollas from five Izu Islands:
 
 - Oshima
 - Toshima
@@ -74,29 +74,46 @@ These results show that island divergence is not confined to a single generic si
 
 The geographic pattern is not forced into one perfectly monotonic syndrome: individual islands can depart from a simple ordered gradient, and the chapter preserves trait-specific and pairwise structure rather than collapsing all measurements into one island-adaptation score.
 
-## Relationship to the Channel-gated island assembly hypothesis
+## Relationship to Chapter 1
 
-Chapter 1 proposes that a classical floral island syndrome should be conditional on loss or weakening of a pollination channel that is regionally available, rather than on pollinator absence alone.
+Chapter 1 now tests a **biogeographically contingent floral island syndrome hypothesis**:
 
-Chapter 3 provides a focal phenotype that is **compatible with testing the biological expression of that idea**, because *C. microdonta* occurs across an Izu island series where pollination regimes differ and the measured traits include floral-access and signal components.
+> comparable isolation need not generate one universal floral/reproductive response; regional trait vectors may differ after status, lineage/source-pool, climate and observation structure are represented.
 
-However, the present `shimahotarubukuro` pipeline does **not** estimate a causal Bombus-present versus Bombus-absent effect. The observed island differentiation can be discussed alongside the Chapter 1 channel-gated prediction and the Chapter 2 Izu functional evidence, but Chapter 3 does not convert that contextual agreement into historical causal proof.
+Chapter 3 does not retest that global assemblage hypothesis. It provides a focal within-lineage observation unavailable to Chapter 1:
 
-The appropriate thesis-level interpretation is:
+> island populations of the same lineage can differ strongly in several floral and reproductive-interface traits.
+
+Some Chapter 3 directions — such as lower corolla dimensions and lower guide coverage toward Kozushima relative to Oshima — may later be compared with broader regional trait directions from Chapter 1. However, Chapter 3 does not force those measurements into a predeclared Bombus or generalization syndrome.
+
+In particular, reductions in mouth and throat width are **not automatically evidence of increased floral accessibility or generalization**; they may partly reflect overall floral scaling.
+
+## Relationship to Chapter 2
+
+Chapter 2 predicts **response branching**: a shared ecological perturbation need not generate one common downstream trait response across lineages or trait channels.
+
+Chapter 3 adds a within-lineage version of the same lesson. Different phenotype axes have different divergence magnitudes and statistical support. Absolute dimensions and guide coverage diverge strongly, whereas several ratios and spatial guide-allocation metrics do not show equally strong site-corrected differences.
+
+This makes Chapter 3 the phenotype endpoint of the thesis:
 
 ```text
-Chapter 1 identifies a conditional macroecological pattern.
-Chapter 2 identifies which pollination/reproductive mechanisms are or are not supported.
-Chapter 3 demonstrates that a focal lineage carries substantial, trait-specific phenotypic divergence across the same island context.
+Chapter 1: identify where regional trait syndromes differ
+        ->
+Chapter 2: identify why ecological responses can branch / propagate / buffer
+        ->
+Chapter 3: measure which phenotype axes actually carry divergence in one focal lineage
 ```
 
-## Relationship to Chapter 2 response branching
+## Working Chapter 3 interpretation
 
-Chapter 2 predicts that a shared change in pollination function need not generate one universal morphological response. Chapter 3 is therefore not expected to show that every measured floral trait changes in the same direction or with the same effect size.
+The current evidence supports:
 
-The relevant empirical question is instead whether divergence is **trait specific**. The current results support that view: reproductive-organ length, mouth width, corolla area, corolla length, guide coverage and throat width show substantial differentiation, whereas aspect ratio, tube flare, lobe incision and guide spatial metrics are much weaker after site correction.
+> *Campanula microdonta* populations across the Izu island series show pronounced, multidimensional floral divergence, but the divergence is concentrated in particular absolute-size, access, reproductive-interface and nectar-guide axes rather than expressed as one uniform change across all floral-shape metrics.
 
-This makes Chapter 3 a concrete example of the response-branching principle: different parts of the same flower can carry very different amounts of island-associated divergence.
+This is stronger and more defensible than claims such as:
+
+- "all floral traits become smaller or more generalized with island isolation";
+- "Bombus loss caused the observed phenotype."
 
 ## What Chapter 3 identifies
 
@@ -104,7 +121,7 @@ Chapter 3 can support claims about:
 
 - reproducible among-island phenotypic differentiation within *C. microdonta*;
 - which floral dimensions carry the strongest divergence;
-- whether divergence is concentrated in size, access geometry, reproductive-interface, or signal traits;
+- whether divergence is concentrated in size, access geometry, reproductive-interface or signal traits;
 - the spatial structure of nectar-guide pigment within flowers;
 - site-corrected island differences; and
 - the relative magnitude of phenotypic differentiation using `Pst` and pairwise `Pst`.
@@ -118,8 +135,8 @@ This repository should not claim that:
 - the Oshima-versus-other-islands contrast is a causal Bombus experiment;
 - `Pst` is `Qst`;
 - phenotypic differentiation alone demonstrates natural selection;
-- a decrease in floral size, access width, reproductive-organ length, or guide coverage was caused historically by Bombus loss;
-- latitude or island order uniquely identifies the causal environmental driver; or
+- a decrease in floral size, access width, reproductive-organ length or guide coverage was caused historically by Bombus loss;
+- latitude or island order uniquely identifies the causal driver; or
 - all floral dimensions constitute one coordinated island syndrome.
 
 The Chapter 3 contribution is narrower and stronger: **to provide a directly measured, within-lineage empirical example of multidimensional floral divergence across an island series, and to locate precisely which phenotype axes require mechanistic explanation from the broader dissertation framework.**
@@ -128,20 +145,20 @@ The Chapter 3 contribution is narrower and stronger: **to provide a directly mea
 
 | Chapter | Repository | Scale | Primary question | Main evidential contribution |
 | --- | --- | --- | --- | --- |
-| 1 | `island` | global island floras | **Where and when?** | boundary conditions for channel-gated assemblage filtering |
-| 2 | `izu-core` | Izu networks / lineages / plants | **How and why?** | mechanistic identification and response branching |
+| 1 | `island` | global island floras | **When and where?** | biogeographic contingency of floral/reproductive trait syndromes |
+| 2 | `izu-core` | mechanistic island-response architecture | **How and why?** | branching, propagation, buffering and candidate mechanisms |
 | 3 | `shimahotarubukuro` | one focal lineage across five islands | **What phenotype actually diverges?** | direct multidimensional floral measurement and within-lineage phenotypic divergence |
 
-Together the intended argument is:
+Together:
 
 ```text
-Geographic isolation
+Isolation × biogeographic context
     ↓
-conditional pollination-channel context          [Chapter 1]
+regional trait syndromes                          [Chapter 1]
     ↓
-plant-specific reproductive / interaction response [Chapter 2]
+candidate ecological mechanisms / response modes [Chapter 2]
     ↓
-realized, trait-specific floral divergence          [Chapter 3]
+realized, trait-specific floral divergence        [Chapter 3]
 ```
 
-The chapters are complementary rather than nested proofs: Chapter 1 sets the boundary conditions, Chapter 2 sets the mechanistic admission standard, and Chapter 3 supplies a high-resolution empirical phenotype that those broader explanations must account for.
+The chapters are complementary rather than nested proofs: Chapter 1 establishes the pattern boundary, Chapter 2 tests mechanism and response architecture, and Chapter 3 supplies a high-resolution empirical phenotype those explanations must account for.
