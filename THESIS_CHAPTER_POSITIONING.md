@@ -6,12 +6,12 @@ This repository is the **Chapter 3 / focal empirical phenotype** component of th
 
 The shared dissertation-level question is:
 
-> **How does geographic isolation alter plant reproduction through changes in ecological interactions, and why do those changes produce different floral outcomes across islands and lineages?**
+> **How does geographic isolation alter plant reproduction and floral phenotype, and why do different phenotype components respond differently across islands and lineages?**
 
 The three empirical levels are intentionally separated:
 
-- [`zuizui0223/island`](https://github.com/zuizui0223/island) — **Chapter 1:** identifies when and where floral/reproductive island syndromes differ among biogeographic contexts.
-- [`zuizui0223/izu-core`](https://github.com/zuizui0223/izu-core) — **Chapter 2:** asks why those responses branch, propagate, buffer or decouple under altered ecological interactions.
+- [`zuizui0223/island`](https://github.com/zuizui0223/island) — **Chapter 1:** tests whether isolation produces one coherent floral/reproductive syndrome or component-specific reorganization at the global assemblage scale.
+- [`zuizui0223/izu-core`](https://github.com/zuizui0223/izu-core) — **Chapter 2:** asks which ecological interaction states make those response components branch, propagate, buffer or decouple.
 - `shimahotarubukuro` — **Chapter 3:** measures the realized within-lineage floral phenotype across a concrete Izu island series in *Campanula microdonta*.
 
 Chapter 3 therefore asks:
@@ -20,16 +20,16 @@ Chapter 3 therefore asks:
 
 ## Why Chapter 3 is needed
 
-Chapter 1 works at the assemblage level and tests context dependence; it cannot demonstrate that an extant lineage changes its phenotype across islands. Chapter 2 addresses mechanisms and response branching, but it deliberately refuses to infer morphology from pollinator identity alone.
+Chapter 1 works at the assemblage level and now shows that isolation-associated change is better represented as **component-specific reorganization** than as one coherent classic syndrome. It cannot demonstrate that an extant lineage changes its phenotype across islands. Chapter 2 addresses why response components can branch, but it deliberately refuses to infer morphology from pollinator identity alone.
 
 Chapter 3 supplies a different kind of evidence: direct, reproducible measurement of the phenotype itself within a focal lineage.
 
 ```text
-Chapter 1: when / where do different regional trait syndromes appear?
+Chapter 1: which floral components reorganize under isolation?
         ↓
-Chapter 2: why can altered ecological interactions generate different responses?
+Chapter 2: why can ecological interactions make components respond differently?
         ↓
-Chapter 3: what floral phenotype is actually differentiated within one lineage?
+Chapter 3: which phenotype axes actually diverge within one lineage?
 ```
 
 It is therefore an **empirical realization / focal-case chapter**, not a third global test and not a substitute for Chapter 2 mechanistic evidence.
@@ -76,15 +76,17 @@ The geographic pattern is not forced into one perfectly monotonic syndrome: indi
 
 ## Relationship to Chapter 1
 
-Chapter 1 now tests a **biogeographically contingent floral island syndrome hypothesis**:
+Chapter 1 no longer has a headline **biogeographically contingent island syndrome** result. Its current frozen evidence supports:
 
-> comparable isolation need not generate one universal floral/reproductive response; regional trait vectors may differ after status, lineage/source-pool, climate and observation structure are represented.
+> **Isolation-associated floral change is component-specific rather than one coherent `generalized + plain + SC` syndrome; strong northern-midlatitude within-context signals exist, but confirmatory regional slope heterogeneity is not established.**
 
-Chapter 3 does not retest that global assemblage hypothesis. It provides a focal within-lineage observation unavailable to Chapter 1:
+Chapter 3 does not retest that assemblage result. Instead, it provides a focal within-lineage observation unavailable to Chapter 1:
 
-> island populations of the same lineage can differ strongly in several floral and reproductive-interface traits.
+> **Different phenotype components within the same lineage can also diverge by very different amounts.**
 
-Some Chapter 3 directions — such as lower corolla dimensions and lower guide coverage toward Kozushima relative to Oshima — may later be compared with broader regional trait directions from Chapter 1. However, Chapter 3 does not force those measurements into a predeclared Bombus or generalization syndrome.
+This makes Chapter 3 a particularly natural empirical continuation of the Chapter 1 result. Chapter 1 finds decoupling among floral categories across floras; Chapter 3 asks whether decoupling is also visible across phenotype axes within one lineage.
+
+Some Chapter 3 directions — such as lower corolla dimensions and lower guide coverage toward Kozushima relative to Oshima — may later be compared with Chapter 1 atomic component directions. However, Chapter 3 does not force those measurements into a predeclared Bombus, generalization or island-syndrome score.
 
 In particular, reductions in mouth and throat width are **not automatically evidence of increased floral accessibility or generalization**; they may partly reflect overall floral scaling.
 
@@ -94,14 +96,14 @@ Chapter 2 predicts **response branching**: a shared ecological perturbation need
 
 Chapter 3 adds a within-lineage version of the same lesson. Different phenotype axes have different divergence magnitudes and statistical support. Absolute dimensions and guide coverage diverge strongly, whereas several ratios and spatial guide-allocation metrics do not show equally strong site-corrected differences.
 
-This makes Chapter 3 the phenotype endpoint of the thesis:
+The three chapters therefore align around the same structural idea:
 
 ```text
-Chapter 1: identify where regional trait syndromes differ
+Chapter 1: assemblage components do not collapse into one syndrome
         ->
-Chapter 2: identify why ecological responses can branch / propagate / buffer
+Chapter 2: interaction states determine response branching / propagation / buffering
         ->
-Chapter 3: measure which phenotype axes actually carry divergence in one focal lineage
+Chapter 3: phenotype axes within one lineage also diverge non-uniformly
 ```
 
 ## Working Chapter 3 interpretation
@@ -145,20 +147,18 @@ The Chapter 3 contribution is narrower and stronger: **to provide a directly mea
 
 | Chapter | Repository | Scale | Primary question | Main evidential contribution |
 | --- | --- | --- | --- | --- |
-| 1 | `island` | global island floras | **When and where?** | biogeographic contingency of floral/reproductive trait syndromes |
+| 1 | `island` | global island floras | **Which components reorganize?** | component-specific isolation-associated floral reorganization, with formal regional boundary tests |
 | 2 | `izu-core` | mechanistic island-response architecture | **How and why?** | branching, propagation, buffering and candidate mechanisms |
 | 3 | `shimahotarubukuro` | one focal lineage across five islands | **What phenotype actually diverges?** | direct multidimensional floral measurement and within-lineage phenotypic divergence |
 
 Together:
 
 ```text
-Isolation × biogeographic context
+component-specific assemblage reorganization         [Chapter 1]
     ↓
-regional trait syndromes                          [Chapter 1]
+candidate interaction states / response modes        [Chapter 2]
     ↓
-candidate ecological mechanisms / response modes [Chapter 2]
-    ↓
-realized, trait-specific floral divergence        [Chapter 3]
+realized, trait-specific floral divergence            [Chapter 3]
 ```
 
-The chapters are complementary rather than nested proofs: Chapter 1 establishes the pattern boundary, Chapter 2 tests mechanism and response architecture, and Chapter 3 supplies a high-resolution empirical phenotype those explanations must account for.
+The chapters are complementary rather than nested proofs: Chapter 1 establishes the component structure of the macroecological pattern, Chapter 2 tests why components can decouple mechanistically, and Chapter 3 supplies a high-resolution empirical phenotype those explanations must account for.
