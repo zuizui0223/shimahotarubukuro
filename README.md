@@ -14,13 +14,13 @@ other-islands Bombus contrast are not part of the publication pipeline.
 
 This repository is the **Chapter 3 / focal empirical phenotype** component of a three-level island-pollination thesis programme:
 
-1. [`zuizui0223/island`](https://github.com/zuizui0223/island) — **Chapter 1:** where and under what biogeographic conditions floral and reproductive assemblage filtering appears;
-2. [`zuizui0223/izu-core`](https://github.com/zuizui0223/izu-core) — **Chapter 2:** how pollination-regime change is translated into reproductive and interaction responses and why those responses can branch;
+1. [`zuizui0223/island`](https://github.com/zuizui0223/island) — **Chapter 1:** when and where floral/reproductive island syndromes differ among biogeographic contexts;
+2. [`zuizui0223/izu-core`](https://github.com/zuizui0223/izu-core) — **Chapter 2:** why altered ecological interactions generate branching, propagation, buffering or alternative responses;
 3. `shimahotarubukuro` — **Chapter 3:** which floral phenotype axes actually diverge within one focal island lineage.
 
 The current empirical message is deliberately narrower than a Bombus-causation claim. Absolute floral dimensions, mouth/throat width, reproductive-organ length and nectar-guide coverage show strong island differentiation, whereas several proportional shape metrics are less robust after site correction. Chapter 3 therefore tests **which components of floral architecture are labile within a lineage**, not whether all traits collapse into one island-syndrome index.
 
-See [`THESIS_CHAPTER_POSITIONING.md`](THESIS_CHAPTER_POSITIONING.md) for the dissertation role and [`docs/THESIS_EMPIRICAL_BRIDGE.md`](docs/THESIS_EMPIRICAL_BRIDGE.md) for the explicit bridge to the Chapter 1 channel-gated hypothesis and Chapter 2 response-branching framework.
+See [`THESIS_CHAPTER_POSITIONING.md`](THESIS_CHAPTER_POSITIONING.md) for the dissertation role and [`docs/THESIS_EMPIRICAL_BRIDGE.md`](docs/THESIS_EMPIRICAL_BRIDGE.md) for the bridge between the Chapter 1 context-dependent regional syndrome analysis, the Chapter 2 response-mechanism framework, and the measured Chapter 3 phenotype.
 
 ## Repository layout
 
@@ -81,8 +81,7 @@ divided by corolla length.
 
 `guide_coverage_pct` is the percentage of the unchanged reviewed corolla ROI
 classified as nectar-guide pigment. Because the guide consists of many small dots,
-its boundaries are **not** hand-painted and no fixed RGB/HSV colour threshold is
-used.
+its boundaries are **not** hand-painted and no fixed RGB/HSV colour threshold is used.
 
 The classifier is an unsupervised, global three-component Gaussian mixture fitted to
 CIELAB chromatic coordinates `(a*, b*)` from all 218 corollas. Up to 900 pixels are
