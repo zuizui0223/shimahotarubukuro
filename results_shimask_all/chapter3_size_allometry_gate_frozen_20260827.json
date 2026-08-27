@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "analysis": "chapter3_size_allometry_interpretation_gate",
+  "status": "frozen_from_successful_reproduce_pipeline_20260819",
+  "provenance": {
+    "workflow_run_id": 32233626007,
+    "head_sha": "4a286534569d366470fc1556b8380aa8ef4f0b69",
+    "artifact_id": 9358829523,
+    "artifact_name": "trait-tables",
+    "artifact_sha256": "1921a6168b8c7c296d8b76e33bc23acb920bb05c524d3180fe0591593aca07de",
+    "source_files": [
+      "multivariate_allometry_tests.csv",
+      "multivariate_allometry_leave_one_island_out.csv",
+      "multivariate_absolute_pst_axes.csv",
+      "multivariate_size_adjusted_pst_axes.csv",
+      "syndrome_signal_mechanical_trait_evidence.csv",
+      "syndrome_module_heterogeneity.csv"
+    ]
+  },
+  "body_size_definition": "corolla length and full-equivalent corolla width define the body-size axis in the existing multivariate phenotype analysis",
+  "trait_level_allometry": {
+    "mouth_width_mm": {
+      "site_ancova_permutation_p": 0.0154,
+      "site_ancova_permutation_p_bh": 0.0368,
+      "site_ancova_partial_r2": 0.5331163192863163,
+      "site_interaction_permutation_p": 0.0025,
+      "site_interaction_permutation_p_bh": 0.02,
+      "site_interaction_partial_r2": 0.49877916277185963,
+      "common_support_permutation_p": 0.0166,
+      "common_support_permutation_p_bh": 0.1328,
+      "classification": "island_specific_allometric_reconfiguration",
+      "boundary": "full-range/site-level evidence is strong, but the multiple-testing-corrected common-support sensitivity is not significant"
+    },
+    "throat_width_mm": {
+      "site_ancova_permutation_p": 0.8858,
+      "site_ancova_permutation_p_bh": 0.985,
+      "site_ancova_partial_r2": 0.04645562253984433,
+      "site_interaction_permutation_p": 0.344,
+      "site_interaction_permutation_p_bh": 0.572,
+      "common_support_permutation_p": 0.9328,
+      "common_support_permutation_p_bh": 0.9328,
+      "classification": "simple_scaling_or_unresolved"
+    },
+    "organ_length_mm": {
+      "site_ancova_permutation_p": 0.0054,
+      "site_ancova_permutation_p_bh": 0.0216,
+      "site_ancova_partial_r2": 0.4643062623005748,
+      "site_interaction_permutation_p": 0.625,
+      "site_interaction_permutation_p_bh": 0.7225,
+      "common_support_permutation_p": 0.1056,
+      "common_support_permutation_p_bh": 0.2208,
+      "classification": "island_level_shift_beyond_common_allometry",
+      "boundary": "additive island shift remains in the full site-level ANCOVA, but the restricted common-support sensitivity is weaker"
+    },
+    "guide_coverage_pct": {
+      "site_ancova_permutation_p": 0.0048,
+      "site_ancova_permutation_p_bh": 0.0216,
+      "site_ancova_partial_r2": 0.46406897759698834,
+      "site_interaction_permutation_p": 0.718,
+      "site_interaction_permutation_p_bh": 0.7225,
+      "common_support_permutation_p": 0.1092,
+      "common_support_permutation_p_bh": 0.2208,
+      "classification": "island_level_shift_beyond_common_allometry",
+      "boundary": "guide amount is only weakly related to body size and retains a full-range island shift, but restricted common-support sensitivity is weaker"
+    }
+  },
+  "multivariate": {
+    "absolute_top_pst_analogue": 0.5918384979517571,
+    "absolute_top_bootstrap_95": [0.5257353038525302, 0.8124435219037561],
+    "size_adjusted_top_pst_analogue": 0.285819615682769,
+    "size_adjusted_top_bootstrap_95": [0.2453544779443831, 0.6385206369713899],
+    "size_adjusted_top_loadings": {
+      "resid_mouth_width_mm": -0.5545857824652788,
+      "resid_throat_width_mm": 0.06722427651461131,
+      "resid_organ_length_mm": 0.7446387245713418,
+      "resid_guide_coverage_pct": 0.36527890221476916
+    }
+  },
+  "module_coordination": {
+    "rank1_shared_trajectory_fraction": 0.7745640437657264,
+    "rank1_shared_trajectory_bootstrap_95": [0.5458773088176134, 0.8857408668241333],
+    "module_by_island_permutation_p": 0.3907,
+    "module_by_island_partial_r2": 0.1603473483381575,
+    "interpretation": "current data do not reject a shared three-module syndrome trajectory despite heterogeneous trait-level response modes"
+  },
+  "integrated_decision": "coordinated_size_investment_divergence_with_selected_size_adjusted_departures",
+  "claim_boundary": "The strong absolute-versus-proportional Pst contrast cannot by itself be interpreted as independent mechanistic branching across trait channels. Much of the phenotype is coordinated with floral size, while mouth allometry, reproductive-organ length, guide amount and a residual multivariate axis provide evidence for selected departures beyond simple size scaling."
+}
