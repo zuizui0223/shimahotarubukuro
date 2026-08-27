@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "updated": "2026-08-27",
+  "purpose": "predefine how Chapter 3 phenotype axes may connect to the Chapter 2 conditional-response architecture without causal back-labelling",
+  "focal_system": "Campanula microdonta across Oshima, Toshima, Niijima, Shikinejima and Kozushima",
+  "trait_axes": [
+    {
+      "trait": "corolla_length",
+      "chapter2_channel": "plant-side mechanical matching candidate",
+      "bridge_status": "candidate_correspondence_not_calibrated",
+      "boundary": "flattened corolla length is not interchangeable with the exact source-native tube-length signed coordinate"
+    },
+    {
+      "trait": "mouth_width",
+      "chapter2_channel": "floral access geometry",
+      "bridge_status": "parallel_access_channel",
+      "boundary": "narrower width does not identify a pollinator guild or generalization mechanism"
+    },
+    {
+      "trait": "throat_width",
+      "chapter2_channel": "floral access geometry",
+      "bridge_status": "parallel_access_channel",
+      "boundary": "narrower width does not identify a pollinator guild or generalization mechanism"
+    },
+    {
+      "trait": "reproductive_organ_length",
+      "chapter2_channel": "reproductive interface/contact geometry",
+      "bridge_status": "downstream_interface_channel",
+      "boundary": "organ length alone does not identify pollen deposition or visitor effectiveness"
+    },
+    {
+      "trait": "guide_coverage_pct",
+      "chapter2_channel": "visual guidance and attraction investment",
+      "bridge_status": "parallel_attraction_channel",
+      "boundary": "guide reduction does not prove lower pollinator dependence or mechanical matching"
+    },
+    {
+      "trait": "corolla_area",
+      "chapter2_channel": "floral display/investment",
+      "bridge_status": "parallel_display_channel",
+      "boundary": "display size is not a direct estimate of effective pollination service"
+    },
+    {
+      "trait": "corolla_width",
+      "chapter2_channel": "floral display/investment",
+      "bridge_status": "parallel_display_channel",
+      "boundary": "display size is not a direct estimate of effective pollination service"
+    },
+    {
+      "trait": "proportional_shape_and_guide_spatial_metrics",
+      "chapter2_channel": "comparison channels",
+      "bridge_status": "weaker_current_divergence",
+      "boundary": "weak phenotypic divergence does not imply mechanistic irrelevance"
+    }
+  ],
+  "directly_tested_now": [
+    "among-island phenotype differentiation",
+    "multidimensional versus one-score phenotype structure",
+    "relative divergence strength among trait channels"
+  ],
+  "not_identified_now": [
+    "historical Bombus causation",
+    "individual plant-specific pollinator functional centre",
+    "single-visit pollen deposition",
+    "visitor effectiveness",
+    "reproductive dependency",
+    "mature-seed consequences",
+    "Qst or direct selection"
+  ],
+  "future_chain": [
+    "visitor identity and exact pollinator functional trait",
+    "plant-specific visitor weights",
+    "frozen signed plant position",
+    "single-visit pollen deposition or effective service",
+    "controlled reproductive dependency",
+    "mature reproductive outcome"
+  ]
+}
