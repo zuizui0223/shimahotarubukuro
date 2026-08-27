@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "analysis": "chapter3_prespecified_axis_contrast",
+  "status": "frozen_complete_20260827",
+  "design": "docs/chapter3_axis_contrast_design_20260827.json",
+  "input": "results_shimask_all/island_analysis_stats.csv",
+  "absolute_investment": {
+    "n_traits": 7,
+    "trait_keys": [
+      "corolla_length_mm",
+      "corolla_width_fulleq_mm",
+      "corolla_area_fulleq_mm2",
+      "throat_width_mm",
+      "mouth_width_mm",
+      "organ_length_mm",
+      "guide_coverage_pct"
+    ],
+    "pst_values": [0.332, 0.283, 0.37, 0.238, 0.374, 0.475, 0.244],
+    "mean_pst": 0.33085714285714285,
+    "median_pst": 0.332,
+    "min_pst": 0.238,
+    "max_pst": 0.475,
+    "site_corrected_significant_count": 7,
+    "site_corrected_significant_traits": [
+      "corolla_length_mm",
+      "corolla_width_fulleq_mm",
+      "corolla_area_fulleq_mm2",
+      "throat_width_mm",
+      "mouth_width_mm",
+      "organ_length_mm",
+      "guide_coverage_pct"
+    ]
+  },
+  "proportional_spatial": {
+    "n_traits": 5,
+    "trait_keys": [
+      "corolla_aspect_L_W",
+      "tube_flare_W_throat",
+      "organ_corolla_ratio",
+      "guide_basal_frac",
+      "guide_midline_ratio"
+    ],
+    "pst_values": [0.129, 0.109, 0.068, 0.082, 0.042],
+    "mean_pst": 0.086,
+    "median_pst": 0.082,
+    "min_pst": 0.042,
+    "max_pst": 0.129,
+    "site_corrected_significant_count": 0,
+    "site_corrected_significant_traits": []
+  },
+  "contrast": {
+    "mean_pst_difference": 0.24485714285714286,
+    "median_pst_difference": 0.25,
+    "mean_pst_ratio": 3.8471760797342194,
+    "complete_separation": true,
+    "cliffs_delta": 1.0
+  },
+  "excluded_trait": {
+    "key": "lobe_incision_mm",
+    "reason": "not assigned to either prespecified group in the prior bridge"
+  },
+  "interpretation": "Within the prespecified Chapter 3 grouping, among-island phenotypic differentiation is concentrated in absolute-size, access, reproductive-interface and guide-investment axes rather than proportional-shape and guide-spatial-allocation axes.",
+  "interpretation_boundary": "Trait axes are correlated measurements from the same plants. This contrast describes phenotype architecture and is not an independent-replicate test of a pollinator mechanism, historical causation, Qst, or natural selection."
+}
