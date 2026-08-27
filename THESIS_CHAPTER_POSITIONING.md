@@ -2,40 +2,50 @@
 
 ## Role in the dissertation
 
-This repository is the **Chapter 3 / focal empirical phenotype** component of the dissertation.
+This repository is the **Chapter 3 / focal phenotypic-realization** component of the dissertation.
 
 The shared dissertation-level question is:
 
-> **How does geographic isolation alter plant reproduction through changes in ecological interactions, and why do those changes produce different floral outcomes across islands and lineages?**
+> **How does geographic isolation alter plant reproduction through changes in ecological interactions, why do those changes produce different response branches across islands and lineages, and how are those branches realized in floral phenotype?**
 
-The three empirical levels are intentionally separated:
+The three levels are intentionally separated:
 
 - [`zuizui0223/island`](https://github.com/zuizui0223/island) — **Chapter 1:** asks **when and where** isolation-associated floral/reproductive filtering is detectable and where multivariate response vectors differ.
-- [`zuizui0223/izu-core`](https://github.com/zuizui0223/izu-core) — **Chapter 2:** asks **why** supported contexts generate different response architectures.
-- `shimahotarubukuro` — **Chapter 3:** measures **what floral phenotype axes actually diverge** within one focal Izu lineage.
+- [`zuizui0223/izu-core`](https://github.com/zuizui0223/izu-core) — **Chapter 2:** asks **how** altered interaction states propagate and supplies a model-conditional **proximal why** for response branching. Its broad comparison universe is larger than the 13 strict manuscript challenges; Izu is the deepest mechanistic anchor rather than one exchangeable replicate among all systems.
+- `shimahotarubukuro` — **Chapter 3:** asks how that conditional-response problem is **realized as unequal multidimensional floral divergence within one focal Izu lineage**.
 
-Chapter 3 asks:
+The Chapter 3 question is therefore:
 
-> **Which floral and reproductive-interface traits actually diverge among island populations within *Campanula microdonta*, and which phenotypic axes carry the strongest island differentiation?**
+> **How is a condition-dependent island response architecture realized as multidimensional floral divergence within *Campanula microdonta*, and which phenotype axes carry the strongest among-island differentiation?**
 
-## Why Chapter 3 is needed after the Chapter 1 when/where result
+This is stronger than a generic `what phenotype differs?` question, but it remains a phenotype question: Chapter 3 does not infer the historical pollinator cause from morphology alone.
 
-Chapter 1 now establishes that isolation-associated filtering is detectable in both northern mid-latitude and tropical island floras, persists in native non-endemic assemblages, and is expressed as significantly different multivariate response vectors between those regions.
+## Why Izu is the focal depth axis
 
-But Chapter 1 is an assemblage-level analysis. It cannot demonstrate that one extant lineage changes its phenotype across islands.
+The dissertation does not move from a 13-system comparison directly to an arbitrary case study. Chapter 2 has examined a broader comparative universe that includes the 13 strict external challenges plus additional cross-archipelago, source-gated and falsification systems. Those systems establish response-state breadth, counterexamples and identifiability boundaries.
 
-Chapter 3 supplies that missing observation layer:
+Izu is then used asymmetrically as the **high-resolution historical plus contemporary mechanism anchor** because the same island series can connect:
+
+1. historical *Campanula* phenotype and mating-system evidence;
+2. contemporary plant–pollinator network structure;
+3. source-native pollinator functional traits;
+4. signed source-position / pollinator-centre-shift analyses;
+5. prospective visitor-effectiveness and reproductive-dependency measurements;
+6. the directly measured within-lineage phenotype in this repository.
+
+The dissertation zoom is therefore:
 
 ```text
-Chapter 1
-WHERE does assemblage-level filtering occur?
+broad island comparison universe
         ↓
-Chapter 2
-WHY can ecological interaction states generate different response architectures?
+strict response-state / falsification boundaries
         ↓
-Chapter 3
-WHAT phenotype axes actually diverge within one lineage?
+Izu deep mechanistic anchor
+        ↓
+C. microdonta phenotypic realization
 ```
+
+Chapter 3 is the final depth layer of that zoom.
 
 ## Empirical system
 
@@ -75,43 +85,46 @@ The strongest retained `Pst` values include:
 
 The divergence spans **display size, floral access geometry, reproductive-interface length and nectar-guide investment** rather than one generic size variable.
 
-Several proportional or allocation traits remain weaker after site correction, so the phenotype is explicitly treated as multidimensional rather than collapsed into one island-adaptation score.
+Several proportional or allocation traits remain weaker after site correction. The phenotype is therefore explicitly multidimensional and unequal rather than collapsed into one island-adaptation score.
 
 ## Relationship to Chapter 1
 
-The canonical Chapter 1 result is now:
+Chapter 1 establishes that isolation-associated floral/reproductive filtering is detectable in northern mid-latitude and tropical island floras, persists within native non-endemic assemblages, and is expressed as different multivariate response vectors between those contexts.
 
-> **Isolation-associated floral/reproductive filtering is confirmatorily detectable in northern mid-latitude and tropical island floras, persists within native non-endemic assemblages, and is expressed as different multivariate response vectors between those two contexts.**
+Chapter 3 does not retest that global boundary result. It asks whether one focal northern-midlatitude lineage also carries strong but unequal among-island phenotype differentiation.
 
-Chapter 3 does not retest that global boundary result.
-
-Instead it asks whether a **single northern-midlatitude lineage** also shows multidimensional among-island phenotype differentiation. The answer is yes: different phenotype axes diverge strongly but unequally.
-
-Thus Chapter 3 provides a focal realization of the broader dissertation problem without claiming that the global assemblage vector and the *C. microdonta* phenotype are the same estimand.
+Thus Chapter 1 supplies **breadth at the assemblage/biogeographic level**, while Chapter 3 supplies **depth at the within-lineage phenotype level**. The two estimands must not be equated.
 
 ## Relationship to Chapter 2
 
-Chapter 2 distinguishes mechanisms such as pollinator functional diversity, trait matching, effective service, reproductive assurance, functional replacement, network state and non-pollination history.
+The current Chapter 2 result is not a universal island syndrome. It shows that response geometry is conditional on partner loss/arrival balance, starting functional position, realized pollinator community and local interaction filtering. Starting position organizes mean response geometry, while realized community state dominates cell-level variation and combines non-additively with starting state.
 
-Chapter 3 supplies the phenotype those mechanisms would need to explain in the focal lineage.
+Chapter 3 asks what a realized phenotype looks like when the system is allowed to be multidimensional rather than forced into one response axis.
 
-Different Chapter 3 axes show different divergence magnitudes, which is consistent with a response-branching framework but does not identify the mechanism by itself.
+The retained Chapter 3 traits connect to different parts of the Chapter 2 architecture:
 
-## Working interpretation
+- **corolla length:** closest retained morphology candidate to a plant-side mechanical matching axis, but not calibrated to the exact source-native tube-length coordinate;
+- **mouth / throat width:** floral access geometry;
+- **reproductive-organ length:** reproductive-interface/contact geometry;
+- **nectar-guide coverage:** visual guidance / attraction investment;
+- **corolla area / width:** display and floral investment;
+- **proportional shape and guide-allocation metrics:** comparison axes that currently show weaker site-robust differentiation.
+
+The correspondence is intentionally many-channel. No single Chapter 3 trait is declared to be `the` Chapter 2 functional coordinate.
+
+See `docs/CHAPTER2_CHAPTER3_MECHANISTIC_BRIDGE_20260827.md` for the explicit trait-axis bridge and claim boundaries.
+
+## What Chapter 3 establishes
 
 The current evidence supports:
 
 > ***Campanula microdonta* populations across the Izu island series show pronounced, multidimensional floral divergence concentrated in particular absolute-size, access, reproductive-interface and nectar-guide axes rather than expressed uniformly across all floral-shape metrics.**
 
-This is stronger and more defensible than claims such as:
+This directly establishes that the focal lineage's island phenotype is not well summarized by one uniformly changing floral syndrome.
 
-- all floral traits become smaller or more generalized with island isolation;
-- Bombus loss caused the observed phenotype;
-- geographic island order uniquely identifies the historical driver.
+It is therefore consistent with the dissertation's conditional-response architecture: different response channels can carry different amounts of divergence.
 
-In particular, reductions in mouth and throat width are **not automatically evidence of increased floral accessibility or generalization**; they may partly reflect overall floral scaling.
-
-## Claim boundary
+## What Chapter 3 does not establish
 
 This repository should not claim that:
 
@@ -119,25 +132,40 @@ This repository should not claim that:
 - `Pst` is `Qst`;
 - phenotypic differentiation alone demonstrates natural selection;
 - lower floral size, access width, reproductive-organ length or guide coverage was historically caused by Bombus loss;
-- Chapter 1's northern-midlatitude response vector directly predicts the within-lineage Chapter 3 phenotype; or
-- all floral dimensions constitute one coordinated island syndrome.
+- Chapter 1's northern-midlatitude response vector directly predicts the within-lineage Chapter 3 phenotype;
+- all floral dimensions constitute one coordinated island syndrome;
+- flattened corolla length is interchangeable with the exact signed tube-length coordinate used in the Izu functional-position analysis;
+- a phenotype axis alone identifies visitor effectiveness, pollen deposition or reproductive dependency.
+
+The missing end-to-end empirical bridge remains:
+
+```text
+visitor identity + exact pollinator functional trait
+    -> plant-specific visitor weights
+        -> frozen signed plant position
+            -> single-visit pollen deposition / effective service
+                -> controlled reproductive dependency
+                    -> mature reproductive outcome
+```
+
+Chapter 3 can later be tested as a phenotypic endpoint of that chain, but its current morphology must not be back-labelled as causal proof.
 
 ## Three-chapter architecture
 
 | Chapter | Repository | Scale | Primary question | Main contribution |
 | --- | --- | --- | --- | --- |
 | 1 | `island` | global island floras | **When / where?** | contexts where filtering is detectable and response vectors differ |
-| 2 | `izu-core` | mechanistic response architecture | **Why / how?** | candidate mechanisms, branching, propagation and buffering |
-| 3 | `shimahotarubukuro` | one lineage across five islands | **What phenotype?** | direct multidimensional within-lineage divergence |
+| 2 | `izu-core` | broad comparison + mechanistic response architecture + Izu deep bridge | **How / proximal why?** | conditional response geometry, community contingency, falsification boundaries and focal empirical triangulation |
+| 3 | `shimahotarubukuro` | one lineage across five Izu islands | **How is it phenotypically realized?** | direct multidimensional, unequal within-lineage divergence |
 
 Together:
 
 ```text
-WHEN / WHERE isolation filtering occurs                 [Chapter 1]
+WHEN / WHERE island filtering is detectable             [Chapter 1]
     ↓
-WHY supported contexts generate different responses     [Chapter 2]
+HOW / WHY responses branch under altered interactions   [Chapter 2]
     ↓
-WHAT phenotype axes diverge in one focal lineage         [Chapter 3]
+HOW that conditionality is realized across floral axes  [Chapter 3]
 ```
 
-The Chapter 3 contribution is: **to provide a directly measured within-lineage phenotype that anchors the dissertation's global boundary and mechanistic arguments in a concrete island system.**
+The Chapter 3 contribution is: **to anchor the dissertation's broad comparative and mechanistic arguments in a directly measured, multidimensional phenotype within the same Izu island series that provides the strongest mechanistic bridge.**
