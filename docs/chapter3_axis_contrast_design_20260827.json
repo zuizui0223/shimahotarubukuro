@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "freeze_date": "2026-08-27",
+  "analysis": "chapter3_prespecified_axis_contrast",
+  "prior_specification": "docs/THESIS_EMPIRICAL_BRIDGE.md explicitly separated absolute-size/investment axes from proportional-shape axes before this contrast was run",
+  "input": "results_shimask_all/island_analysis_stats.csv",
+  "absolute_investment_axes": [
+    "corolla_length_mm",
+    "corolla_width_fulleq_mm",
+    "corolla_area_fulleq_mm2",
+    "throat_width_mm",
+    "mouth_width_mm",
+    "organ_length_mm",
+    "guide_coverage_pct"
+  ],
+  "proportional_spatial_axes": [
+    "corolla_aspect_L_W",
+    "tube_flare_W_throat",
+    "organ_corolla_ratio",
+    "guide_basal_frac",
+    "guide_midline_ratio"
+  ],
+  "excluded_from_group_contrast": {
+    "lobe_incision_mm": "not assigned to either of the two prespecified groups in the prior bridge"
+  },
+  "summaries": [
+    "group mean Pst",
+    "group median Pst",
+    "difference in group mean Pst",
+    "difference in group median Pst",
+    "minimum absolute/investment Pst versus maximum proportional/spatial Pst",
+    "Cliff's delta across trait-level Pst values",
+    "count of site-corrected significant traits in each group"
+  ],
+  "inferential_boundary": "Trait axes are correlated measurements from the same plants. Trait-level contrasts are descriptive architecture diagnostics, not independent biological replicates; no trait-label permutation p-value is used as a biological significance test."
+}
