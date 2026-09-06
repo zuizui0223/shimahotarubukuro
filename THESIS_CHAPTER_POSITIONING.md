@@ -1,5 +1,8 @@
 # Thesis positioning — Chapter 3
 
+Updated: 2026-09-06  
+Chapter 2 boundary synchronized to `zuizui0223/izu-core` after world-saturation / Izu-continuity closure.
+
 ## Role in the dissertation
 
 This repository is the **Chapter 3 / focal phenotypic-realization** component of the dissertation.
@@ -11,8 +14,8 @@ The shared dissertation-level question is:
 The three levels are intentionally separated:
 
 - [`zuizui0223/island`](https://github.com/zuizui0223/island) — **Chapter 1:** asks **when and where** isolation-associated floral/reproductive filtering is detectable and where multivariate response vectors differ.
-- [`zuizui0223/izu-core`](https://github.com/zuizui0223/izu-core) — **Chapter 2:** asks **how** altered interaction states propagate and supplies a model-conditional **proximal why** for response branching. Its broad comparison universe is larger than the 13 strict manuscript challenges; Izu is the deepest mechanistic anchor rather than one exchangeable replicate among all systems.
-- `shimahotarubukuro` — **Chapter 3:** measures the focal Izu lineage's phenotype and asks how much of the among-island divergence is coordinated with floral size versus retained as selected departures from common size scaling.
+- [`zuizui0223/izu-core`](https://github.com/zuizui0223/izu-core) — **Chapter 2:** asks **how / proximal why** altered interaction states can produce different response branches. It defines a conditional response geometry, confronts it with world-island evidence until the geography-first mechanism vocabulary saturates, identifies a structured historical-transition measurement bottleneck, and then uses Izu as the final continuity-system zoom because the same source-linked series can resolve the contemporary half of that chain while retaining contrary evidence.
+- `shimahotarubukuro` — **Chapter 3:** owns the **directly measured focal phenotype**. It asks how much of *Campanula microdonta* among-island divergence follows a coordinated size/investment trajectory and what departures remain beyond common allometric scaling.
 
 The Chapter 3 question is therefore:
 
@@ -22,30 +25,38 @@ This is stronger than a generic `what phenotype differs?` question, but it remai
 
 ## Why Izu is the focal depth axis
 
-The dissertation does not move from a 13-system comparison directly to an arbitrary case study. Chapter 2 has examined a broader comparative universe that includes the 13 strict external challenges plus additional cross-archipelago, source-gated and falsification systems. Those systems establish response-state breadth, counterexamples and identifiability boundaries.
+The dissertation does **not** move from a selected handful of literature examples to an arbitrary nearby case study. Chapter 2 first separates a frozen formal identifiability audit from a broader descriptive programme, expands the world confrontation to **42 research entries across 37 exact geographic labels**, and then performs a geography-first island-system search with an outcome-independent stopping rule. The large-island search reaches the declared two-tranche zero-novelty condition; a separate small-island supplement partially recovers transition history but still does not close the full source-state → transition → realized-community → plant-response contract.
 
-Izu is then used asymmetrically as the **high-resolution historical plus contemporary mechanism anchor** because the same island series can connect:
+Only after that breadth step is saturated does the programme move to focal depth. Izu is selected by **measurement continuity across the bottleneck**, not because it is geographically close, logistically convenient, representative of all islands, or the strongest positive match to the Chapter 2 simulation.
 
-1. historical *Campanula* phenotype and mating-system evidence;
-2. contemporary plant–pollinator network structure;
-3. source-native pollinator functional traits;
-4. signed source-position / pollinator-centre-shift analyses;
-5. prospective visitor-effectiveness and reproductive-dependency measurements;
-6. the directly measured within-lineage phenotype in this repository.
+The same Izu series can connect:
 
-The dissertation zoom is therefore:
+1. historical *Campanula microdonta* floral, mating-system and autonomous-capacity responses;
+2. explicit population-history / colonisation alternatives that prevent a simple pollinator-history story;
+3. repeated contemporary plant–pollinator network structure;
+4. source-native quantitative pollinator functional traits;
+5. signed source-position analyses, including model-facing failures rather than only successes;
+6. contemporary functional-diversity → trait-matching and matching → pollen-response layers;
+7. the directly measured within-lineage phenotype in this repository;
+8. a feasible prospective extension to visitor effectiveness, reproductive dependency and mature reproductive output in tagged populations.
+
+This is unusually valuable because the focal series can **discriminate among explanations**. In Chapter 2, the historical signed-position predictor does not explain null-corrected matching and the Oshima-source bridge is unsupported, whereas contemporary functional diversity is positively associated with corrected trait matching. Izu is therefore retained despite inconvenient results; it is not a hand-picked positive control.
+
+The dissertation zoom is now:
 
 ```text
-broad island comparison universe
+world island confrontation
         ↓
-strict response-state / falsification boundaries
+geography-first saturation + historical-transition bottleneck
         ↓
-Izu deep mechanistic anchor
+Izu selected by measurement continuity and falsification value
         ↓
-C. microdonta phenotypic realization
+contemporary functional realization resolved in Chapter 2
+        ↓
+C. microdonta directly measured phenotypic realization in Chapter 3
 ```
 
-Chapter 3 is the final depth layer of that zoom.
+Chapter 3 is the **direct phenotype layer** of that zoom. It does not need to retroactively validate Chapter 2 for Chapter 2 to be complete.
 
 ## Empirical system
 
@@ -116,9 +127,16 @@ Thus Chapter 1 supplies **breadth at the assemblage/biogeographic level**, while
 
 ## Relationship to Chapter 2
 
-The current Chapter 2 result is not a universal island syndrome. It shows that response geometry is conditional on partner loss/arrival balance, starting functional position, realized pollinator community and local interaction filtering. Starting position organizes mean response geometry, while realized community state dominates cell-level variation and combines non-additively with starting state.
+Chapter 2 is now closed at the **continuity-system boundary**, not left waiting for Chapter 3 to validate it. Its current contribution is:
 
-Chapter 3 does **not** claim to have observed those model response branches directly in phenotype modules. Instead it supplies the focal phenotype that any proposed mechanism must explain. The phenotype contains both a large coordinated component and residual structure beyond simple size scaling.
+- a conditional post-establishment response geometry in which partner loss/arrival organize possible regimes;
+- response direction emerging from starting state evaluated against the realized community, with consequential non-additivity;
+- local filtering reallocating branches and autonomous assurance attenuating downstream magnitude in the declared synthetic envelope;
+- a world confrontation showing multiple empirical response states and a persistent outcome-rich / transition-poor measurement structure;
+- geography-first saturation showing that the bottleneck is not an artefact of the original literature frame;
+- an Izu continuity zoom separating historical signed-position inference from robust contemporary functional-diversity → corrected-matching structure and weaker matching → pollen propagation.
+
+Chapter 3 does **not** claim to have observed the synthetic response branches directly in phenotype modules, and it does not serve as a missing validation panel for Chapter 2. Instead, it supplies an **independently measured downstream phenotype** in the same continuity system—the biological object that any stronger historical mechanism would eventually need to explain.
 
 The retained Chapter 3 traits connect to different parts of the Chapter 2 architecture as measurement candidates:
 
@@ -140,6 +158,8 @@ The current evidence supports:
 
 This is more informative than either `all traits change uniformly` or `every trait channel branches independently`.
 
+The result is already a substantive empirical endpoint in its own right; it does not depend on completing the historical pollinator-causation bridge.
+
 ## What Chapter 3 does not establish
 
 This repository should not claim that:
@@ -153,35 +173,36 @@ This repository should not claim that:
 - flattened corolla length is interchangeable with the exact signed tube-length coordinate used in the Izu functional-position analysis;
 - a phenotype axis alone identifies visitor effectiveness, pollen deposition or reproductive dependency.
 
-The missing end-to-end empirical bridge remains:
+A stronger end-to-end causal bridge remains a **prospective extension**, not a prerequisite for the present Chapter 3 phenotype result or for the Chapter 2 conclusion:
 
 ```text
 visitor identity + exact pollinator functional trait
     -> plant-specific visitor weights
-        -> frozen signed plant position
+        -> legitimate floral contact / realized matching
             -> single-visit pollen deposition / effective service
                 -> controlled reproductive dependency
                     -> mature reproductive outcome
+                        -> relation to the measured phenotype
 ```
 
-Chapter 3 can later be tested as a phenotypic endpoint of that chain, but its current morphology must not be back-labelled as causal proof.
+Historical identification would additionally require either a true temporal partner-regime transition with matched pre/post plant response or an independently replicated bridge-state exposure. The present morphology must not be back-labelled as that causal proof.
 
 ## Three-chapter architecture
 
 | Chapter | Repository | Scale | Primary question | Main contribution |
 | --- | --- | --- | --- | --- |
 | 1 | `island` | global island floras | **When / where?** | contexts where filtering is detectable and response vectors differ |
-| 2 | `izu-core` | broad comparison + mechanistic response architecture + Izu deep bridge | **How / proximal why?** | conditional response geometry, community contingency, falsification boundaries and focal empirical triangulation |
-| 3 | `shimahotarubukuro` | one lineage across five Izu islands | **How is phenotype structured?** | coordinated size/investment divergence plus selected residual departures beyond common allometry |
+| 2 | `izu-core` | synthetic mechanism + world confrontation + Izu continuity zoom | **How / proximal why?** | conditional response geometry; world saturation and identifiability bottleneck; contemporary mechanism discrimination in Izu |
+| 3 | `shimahotarubukuro` | one lineage across five Izu islands | **How is phenotype structured?** | directly measured coordinated size/investment divergence plus selected residual departures beyond common allometry |
 
 Together:
 
 ```text
-WHEN / WHERE island filtering is detectable                  [Chapter 1]
+WHEN / WHERE island filtering is detectable                         [Chapter 1]
     ↓
-HOW / WHY ecological responses can branch conditionally      [Chapter 2]
+HOW / WHY responses can branch + WHAT remains unidentifiable        [Chapter 2]
     ↓
-WHAT coordinated and residual phenotype structure is realised [Chapter 3]
+WHAT phenotype is directly realised within the focal continuity system [Chapter 3]
 ```
 
-The Chapter 3 contribution is **to anchor the dissertation's broad comparative and mechanistic arguments in a directly measured phenotype within the same Izu island series, while explicitly testing how much of that phenotype is shared scaling and how much remains beyond it.**
+The Chapter 3 contribution is **to supply the dissertation's directly measured within-lineage phenotypic realization in the same Izu continuity system selected independently by Chapter 2's measurement logic, while testing how much of that phenotype is shared scaling and how much remains beyond it.**
