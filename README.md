@@ -12,15 +12,17 @@ other-islands Bombus contrast are not part of the publication pipeline.
 
 ## Thesis role — Chapter 3
 
-This repository is the **Chapter 3 / focal empirical phenotype** component of a three-level island-pollination thesis programme:
+This repository is the **Chapter 3 / direct phenotypic-realization** component of a three-level island-pollination thesis programme:
 
-1. [`zuizui0223/island`](https://github.com/zuizui0223/island) — **Chapter 1:** when and where floral/reproductive island syndromes differ among biogeographic contexts;
-2. [`zuizui0223/izu-core`](https://github.com/zuizui0223/izu-core) — **Chapter 2:** why altered ecological interactions generate branching, propagation, buffering or alternative responses;
-3. `shimahotarubukuro` — **Chapter 3:** which floral phenotype axes actually diverge within one focal island lineage.
+1. [`zuizui0223/island`](https://github.com/zuizui0223/island) — **Chapter 1:** asks **when and where** isolation-associated floral/reproductive filtering is detectable and where multivariate response vectors differ;
+2. [`zuizui0223/izu-core`](https://github.com/zuizui0223/izu-core) — **Chapter 2:** asks **how / proximal why** ecological responses branch, confronts that response vocabulary with geography-first world evidence, identifies the historical transition-measurement bottleneck, and selects Izu for depth by **measurement continuity** rather than proximity, convenience or positive model fit;
+3. `shimahotarubukuro` — **Chapter 3:** measures what phenotype is directly realized within that focal Izu continuity system.
 
-The current empirical message is deliberately narrower than a Bombus-causation claim. Absolute floral dimensions, mouth/throat width, reproductive-organ length and nectar-guide coverage show strong island differentiation, whereas several proportional shape metrics are less robust after site correction. Chapter 3 therefore tests **which components of floral architecture are labile within a lineage**, not whether all traits collapse into one island-syndrome index.
+Chapter 3 is therefore **not** a missing validation panel for Chapter 2. Chapter 2 is already complete at the continuity-system boundary; this repository contributes an independent downstream phenotype in the same focal lineage. Any future visitor-effectiveness, reproductive-dependency or mature-seed measurements extend the causal bridge prospectively rather than retroactively validating the Chapter 2 model.
 
-See [`THESIS_CHAPTER_POSITIONING.md`](THESIS_CHAPTER_POSITIONING.md) for the dissertation role and [`docs/THESIS_EMPIRICAL_BRIDGE.md`](docs/THESIS_EMPIRICAL_BRIDGE.md) for the bridge between the Chapter 1 context-dependent regional syndrome analysis, the Chapter 2 response-mechanism framework, and the measured Chapter 3 phenotype.
+The current empirical message is a **strong coordinated size/investment trajectory plus selected departures from common allometric scaling**. Absolute floral dimensions diverge strongly among islands, but mouth allometry, reproductive-interface length, guide investment and a residual multivariate axis retain structure beyond simple common-size scaling. The current morphology does not identify historical *Bombus* loss or any other pollinator transition as its cause.
+
+See [`THESIS_CHAPTER_POSITIONING.md`](THESIS_CHAPTER_POSITIONING.md), [`docs/THESIS_EMPIRICAL_BRIDGE.md`](docs/THESIS_EMPIRICAL_BRIDGE.md), and [`docs/CHAPTER2_CHAPTER3_MECHANISTIC_BRIDGE_20260827.md`](docs/CHAPTER2_CHAPTER3_MECHANISTIC_BRIDGE_20260827.md) for the synchronized chapter boundary.
 
 ## Repository layout
 
